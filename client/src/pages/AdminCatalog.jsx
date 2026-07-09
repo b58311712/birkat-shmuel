@@ -1,9 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api.js';
 import { parseRecipe } from '../lib/recipeParser.js';
 import { Page } from '../components/Layout.jsx';
 
 const inputCls = 'w-full border border-brand-cream-dark rounded-lg p-2 focus:border-brand-gold outline-none';
+
+// בסיסי נוסחת הכמות המוצעת לתוספת (סעיף 14.4). חייבים להתאים לערכים בשרת ובחישוב המחיר.
+const SUGGESTION_BASES = [
+  ['', 'ללא כמות מוצעת (ברירת מחדל 1)'],
+  ['per_portion', 'לפי מספר המנות'],
+  ['per_portion_per_slot', 'לפי מנות × סעודות'],
+  ['fixed_per_order', 'כמות קבועה להזמנה'],
+];
+const suggestionBasisLabel = (basis) =>
+  SUGGESTION_BASES.find(([v]) => v === (basis || ''))?.[1] || basis;
 
 export default function AdminCatalog({ onAuthError, currentAdmin }) {
   const [view, setView] = useState('meals');
@@ -36,6 +46,7 @@ export default function AdminCatalog({ onAuthError, currentAdmin }) {
         {[
           ['meals', 'מאכלים'],
           ['categories', 'קטגוריות'],
+          ['extras', 'תוספות בתשלום'],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -65,6 +76,9 @@ export default function AdminCatalog({ onAuthError, currentAdmin }) {
           onChanged={loadRefs}
           canDelete={canDelete}
         />
+      )}
+      {view === 'extras' && (
+        <ExtrasManager onErr={handleErr} canDelete={canDelete} />
       )}
     </Page>
   );
@@ -168,10 +182,12 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
         </Field>
       </div>
 
-      {editing && (
+      {/* מאכל חדש נפתח מעל הטבלה (אין לו שורה מתאימה); עריכת מאכל קיים נפתחת
+          צמוד לשורה הנערכת כשורת-טבלה מורחבת (ראה בגוף ה-tbody למטה). */}
+      {editing && !editing.id && (
         <MealForm
           initial={editing}
-          categories={editing.id ? categories : activeCategories}
+          categories={activeCategories}
           mealSlots={mealSlots}
           inventoryItems={inventoryItems}
           onInventoryItemCreated={(item) =>
@@ -197,34 +213,55 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
           </thead>
           <tbody>
             {list.map((meal) => (
-              <tr key={meal.id} className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!meal.is_active ? 'opacity-50' : ''}`}>
-                <td className="p-3 text-sm text-brand-burgundy/50">{meal.display_order}</td>
-                <td className="p-3">
-                  <div className="font-medium">{meal.name}</div>
-                  {(meal.kitchen_prep_notes || meal.kitchen_report_notes) && (
-                    <div className="text-xs text-brand-burgundy/50 mt-0.5">
-                      {meal.kitchen_prep_notes || meal.kitchen_report_notes}
-                    </div>
-                  )}
-                </td>
-                <td className="p-3 text-sm">{meal.category?.name || 'ללא קטגוריה'}</td>
-                <td className="p-3 text-sm">{slotNames(meal.available_slot_ids, mealSlots)}</td>
-                <td className="p-3 text-sm">
-                  {meal.requires_extra_charge ? `תוספת ₪${fmt(meal.extra_charge_amount)}` : (meal.included_in_base ? 'כלול בבסיס' : 'לא כלול')}
-                </td>
-                <td className="p-3 text-sm">{meal.is_active ? 'פעיל' : 'לא פעיל'}</td>
-                <td className="p-3 text-sm whitespace-nowrap">
-                  <button onClick={() => setEditing(meal)} className="text-brand-burgundy hover:underline ml-3">עריכה</button>
-                  <button onClick={() => toggleActive(meal)} className="text-brand-burgundy/60 hover:underline">
-                    {meal.is_active ? 'השבתה' : 'הפעלה'}
-                  </button>
-                  {canDelete && (
-                    <button onClick={() => deleteMeal(meal)} className="text-red-600 hover:underline mr-3">
-                      מחיקה
+              <Fragment key={meal.id}>
+                <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!meal.is_active ? 'opacity-50' : ''} ${editing?.id === meal.id ? 'bg-brand-cream/40' : ''}`}>
+                  <td className="p-3 text-sm text-brand-burgundy/50">{meal.display_order}</td>
+                  <td className="p-3">
+                    <div className="font-medium">{meal.name}</div>
+                    {(meal.kitchen_prep_notes || meal.kitchen_report_notes) && (
+                      <div className="text-xs text-brand-burgundy/50 mt-0.5">
+                        {meal.kitchen_prep_notes || meal.kitchen_report_notes}
+                      </div>
+                    )}
+                  </td>
+                  <td className="p-3 text-sm">{meal.category?.name || 'ללא קטגוריה'}</td>
+                  <td className="p-3 text-sm">{slotNames(meal.available_slot_ids, mealSlots)}</td>
+                  <td className="p-3 text-sm">
+                    {meal.requires_extra_charge ? `תוספת ₪${fmt(meal.extra_charge_amount)}` : (meal.included_in_base ? 'כלול בבסיס' : 'לא כלול')}
+                  </td>
+                  <td className="p-3 text-sm">{meal.is_active ? 'פעיל' : 'לא פעיל'}</td>
+                  <td className="p-3 text-sm whitespace-nowrap">
+                    <button onClick={() => setEditing(editing?.id === meal.id ? null : meal)} className="text-brand-burgundy hover:underline ml-3">
+                      {editing?.id === meal.id ? 'סגירה' : 'עריכה'}
                     </button>
-                  )}
-                </td>
-              </tr>
+                    <button onClick={() => toggleActive(meal)} className="text-brand-burgundy/60 hover:underline">
+                      {meal.is_active ? 'השבתה' : 'הפעלה'}
+                    </button>
+                    {canDelete && (
+                      <button onClick={() => deleteMeal(meal)} className="text-red-600 hover:underline mr-3">
+                        מחיקה
+                      </button>
+                    )}
+                  </td>
+                </tr>
+                {editing?.id === meal.id && (
+                  <tr>
+                    <td colSpan={7} className="p-3 bg-brand-cream/20">
+                      <MealForm
+                        initial={editing}
+                        categories={categories}
+                        mealSlots={mealSlots}
+                        inventoryItems={inventoryItems}
+                        onInventoryItemCreated={(item) =>
+                          setInventoryItems((items) =>
+                            [...items, item].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he')))}
+                        onSave={save}
+                        onCancel={() => setEditing(null)}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
             {list.length === 0 && (
               <tr><td colSpan={7} className="p-6 text-center text-brand-burgundy/50">אין מאכלים להצגה.</td></tr>
@@ -850,6 +887,228 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
           onToggle={toggleSlot}
           emptyText="אין סעודות פעילות."
         />
+      </Field>
+      <div className="flex gap-2">
+        <button type="submit" className="btn-primary">שמירה</button>
+        <button type="button" onClick={onCancel} className="btn-ghost">ביטול</button>
+      </div>
+    </form>
+  );
+}
+
+function ExtrasManager({ onErr, canDelete }) {
+  const [list, setList] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [filter, setFilter] = useState({ active: 'true', search: '' });
+
+  const load = useCallback(() => {
+    const params = new URLSearchParams();
+    if (filter.active) params.set('active', filter.active);
+    if (filter.search.trim()) params.set('search', filter.search.trim());
+    const q = params.toString();
+    api.catalogExtras(q ? `?${q}` : '').then(setList).catch(onErr);
+  }, [filter, onErr]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function save(form) {
+    try {
+      if (form.id) await api.updateCatalogExtra(form.id, form);
+      else await api.createCatalogExtra(form);
+      setEditing(null);
+      load();
+    } catch (e) { onErr(e); }
+  }
+
+  async function toggleActive(extra) {
+    try {
+      await api.updateCatalogExtra(extra.id, { is_active: !extra.is_active });
+      load();
+    } catch (e) { onErr(e); }
+  }
+
+  async function deleteExtra(extra) {
+    if (!confirm(`למחוק לצמיתות את התוספת ${extra.name}?`)) return;
+    try {
+      await api.deleteCatalogExtra(extra.id);
+      load();
+    } catch (e) { onErr(e); }
+  }
+
+  if (!list) return <p>טוען...</p>;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-brand-burgundy/60">
+        תוספות שהלקוח יכול לבחור מעבר למחיר המנה (שתייה, חלות, מיץ ענבים וכו׳). לכל תוספת מחיר ליחידה, יחידת חיוב
+        ונוסחת כמות מוצעת שתוצג ללקוח בהזמנה (סעיף 14).
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <button onClick={() => setEditing({})} className="btn-primary">+ תוספת חדשה</button>
+        <Field label="חיפוש">
+          <input
+            value={filter.search}
+            onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
+            className={inputCls}
+            placeholder="שם תוספת, יחידה או הערה"
+          />
+        </Field>
+        <Field label="סטטוס">
+          <select
+            value={filter.active}
+            onChange={(e) => setFilter((f) => ({ ...f, active: e.target.value }))}
+            className={inputCls}
+          >
+            <option value="true">פעילות</option>
+            <option value="false">לא פעילות</option>
+            <option value="">הכל</option>
+          </select>
+        </Field>
+      </div>
+
+      {editing && !editing.id && (
+        <ExtraForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
+          <thead className="bg-brand-burgundy text-brand-cream text-sm">
+            <tr>
+              <th className="p-3 text-right">סדר</th>
+              <th className="p-3 text-right">תוספת</th>
+              <th className="p-3 text-right">מחיר ליחידה</th>
+              <th className="p-3 text-right">יחידת חיוב</th>
+              <th className="p-3 text-right">כמות מוצעת</th>
+              <th className="p-3 text-right">סטטוס</th>
+              <th className="p-3 text-right"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((extra) => (
+              <Fragment key={extra.id}>
+                <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!extra.is_active ? 'opacity-50' : ''} ${editing?.id === extra.id ? 'bg-brand-cream/40' : ''}`}>
+                  <td className="p-3 text-sm text-brand-burgundy/50">{extra.display_order}</td>
+                  <td className="p-3">
+                    <div className="font-medium">{extra.name}</div>
+                    {extra.customer_note && (
+                      <div className="text-xs text-brand-burgundy/50 mt-0.5">{extra.customer_note}</div>
+                    )}
+                  </td>
+                  <td className="p-3 text-sm">₪{fmt(extra.unit_price)}</td>
+                  <td className="p-3 text-sm">{extra.billing_unit}</td>
+                  <td className="p-3 text-sm">
+                    {extra.suggestion_basis
+                      ? `${suggestionBasisLabel(extra.suggestion_basis)} (יחס ${fmt(extra.suggestion_ratio)})`
+                      : 'ללא'}
+                  </td>
+                  <td className="p-3 text-sm">{extra.is_active ? 'פעילה' : 'לא פעילה'}</td>
+                  <td className="p-3 text-sm whitespace-nowrap">
+                    <button onClick={() => setEditing(editing?.id === extra.id ? null : extra)} className="text-brand-burgundy hover:underline ml-3">
+                      {editing?.id === extra.id ? 'סגירה' : 'עריכה'}
+                    </button>
+                    <button onClick={() => toggleActive(extra)} className="text-brand-burgundy/60 hover:underline">
+                      {extra.is_active ? 'השבתה' : 'הפעלה'}
+                    </button>
+                    {canDelete && (
+                      <button onClick={() => deleteExtra(extra)} className="text-red-600 hover:underline mr-3">
+                        מחיקה
+                      </button>
+                    )}
+                  </td>
+                </tr>
+                {editing?.id === extra.id && (
+                  <tr>
+                    <td colSpan={7} className="p-3 bg-brand-cream/20">
+                      <ExtraForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+            {list.length === 0 && (
+              <tr><td colSpan={7} className="p-6 text-center text-brand-burgundy/50">אין תוספות להצגה.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ExtraForm({ initial, onSave, onCancel }) {
+  const [f, setF] = useState({
+    id: initial.id,
+    name: initial.name || '',
+    unit_price: initial.unit_price ?? '',
+    billing_unit: initial.billing_unit || '',
+    suggestion_basis: initial.suggestion_basis || '',
+    suggestion_ratio: initial.suggestion_ratio ?? '',
+    customer_note: initial.customer_note || '',
+    display_order: initial.display_order ?? 0,
+  });
+
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+
+  function submit(e) {
+    e.preventDefault();
+    if (!f.name.trim()) return alert('חובה להזין שם תוספת.');
+    if (f.unit_price === '' || Number(f.unit_price) < 0) return alert('יש להזין מחיר ליחידה תקין.');
+    if (!f.billing_unit.trim()) return alert('יש להזין יחידת חיוב.');
+    if (f.suggestion_basis && (f.suggestion_ratio === '' || Number(f.suggestion_ratio) <= 0)) {
+      return alert('כשנבחר בסיס לכמות מוצעת יש להזין יחס גדול מאפס.');
+    }
+    onSave({
+      ...f,
+      name: f.name.trim(),
+      unit_price: Number(f.unit_price),
+      billing_unit: f.billing_unit.trim(),
+      suggestion_basis: f.suggestion_basis || null,
+      suggestion_ratio: f.suggestion_basis ? Number(f.suggestion_ratio) : null,
+      customer_note: f.customer_note.trim() || null,
+      display_order: Number(f.display_order) || 0,
+    });
+  }
+
+  return (
+    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
+      <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת תוספת' : 'תוספת חדשה'}</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="שם תוספת *">
+          <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} placeholder="שתייה, חלות, מיץ ענבים..." />
+        </Field>
+        <Field label="סדר תצוגה">
+          <input type="number" value={f.display_order} onChange={(e) => set('display_order', e.target.value)} className={inputCls} dir="ltr" />
+        </Field>
+        <Field label="מחיר ליחידה (₪) *">
+          <input type="number" step="0.01" min="0" value={f.unit_price} onChange={(e) => set('unit_price', e.target.value)} className={inputCls} dir="ltr" />
+        </Field>
+        <Field label="יחידת חיוב *">
+          <input value={f.billing_unit} onChange={(e) => set('billing_unit', e.target.value)} className={inputCls} placeholder="בקבוק, יחידה, ק״ג..." />
+        </Field>
+        <Field label="בסיס כמות מוצעת">
+          <select value={f.suggestion_basis} onChange={(e) => set('suggestion_basis', e.target.value)} className={inputCls}>
+            {SUGGESTION_BASES.map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </Field>
+        {f.suggestion_basis && (
+          <Field label="יחס לכמות מוצעת *">
+            <input
+              type="number"
+              step="0.0001"
+              min="0"
+              value={f.suggestion_ratio}
+              onChange={(e) => set('suggestion_ratio', e.target.value)}
+              className={inputCls}
+              dir="ltr"
+              placeholder="לדוגמה 0.05 = יחידה לכל 20 מנות"
+            />
+          </Field>
+        )}
+      </div>
+      <Field label="הערה ללקוח">
+        <input value={f.customer_note} onChange={(e) => set('customer_note', e.target.value)} className={inputCls} placeholder="טקסט קצר שיוצג ללקוח ליד התוספת" />
       </Field>
       <div className="flex gap-2">
         <button type="submit" className="btn-primary">שמירה</button>

@@ -120,6 +120,10 @@ export const api = {
   deleteCatalogMealSlot: (id) => request(`/admin/catalog/meal-slots/${id}`, { method: 'DELETE' }),
   catalogMealRecipe: (id) => request(`/admin/catalog/meals/${id}/recipe`),
   setCatalogMealRecipe: (id, payload) => request(`/admin/catalog/meals/${id}/recipe`, { method: 'PUT', body: JSON.stringify(payload) }),
+  catalogExtras: (q = '') => request(`/admin/catalog/extras${q}`),
+  createCatalogExtra: (payload) => request('/admin/catalog/extras', { method: 'POST', body: JSON.stringify(payload) }),
+  updateCatalogExtra: (id, payload) => request(`/admin/catalog/extras/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteCatalogExtra: (id) => request(`/admin/catalog/extras/${id}`, { method: 'DELETE' }),
 
   // תיק שבת (סעיף 9)
   shabbatFiles: () => request('/admin/shabbat-files'),

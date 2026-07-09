@@ -8,6 +8,8 @@ const router = Router();
 
 const CATEGORY_SELECT = 'id, name, internal_description, display_order, recommended_min, max_allowed, is_active, created_at, updated_at';
 const MEAL_SELECT = 'id, name, category_id, included_in_base, requires_extra_charge, extra_charge_amount, kitchen_prep_notes, kitchen_report_notes, preparation_instructions, display_order, is_active, created_at, updated_at, category:category_id (id, name)';
+const EXTRA_SELECT = 'id, name, unit_price, billing_unit, suggestion_ratio, suggestion_basis, customer_note, display_order, is_active, created_at, updated_at';
+const SUGGESTION_BASES = ['per_portion', 'per_portion_per_slot', 'fixed_per_order'];
 
 async function auditDelete(req, entityType, entityId, details = null) {
   const { error } = await supabase.from('audit_log').insert({
@@ -87,6 +89,54 @@ function normalizeMeal(body, { partial = false } = {}) {
   if (extraRequired && patch.extra_charge_amount == null) return { error: 'מאכל עם תוספת מחיר חייב לכלול סכום.' };
   if (patch.extra_charge_amount != null && patch.extra_charge_amount < 0) return { error: 'מחיר תוספת לא יכול להיות שלילי.' };
   if (patch.requires_extra_charge === false) patch.extra_charge_amount = null;
+
+  return { patch };
+}
+
+function normalizeExtra(body, { partial = false } = {}) {
+  const patch = {};
+
+  if (!partial || body.name !== undefined) {
+    const name = String(body.name || '').trim();
+    if (!name) return { error: 'נא להזין שם תוספת.' };
+    patch.name = name;
+  }
+  if (!partial || body.unit_price !== undefined) {
+    const price = num(body.unit_price);
+    if (price === null) return { error: 'נא להזין מחיר ליחידה.' };
+    if (price < 0) return { error: 'מחיר ליחידה לא יכול להיות שלילי.' };
+    patch.unit_price = price;
+  }
+  if (!partial || body.billing_unit !== undefined) {
+    const unit = String(body.billing_unit || '').trim();
+    if (!unit) return { error: 'נא להזין יחידת חיוב (בקבוק, יחידה וכו׳).' };
+    patch.billing_unit = unit;
+  }
+  if (!partial || body.suggestion_basis !== undefined) {
+    const basis = body.suggestion_basis ? String(body.suggestion_basis).trim() : null;
+    if (basis && !SUGGESTION_BASES.includes(basis)) return { error: 'בסיס נוסחת כמות מוצעת לא תקין.' };
+    patch.suggestion_basis = basis;
+  }
+  if (!partial || body.suggestion_ratio !== undefined) {
+    const ratio = num(body.suggestion_ratio);
+    if (ratio != null && ratio < 0) return { error: 'יחס הכמות המוצעת לא יכול להיות שלילי.' };
+    patch.suggestion_ratio = ratio;
+  }
+  if (!partial || body.customer_note !== undefined) {
+    patch.customer_note = body.customer_note ? String(body.customer_note).trim() : null;
+  }
+  if (!partial || body.display_order !== undefined) patch.display_order = intOrNull(body.display_order) ?? 0;
+  if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
+
+  // נוסחת כמות מוצעת: בסיס ויחס הולכים יחד — אם יש אחד חייב את השני.
+  const basis = patch.suggestion_basis ?? (partial ? undefined : null);
+  const ratio = patch.suggestion_ratio ?? (partial ? undefined : null);
+  if (basis && (ratio == null || ratio <= 0)) {
+    return { error: 'כשמוגדר בסיס לכמות מוצעת יש להזין יחס גדול מאפס.' };
+  }
+  if (ratio != null && ratio > 0 && basis === null) {
+    return { error: 'כשמוגדר יחס לכמות מוצעת יש לבחור בסיס חישוב.' };
+  }
 
   return { patch };
 }
@@ -422,6 +472,82 @@ router.put('/meals/:id/recipe', asyncHandler(async (req, res) => {
   }
 
   res.json({ ok: true, recipe_portions: cleaned.portions, lines_count: cleaned.rows.length });
+}));
+
+// ---------------------------------------------------------------------------
+// extras — תוספות בתשלום (סעיף 14)
+// ---------------------------------------------------------------------------
+router.get('/extras', asyncHandler(async (req, res) => {
+  let q = supabase.from('extras').select(EXTRA_SELECT).order('display_order').order('name');
+  if (req.query.active === 'true') q = q.eq('is_active', true);
+  if (req.query.active === 'false') q = q.eq('is_active', false);
+  if (req.query.search) {
+    const s = String(req.query.search).trim();
+    if (s) q = q.or(`name.ilike.%${s}%,billing_unit.ilike.%${s}%,customer_note.ilike.%${s}%`);
+  }
+
+  const { data, error } = await q;
+  if (error) throw error;
+  res.json(data);
+}));
+
+router.post('/extras', asyncHandler(async (req, res) => {
+  const cleaned = normalizeExtra(req.body || {});
+  if (cleaned.error) return fail(res, 400, cleaned.error);
+
+  const { data, error } = await supabase
+    .from('extras')
+    .insert(cleaned.patch)
+    .select(EXTRA_SELECT)
+    .single();
+  if (error) throw error;
+  res.json({ ok: true, extra: data });
+}));
+
+router.patch('/extras/:id', asyncHandler(async (req, res) => {
+  const cleaned = normalizeExtra(req.body || {}, { partial: true });
+  if (cleaned.error) return fail(res, 400, cleaned.error);
+
+  if (Object.keys(cleaned.patch).length === 0) {
+    const { data, error } = await supabase.from('extras').select(EXTRA_SELECT).eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!data) return fail(res, 404, 'תוספת לא נמצאה.');
+    return res.json({ ok: true, extra: data });
+  }
+
+  const { data, error } = await supabase
+    .from('extras')
+    .update(cleaned.patch)
+    .eq('id', req.params.id)
+    .select(EXTRA_SELECT)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return fail(res, 404, 'תוספת לא נמצאה.');
+  res.json({ ok: true, extra: data });
+}));
+
+router.delete('/extras/:id', requireRole('developer'), asyncHandler(async (req, res) => {
+  // order_extras.extra_id מפנה לכאן ללא cascade — אם התוספת שימשה בהזמנה,
+  // מחיקה קשיחה תיכשל על מגבלת המפתח הזר. עדיף להשבית מאשר למחוק היסטוריה.
+  const { count, error: usedErr } = await supabase
+    .from('order_extras')
+    .select('id', { count: 'exact', head: true })
+    .eq('extra_id', req.params.id);
+  if (usedErr) throw usedErr;
+  if (count && count > 0) {
+    return fail(res, 409, 'לא ניתן למחוק תוספת שכבר שימשה בהזמנות. ניתן להשבית אותה במקום.');
+  }
+
+  const { data, error } = await supabase
+    .from('extras')
+    .delete()
+    .eq('id', req.params.id)
+    .select('id')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return fail(res, 404, 'תוספת לא נמצאה.');
+  await auditDelete(req, 'extra', req.params.id);
+  res.json({ ok: true });
 }));
 
 export default router;
