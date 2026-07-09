@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-brand-cream text-brand-burgundy-dark font-sans antialiased;
+  }
+}
+
+@layer components {
+  /* כפתור ראשי — זהב */
+  .btn-primary {
+    @apply bg-brand-gold text-brand-burgundy-dark font-bold px-5 py-2.5 rounded-xl
+           shadow-card hover:bg-brand-gold-light transition-colors
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  /* כפתור משני — בורדו */
+  .btn-secondary {
+    @apply bg-brand-burgundy text-brand-cream font-bold px-5 py-2.5 rounded-xl
+           shadow-card hover:bg-brand-burgundy-light transition-colors
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply text-brand-burgundy font-medium px-4 py-2 rounded-lg
+           hover:bg-brand-cream-dark transition-colors;
+  }
+  .card {
+    @apply bg-white rounded-2xl shadow-card p-5 border border-brand-cream-dark;
+  }
+  .input {
+    @apply w-full px-4 py-2.5 rounded-xl border border-brand-cream-dark bg-white
+           focus:outline-none focus:ring-2 focus:ring-brand-gold text-lg;
+  }
+  .badge {
+    @apply inline-block px-2.5 py-1 rounded-full text-sm font-medium;
+  }
+}
+
+/* הדפסת תיק עבודה (סעיף 33): בהדפסה מציגים רק את אזור המסמך (.print-area),
+   מסתירים ניווט/לשוניות/כפתורים, ושומרים על שבירת עמודים נקייה בין הדוחות.
+   טכניקה בטוחה: מסתירים הכול ב-visibility, ומחזירים רק את אזור ההדפסה וצאצאיו,
+   ואז ממקמים אותו בראש העמוד. כך אין תלות ב-:has() ואין סיכון לכלל לא-תקין. */
+@media print {
+  body { background: #fff !important; }
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .no-print, .no-print * { display: none !important; }
+  /* כל דוח בעמוד נפרד */
+  .print-section { page-break-after: always; }
+  .print-section:last-child { page-break-after: auto; }
+  .print-avoid { break-inside: avoid; }
+  tr, thead { break-inside: avoid; }
+  a { text-decoration: none !important; color: inherit !important; }
+  @page { margin: 1.4cm; }
+}

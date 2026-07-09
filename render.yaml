@@ -1,0 +1,26 @@
+# =============================================================================
+# מטבח החסד — Render Blueprint (שרת Node/Express בלבד)
+# הפרונט (React/Vite) מתארח בנפרד ב-Vercel.
+# =============================================================================
+services:
+  - type: web
+    name: matbach-hachesed-server
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      # ערכים סודיים — יש למלא ידנית ב-Render Dashboard (Environment), לא כאן.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_TTL
+        value: 12h
+      # כתובת הפרונט ב-Vercel (ל-CORS). למלא אחרי שהפרונט עולה.
+      - key: CLIENT_ORIGIN
+        sync: false

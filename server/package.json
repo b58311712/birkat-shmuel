@@ -1,0 +1,21 @@
+{
+  "name": "matbach-hachesed-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "שרת מטבח החסד — Node + Express + Supabase",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "seed:demo": "node src/scripts/seedDemo.js",
+    "set:admin": "node src/scripts/setAdminPassword.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3"
+  }
+}
