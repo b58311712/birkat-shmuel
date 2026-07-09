@@ -33,6 +33,7 @@ const adminMenuGroups = [
     id: 'system',
     label: 'מערכת',
     items: [
+      { to: '/admin/finance', label: 'מודול כספי' },
       { to: '/admin/users', label: 'משתמשים' },
     ],
   },

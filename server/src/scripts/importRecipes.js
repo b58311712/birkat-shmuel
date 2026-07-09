@@ -2,7 +2,11 @@
 //
 // הרצה:
 //   node src/scripts/importRecipes.js            → תצוגה בלבד (dry-run), לא כותב ל-DB
-//   node src/scripts/importRecipes.js --commit   → מעלה בפועל ל-DB
+//   node src/scripts/importRecipes.js --commit   → מעלה בפועל ל-DB (מאכלים חדשים בלבד; קיימים מדולגים)
+//   node src/scripts/importRecipes.js --commit --update-existing
+//                                                → בנוסף: למאכלים שכבר קיימים, מעדכן את
+//                                                  recipe_portions + אופן ההכנה, ומחליף את
+//                                                  שורות המתכון מהמקור (מזין מחדש את הכמויות).
 //
 // כל מתכון בקובץ מופרד ב-### <שם המאכל>, ואחריו שורת תפוקה, רכיבים,
 // כותרת "אופן ההכנה:" והוראות. הקטגוריה נגזרת אוטומטית משם המאכל.
@@ -15,6 +19,18 @@ import { supabase } from '../lib/supabase.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SOURCE = join(__dirname, 'recipes-source.txt');
 const COMMIT = process.argv.includes('--commit');
+const UPDATE_EXISTING = process.argv.includes('--update-existing');
+
+// נרמול שם מאכל להתאמה בין המקור ל-DB: שמות המקור עשויים להשתמש בסוגריים
+// הפוכים (ארטיפקט RTL: ")שבת(" במקום "(שבת)") ובביטויים בסוגריים שאינם ב-DB.
+// לכן מסירים לגמרי כל קבוצת סוגריים (בשני הכיוונים) ומכווצים רווחים.
+function normalizeName(name) {
+  return String(name || '')
+    .replace(/\([^)(]*\)/g, '')  // (טקסט)
+    .replace(/\)[^)(]*\(/g, '')  // )טקסט(  — סוגריים הפוכים
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 // ---------------------------------------------------------------------------
 // מיפוי קטגוריות: לפי מילת מפתח בשם המאכל. הראשון שמתאים — קובע.
@@ -236,47 +252,113 @@ async function commit(recipes) {
   const missing = needed.filter((n) => !catByName[n]);
   if (missing.length) throw new Error(`קטגוריות חסרות ב-DB: ${missing.join(', ')}. הריצי seed או צרי אותן ידנית.`);
 
-  // מאכלים קיימים (מניעת כפילויות לפי שם)
+  // מאכלים קיימים — מתאימים לפי שם מנורמל (מקור ל-DB), כדי לזהות קיימים גם כאשר
+  // הסוגריים שונים. אם שני מאכלים מנורמלים לאותו שם — לא נבחר אוטומטית (ambiguous).
   const { data: existingMeals, error: mErr } = await supabase.from('meals').select('id, name');
   if (mErr) throw mErr;
-  const existingByName = Object.fromEntries((existingMeals || []).map((m) => [m.name, m.id]));
+  const byNorm = new Map();
+  const ambiguous = new Set();
+  for (const m of existingMeals || []) {
+    const key = normalizeName(m.name);
+    if (byNorm.has(key)) ambiguous.add(key);
+    else byNorm.set(key, m);
+  }
 
-  let created = 0, skipped = 0;
+  // בונה את שורות המתכון מתוך המתכון שנותח. כמות למנה אחת = כמות למתכון / מנות.
+  const linesFor = (mealId, r) => r.ingredients.map((ing) => ({
+    meal_id: mealId,
+    ingredient_name: ing.name,
+    quantity_per_portion: Number((ing.quantity / r.portions).toFixed(4)),
+    unit: ing.unit,
+  }));
+
+  let created = 0, updated = 0, skipped = 0;
   for (const r of recipes) {
-    if (existingByName[r.name]) {
-      console.log(`  ⏭  דילוג (כבר קיים): ${r.name}`);
-      skipped++;
+    const key = normalizeName(r.name);
+    const existing = byNorm.get(key);
+
+    // ----- מאכל קיים -----
+    if (existing) {
+      if (ambiguous.has(key)) {
+        console.log(`  ⏭  דילוג (שם דו-משמעי ב-DB, עדכני ידנית): ${r.name}`);
+        skipped++;
+        continue;
+      }
+      if (!UPDATE_EXISTING) {
+        console.log(`  ⏭  דילוג (כבר קיים): ${r.name} → "${existing.name}"`);
+        skipped++;
+        continue;
+      }
+
+      // עדכון מספר המנות המקורי + אופן ההכנה על המאכל (לא נוגעים בשם/קטגוריה/מחיר).
+      const { error: upErr } = await supabase.from('meals')
+        .update({ recipe_portions: r.portions, preparation_instructions: r.instructions || null })
+        .eq('id', existing.id);
+      if (upErr) { console.error(`  ❌ ${existing.name}: ${upErr.message}`); continue; }
+
+      // החלפת שורות המתכון: מחיקה ואז הזנה מחדש (מזין מחדש את הכמויות מהמקור).
+      const { error: delErr } = await supabase.from('recipe_lines').delete().eq('meal_id', existing.id);
+      if (delErr) { console.error(`  ❌ ${existing.name}: מחיקת שורות ישנות — ${delErr.message}`); continue; }
+      if (r.ingredients.length) {
+        const { error: rErr } = await supabase.from('recipe_lines').insert(linesFor(existing.id, r));
+        if (rErr) { console.error(`  ⚠ ${existing.name}: הזנת שורות — ${rErr.message}`); continue; }
+      }
+
+      console.log(`  🔄 עודכן: ${existing.name}  (${r.ingredients.length} רכיבים, ${r.portions} מנות)`);
+      updated++;
       continue;
     }
 
-    // צור מאכל
+    // ----- מאכל חדש -----
     const { data: meal, error: insErr } = await supabase.from('meals').insert({
       name: r.name,
       category_id: catByName[r.category],
       included_in_base: true,
       requires_extra_charge: false,
+      recipe_portions: r.portions,
       preparation_instructions: r.instructions || null,
       is_active: true,
     }).select('id').single();
     if (insErr) { console.error(`  ❌ ${r.name}: ${insErr.message}`); continue; }
 
-    // שורות מתכון: כמות למנה אחת = כמות למתכון / מנות
     if (r.ingredients.length) {
-      const rows = r.ingredients.map((ing) => ({
-        meal_id: meal.id,
-        ingredient_name: ing.name,
-        quantity_per_portion: Number((ing.quantity / r.portions).toFixed(4)),
-        unit: ing.unit,
-      }));
-      const { error: rErr } = await supabase.from('recipe_lines').insert(rows);
+      const { error: rErr } = await supabase.from('recipe_lines').insert(linesFor(meal.id, r));
       if (rErr) console.error(`  ⚠ ${r.name}: שגיאה בשורות מתכון — ${rErr.message}`);
     }
 
-    console.log(`  ✓ ${r.name}  (${r.ingredients.length} רכיבים, ${r.portions} מנות)`);
+    console.log(`  ✓ נוצר: ${r.name}  (${r.ingredients.length} רכיבים, ${r.portions} מנות)`);
     created++;
   }
 
-  console.log(`\n✅ הושלם: ${created} נוצרו, ${skipped} דולגו.`);
+  console.log(`\n✅ הושלם: ${created} נוצרו, ${updated} עודכנו, ${skipped} דולגו.`);
+  if (!UPDATE_EXISTING && skipped) {
+    console.log('   💡 לעדכון מאכלים קיימים (recipe_portions + כמויות): הוסיפי --update-existing');
+  }
+}
+
+// תצוגה מקדימה (read-only) של ההתאמה מול ה-DB: מה ייווצר, מה יעודכן, מה ידולג.
+async function previewMatch(recipes) {
+  const { data: existingMeals, error } = await supabase.from('meals').select('name');
+  if (error) { console.log(`\n(לא ניתן לבדוק מול DB: ${error.message})`); return; }
+  const byNorm = new Map();
+  const ambiguous = new Set();
+  for (const m of existingMeals || []) {
+    const key = normalizeName(m.name);
+    if (byNorm.has(key)) ambiguous.add(key); else byNorm.set(key, m);
+  }
+
+  const willCreate = [], willUpdate = [], willSkip = [];
+  for (const r of recipes) {
+    const key = normalizeName(r.name);
+    if (!byNorm.has(key)) willCreate.push(r.name);
+    else if (ambiguous.has(key)) willSkip.push(`${r.name} (דו-משמעי)`);
+    else if (UPDATE_EXISTING) willUpdate.push(`${r.name} → "${byNorm.get(key).name}"`);
+    else willSkip.push(`${r.name} → "${byNorm.get(key).name}"`);
+  }
+  console.log(`\n🔎 תצוגה מקדימה מול ה-DB (${UPDATE_EXISTING ? 'מצב עדכון קיימים' : 'ברירת מחדל — קיימים ידולגו'}):`);
+  console.log(`   ➕ ייווצרו: ${willCreate.length}${willCreate.length ? ' — ' + willCreate.join(', ') : ''}`);
+  console.log(`   🔄 יעודכנו: ${willUpdate.length}${willUpdate.length ? ' — ' + willUpdate.map((s) => s.split(' →')[0]).join(', ') : ''}`);
+  console.log(`   ⏭  ידולגו: ${willSkip.length}${willSkip.length ? ' — ' + willSkip.map((s) => s.split(' →')[0].split(' (')[0]).join(', ') : ''}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -289,7 +371,9 @@ async function main() {
   if (process.argv.includes('--detail')) printDetail(recipes);
 
   if (!COMMIT) {
+    await previewMatch(recipes);
     console.log('\n💡 זו תצוגה בלבד (dry-run). להעלאה בפועל: node src/scripts/importRecipes.js --commit');
+    console.log('   לעדכון מאכלים קיימים (recipe_portions + כמויות): --commit --update-existing');
     console.log('   לפירוט מלא של רכיבים והוראות: הוסיפי --detail');
     return;
   }

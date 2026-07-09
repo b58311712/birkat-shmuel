@@ -14,6 +14,7 @@ import inventoryRoutes from './routes/inventory.js';
 import suppliersRoutes from './routes/suppliers.js';
 import catalogAdminRoutes from './routes/catalogAdmin.js';
 import paymentsRoutes from './routes/payments.js';
+import financeRoutes from './routes/finance.js';
 import { requireAdmin } from './lib/auth.js';
 
 const app = express();
@@ -35,6 +36,7 @@ app.use('/api/admin/inventory', requireAdmin, inventoryRoutes);
 app.use('/api/admin/suppliers', requireAdmin, suppliersRoutes);
 app.use('/api/admin/catalog', requireAdmin, catalogAdminRoutes);
 app.use('/api/admin/payments', requireAdmin, paymentsRoutes);
+app.use('/api/admin/finance', requireAdmin, financeRoutes);
 app.use('/api/admin', requireAdmin, adminRoutes);
 
 // טיפול שגיאות אחיד (עברית)

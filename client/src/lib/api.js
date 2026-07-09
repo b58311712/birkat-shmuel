@@ -64,6 +64,7 @@ export const api = {
   updateOrder: (id, payload) => request(`/admin/orders/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   updateOrderCustomer: (id, payload) => request(`/admin/orders/${id}/customer`, { method: 'PATCH', body: JSON.stringify(payload) }),
   adminDashboard: () => request('/admin/dashboard'),
+  financeSummary: () => request('/admin/finance/summary'),
   approveOrder: (id) => request(`/admin/orders/${id}/approve`, { method: 'POST' }),
   cancelOrder: (id, reason) => request(`/admin/orders/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   updatePayment: (id, payload) => request(`/admin/orders/${id}/payment`, { method: 'POST', body: JSON.stringify(payload) }),

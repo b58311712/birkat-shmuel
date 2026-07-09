@@ -22,6 +22,7 @@ import AdminPurchaseOrders from './pages/AdminPurchaseOrders.jsx';
 import AdminPurchaseOrderView from './pages/AdminPurchaseOrderView.jsx';
 import AdminUsers from './pages/AdminUsers.jsx';
 import AdminCatalog from './pages/AdminCatalog.jsx';
+import AdminFinance from './pages/AdminFinance.jsx';
 
 const STORAGE_KEY = 'matbach_customer';
 const ADMIN_USER_KEY = 'matbach_admin_user';
@@ -142,6 +143,11 @@ export default function App() {
           <Route path="/admin/users" element={
             <AdminShell admin={admin} onAdminLogout={adminLogout}>
               <AdminUsers onAuthError={adminLogout} currentAdmin={admin} />
+            </AdminShell>
+          } />
+          <Route path="/admin/finance" element={
+            <AdminShell admin={admin} onAdminLogout={adminLogout}>
+              <AdminFinance onAuthError={adminLogout} />
             </AdminShell>
           } />
           <Route path="/admin/*" element={<Navigate to="/admin" replace />} />

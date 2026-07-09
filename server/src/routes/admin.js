@@ -774,21 +774,145 @@ router.post('/orders/:id/payment', asyncHandler(async (req, res) => {
   res.json({ ok: true, order: data });
 }));
 
-// GET /api/admin/dashboard — נתוני דשבורד (סעיף 30)
+// GET /api/admin/dashboard — נתוני דשבורד ניהולי (סעיף 30)
+// מחזיר את "הדברים הדורשים טיפול" בחלוקה ל-5 סקציות: הזמנות, תשלומים,
+// מלאי, מתנדבים, ספקים. לכל פריט מספר; הפרונט מוסיף קישור ישיר לפעולה.
 router.get('/dashboard', asyncHandler(async (req, res) => {
-  const [pending, unpaid, registrations] = await Promise.all([
+  const today = new Date().toISOString().slice(0, 10);            // YYYY-MM-DD
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString(); // לפני 7 ימים (ISO)
+  const ACTIVE = ['pending_approval', 'approved', 'needs_correction', 'delivered'];
+
+  // השבת הקרובה = השבת הפעילה הבאה מהיום (כולל היום)
+  const { data: nextShabbat } = await supabase
+    .from('shabbatot')
+    .select('id, parasha, hebrew_date, gregorian_date, payment_deadline')
+    .gte('gregorian_date', today)
+    .order('gregorian_date', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const [
+    pendingOrders, cancelledRecent,
+    unpaidActive, partiallyPaid, overrideCount, openRefunds,
+    lowStock, openPOs, supplierPayments,
+    invItems, transportOrders,
+  ] = await Promise.all([
+    // 30.1 — הזמנות
     supabase.from('orders').select('id', { count: 'exact', head: true })
       .eq('order_status', 'pending_approval'),
     supabase.from('orders').select('id', { count: 'exact', head: true })
-      .eq('order_status', 'approved').eq('payment_status', 'unpaid'),
-    supabase.from('customer_registration_requests').select('id', { count: 'exact', head: true })
-      .eq('is_handled', false),
+      .eq('order_status', 'cancelled').gte('updated_at', weekAgo),
+    // 30.2 — תשלומים
+    supabase.from('orders').select('id', { count: 'exact', head: true })
+      .in('order_status', ACTIVE).eq('payment_status', 'unpaid'),
+    supabase.from('orders').select('id', { count: 'exact', head: true })
+      .in('order_status', ACTIVE).eq('payment_status', 'partially_paid'),
+    supabase.from('orders').select('id', { count: 'exact', head: true })
+      .eq('payment_status', 'payment_override'),
+    supabase.from('order_refunds').select('id', { count: 'exact', head: true })
+      .eq('status', 'pending'),
+    // 30.3/30.5 — מלאי + רכש
+    supabase.from('inventory_items').select('id, quantity_on_hand, min_alert_quantity')
+      .eq('is_active', true).not('min_alert_quantity', 'is', null),
+    supabase.from('purchase_orders').select('id', { count: 'exact', head: true })
+      .in('status', ['draft', 'sent', 'partially_received']),
+    supabase.from('supplier_payments').select('id', { count: 'exact', head: true })
+      .in('status', ['unpaid', 'partially_paid', 'awaiting_invoice']),
+    // עזר: פריטי מלאי מלאים (לא בשימוש כאן ישירות — נשמר לעתיד)
+    supabase.from('inventory_items').select('id', { count: 'exact', head: true })
+      .eq('is_active', true),
+    // 30.4 — הזמנות פעילות שדורשות שינוע (למניית שיבוץ שינוע חסר)
+    nextShabbat
+      ? supabase.from('orders')
+          .select('id, transport_volunteer_id')
+          .eq('shabbat_id', nextShabbat.id)
+          .eq('delivery_method', 'volunteer_transport')
+          .in('order_status', ACTIVE)
+      : Promise.resolve({ data: [] }),
   ]);
 
+  // מוצרים מתחת למינימום — השוואה בין שתי עמודות מתבצעת ב-JS
+  const belowMin = (lowStock.data || []).filter(
+    (it) => Number(it.quantity_on_hand) < Number(it.min_alert_quantity),
+  ).length;
+
+  // הזמנות שלא שולמו בזמן — מאושרות/פעילות שלא שולמו והשבת שלהן עברה את מועד התשלום
+  let overdueUnpaid = 0;
+  let nextShabbatOrders = 0;
+  let missingTransport = 0;
+  let unassignedTasks = 0;
+
+  if (nextShabbat) {
+    const { count: nsOrders } = await supabase
+      .from('orders').select('id', { count: 'exact', head: true })
+      .eq('shabbat_id', nextShabbat.id).in('order_status', ACTIVE);
+    nextShabbatOrders = nsOrders || 0;
+
+    // שינוע חסר להזמנות שדורשות שינוע לשבת הקרובה
+    missingTransport = (transportOrders.data || [])
+      .filter((o) => !o.transport_volunteer_id).length;
+
+    // משימות קבועות ללא שיבוץ מתנדב לשבת הקרובה
+    const [{ data: tasks }, { data: assignments }] = await Promise.all([
+      supabase.from('volunteer_tasks').select('id').eq('is_active', true),
+      supabase.from('volunteer_assignments')
+        .select('task_id, volunteer_id').eq('shabbat_id', nextShabbat.id),
+    ]);
+    const assignedTaskIds = new Set(
+      (assignments || []).filter((a) => a.task_id && a.volunteer_id).map((a) => a.task_id),
+    );
+    unassignedTasks = (tasks || []).filter((t) => !assignedTaskIds.has(t.id)).length;
+  }
+
+  // הזמנות שלא שולמו בזמן — דורש את מועד התשלום של השבת של כל הזמנה
+  const { data: unpaidRows } = await supabase
+    .from('orders')
+    .select('id, shabbatot(payment_deadline)')
+    .in('order_status', ACTIVE)
+    .in('payment_status', ['unpaid', 'partially_paid']);
+  overdueUnpaid = (unpaidRows || []).filter((o) => {
+    const dl = o.shabbatot?.payment_deadline;
+    return dl && dl < today;
+  }).length;
+
+  const { count: pendingRegistrations } = await supabase
+    .from('customer_registration_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('is_handled', false);
+
   res.json({
-    pending_orders: pending.count || 0,
-    unpaid_approved: unpaid.count || 0,
-    pending_registrations: registrations.count || 0,
+    next_shabbat: nextShabbat || null,
+    orders: {
+      pending_approval: pendingOrders.count || 0,
+      next_shabbat: nextShabbatOrders,
+      overdue_unpaid: overdueUnpaid,
+      cancelled_recent: cancelledRecent.count || 0,
+    },
+    payments: {
+      unpaid: unpaidActive.count || 0,
+      partially_paid: partiallyPaid.count || 0,
+      overrides: overrideCount.count || 0,
+      open_refunds: openRefunds.count || 0,
+    },
+    inventory: {
+      below_min: belowMin,
+      open_purchase_orders: openPOs.count || 0,
+    },
+    volunteers: {
+      unassigned_tasks: unassignedTasks,
+      missing_transport: missingTransport,
+    },
+    suppliers: {
+      open_purchase_orders: openPOs.count || 0,
+      open_payments: supplierPayments.count || 0,
+    },
+    registrations: {
+      pending: pendingRegistrations || 0,
+    },
+    // תאימות לאחור — שדות הדשבורד הישן
+    pending_orders: pendingOrders.count || 0,
+    unpaid_approved: unpaidActive.count || 0,
+    pending_registrations: pendingRegistrations || 0,
   });
 }));
 
