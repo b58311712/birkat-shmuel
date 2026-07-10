@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { normalizePhone, isValidPhone, asyncHandler, fail } from '../lib/helpers.js';
 import { verifyPassword, signToken } from '../lib/auth.js';
+import { createAdminNotification } from '../services/adminNotifications.js';
 
 const router = Router();
 
@@ -69,14 +70,23 @@ router.post('/register', asyncHandler(async (req, res) => {
     return fail(res, 409, 'כבר קיימת בקשת רישום שממתינה לאישור עבור מספר הטלפון הזה.');
   }
 
-  const { error } = await supabase.from('customer_registration_requests').insert({
+  const { data: registration, error } = await supabase.from('customer_registration_requests').insert({
     full_name: full_name.trim(),
     phone: req.body.phone,
     phone_normalized: normalized,
     email: email || null,
     address: address || null,
-  });
+  }).select('id, full_name').single();
   if (error) throw error;
+
+  await createAdminNotification({
+    notification_type: 'new_registration',
+    entity_table: 'customer_registration_requests',
+    entity_id: registration.id,
+    title: 'רישום לקוח חדש ממתין לאישור',
+    body: registration.full_name,
+    link_path: `/admin/registrations?highlight=${registration.id}`,
+  });
 
   return res.json({ ok: true, message: 'בקשת הרישום נשלחה. לאחר אישור מנהל תוכל/י להזמין.' });
 }));

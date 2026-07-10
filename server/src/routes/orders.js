@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { asyncHandler, fail } from '../lib/helpers.js';
 import { buildOrderItems } from '../services/orderItems.js';
+import { createAdminNotification } from '../services/adminNotifications.js';
 
 const router = Router();
 
@@ -91,6 +92,15 @@ router.post('/', asyncHandler(async (req, res) => {
 
   await supabase.from('order_history').insert({
     order_id: order.id, action: 'נוצרה הזמנה חדשה ע"י הלקוח',
+  });
+
+  await createAdminNotification({
+    notification_type: 'new_order',
+    entity_table: 'orders',
+    entity_id: order.id,
+    title: 'הזמנה חדשה ממתינה לאישור',
+    body: `הזמנה ${order.order_number}`,
+    link_path: `/admin/orders/${order.id}`,
   });
 
   res.status(201).json({ ok: true, order });

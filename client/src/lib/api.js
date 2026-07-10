@@ -68,6 +68,8 @@ export const api = {
   approveOrder: (id) => request(`/admin/orders/${id}/approve`, { method: 'POST' }),
   cancelOrder: (id, reason) => request(`/admin/orders/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   updatePayment: (id, payload) => request(`/admin/orders/${id}/payment`, { method: 'POST', body: JSON.stringify(payload) }),
+  adminNotifications: () => request('/admin/notifications'),
+  markNotificationRead: (id) => request(`/admin/notifications/${id}/read`, { method: 'POST' }),
 
   // גבייה מלקוחות (סעיף 17)
   orderPayments: (id) => request(`/admin/payments/orders/${id}/payments`),

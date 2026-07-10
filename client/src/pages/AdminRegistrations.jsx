@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 
 export default function AdminRegistrations({ onAuthError }) {
+  const [searchParams] = useSearchParams();
+  const highlightedId = searchParams.get('highlight');
   const [requests, setRequests] = useState(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -84,7 +86,12 @@ export default function AdminRegistrations({ onAuthError }) {
                   </td>
                 </tr>
               ) : requests.map((request) => (
-                <tr key={request.id} className="border-b border-brand-cream-dark hover:bg-brand-cream/30">
+                <tr
+                  key={request.id}
+                  className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${
+                    highlightedId === request.id ? 'bg-amber-50 ring-2 ring-inset ring-amber-300' : ''
+                  }`}
+                >
                   <td className="p-3 font-medium text-brand-burgundy">{request.full_name}</td>
                   <td className="p-3 text-sm" dir="ltr">{request.phone}</td>
                   <td className="p-3 text-sm" dir="ltr">{request.email || '-'}</td>

@@ -74,6 +74,41 @@ async function deleteOrder(orderId) {
   return supabase.from('orders').delete().eq('id', orderId).select('id').maybeSingle();
 }
 
+async function markEntityNotificationsRead(entityTable, entityId) {
+  const { error } = await supabase
+    .from('admin_notifications')
+    .update({ is_read: true, read_at: new Date().toISOString() })
+    .eq('entity_table', entityTable)
+    .eq('entity_id', entityId)
+    .eq('is_read', false);
+  if (error) throw error;
+}
+
+// GET /api/admin/notifications -- unread items for the admin notification bell.
+router.get('/notifications', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('admin_notifications')
+    .select('id, notification_type, entity_table, entity_id, title, body, link_path, created_at')
+    .eq('is_read', false)
+    .order('created_at', { ascending: false })
+    .limit(25);
+  if (error) throw error;
+  res.json({ total: data.length, items: data });
+}));
+
+// POST /api/admin/notifications/:id/read -- dismiss one notification after opening it.
+router.post('/notifications/:id/read', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('admin_notifications')
+    .update({ is_read: true, read_at: new Date().toISOString() })
+    .eq('id', req.params.id)
+    .select('id')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return fail(res, 404, 'ההתראה לא נמצאה.');
+  res.json({ ok: true });
+}));
+
 // GET /api/admin/customers — רשימת לקוחות לניהול (סעיף 6)
 router.get('/customers', asyncHandler(async (req, res) => {
   let q = supabase
@@ -735,6 +770,7 @@ router.post('/orders/:id/approve', asyncHandler(async (req, res) => {
   await supabase.from('order_history').insert({
     order_id: req.params.id, action: 'ההזמנה אושרה',
   });
+  await markEntityNotificationsRead('orders', req.params.id);
   res.json({ ok: true, order: data });
 }));
 
@@ -947,6 +983,7 @@ router.post('/registrations/:id/approve', asyncHandler(async (req, res) => {
         resulting_customer_id: existing.id,
       })
       .eq('id', req.params.id);
+    await markEntityNotificationsRead('customer_registration_requests', req.params.id);
     return res.json({ ok: true, customer: existing });
   }
 
@@ -969,6 +1006,7 @@ router.post('/registrations/:id/approve', asyncHandler(async (req, res) => {
     })
     .eq('id', req.params.id);
 
+  await markEntityNotificationsRead('customer_registration_requests', req.params.id);
   res.json({ ok: true, customer });
 }));
 
@@ -1024,6 +1062,7 @@ router.post('/registrations/:id/reject', asyncHandler(async (req, res) => {
     })
     .eq('id', req.params.id);
 
+  await markEntityNotificationsRead('customer_registration_requests', req.params.id);
   res.json({ ok: true, customer });
 }));
 
