@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
-import { Badge, SUPPLIER_CHANNEL, PO_STATUS } from '../lib/status.jsx';
+import { ActionIconButton } from '../components/ActionIcon.jsx';
+import { ACTIVE_STATUS, Badge, SUPPLIER_CHANNEL, PO_STATUS } from '../lib/status.jsx';
 
 // ניהול ספקים — כרטיס ספק מלא (סעיף 27.1) + מוצרים שהספק מספק (סעיף 25.3).
 // הזמנות רכש נמצאות במסך נפרד (/admin/purchase-orders).
@@ -106,18 +107,21 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
                 <td className="p-3 text-sm">{s.contact_name || '—'}</td>
                 <td className="p-3 text-sm" dir="ltr">{s.phone || '—'}</td>
                 <td className="p-3 text-sm">{SUPPLIER_CHANNEL[s.preferred_channel] || '—'}</td>
-                <td className="p-3 text-sm">{s.is_active ? 'פעיל' : 'לא פעיל'}</td>
+                <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={s.is_active ? 'active' : 'inactive'} /></td>
                 <td className="p-3 text-sm whitespace-nowrap">
-                  <button onClick={() => openDetail(s)} className="text-brand-burgundy hover:underline ml-3">פירוט</button>
-                  <button onClick={() => setEditing(s)} className="text-brand-burgundy hover:underline ml-3">עריכה</button>
-                  <button onClick={() => toggleActive(s)} className="text-brand-burgundy/60 hover:underline">
-                    {s.is_active ? 'השבתה' : 'הפעלה'}
-                  </button>
+                  <div className="flex flex-wrap gap-1">
+                  <ActionIconButton icon="view" label="פירוט" onClick={() => openDetail(s)} />
+                  <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(s)} />
+                  <ActionIconButton
+                    icon={s.is_active ? 'deactivate' : 'activate'}
+                    label={s.is_active ? 'השבתה' : 'הפעלה'}
+                    tone="muted"
+                    onClick={() => toggleActive(s)}
+                  />
                   {canDelete && (
-                    <button onClick={() => deleteSupplier(s)} className="text-red-600 hover:underline mr-3">
-                      מחיקה
-                    </button>
+                    <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteSupplier(s)} />
                   )}
+                  </div>
                 </td>
               </tr>
             ))}

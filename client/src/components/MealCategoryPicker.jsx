@@ -37,11 +37,31 @@ function categoryGroups(catalog, mealSlotId) {
   return groups;
 }
 
-function selectedInGroup(group, mealSlotId, selectedMeals) {
-  return group.meals.filter((meal) => selectedMeals[`${mealSlotId}:${meal.id}`]).length;
+// מאכל "נבחר" אם המפתח קיים במפה. הערך יכול להיות true (קטגוריה רגילה) או
+// מספר מנות (קטגוריה שמחלקת) — כולל 0, שהוא בחירה תקפה שממתינה להזנת כמות.
+function isSelected(selectedMeals, mealSlotId, mealId) {
+  return Object.prototype.hasOwnProperty.call(selectedMeals, `${mealSlotId}:${mealId}`);
 }
 
-function isGroupComplete(group, selectedCount) {
+function selectedInGroup(group, mealSlotId, selectedMeals) {
+  return group.meals.filter((meal) => isSelected(selectedMeals, mealSlotId, meal.id)).length;
+}
+
+// בקטגוריה שמחלקת מנות: סך הכמויות שהוזנו לכל המאכלים שנבחרו בקבוצה.
+function splitSumInGroup(group, mealSlotId, selectedMeals) {
+  return group.meals.reduce((sum, meal) => {
+    const v = selectedMeals[`${mealSlotId}:${meal.id}`];
+    return typeof v === 'number' ? sum + v : sum;
+  }, 0);
+}
+
+function isGroupComplete(group, mealSlotId, selectedMeals, slotPortions) {
+  const selectedCount = selectedInGroup(group, mealSlotId, selectedMeals);
+  // קטגוריה שמחלקת מנות מושלמת רק כשסך הכמויות שווה למנות הסעודה.
+  if (group.category?.requires_portion_split) {
+    if (selectedCount === 0) return false;
+    return splitSumInGroup(group, mealSlotId, selectedMeals) === slotPortions;
+  }
   return group.category?.max_allowed != null && selectedCount >= group.category.max_allowed;
 }
 
@@ -55,7 +75,7 @@ function fullLimitText(category, selectedCount) {
   return `${selectedCount} נבחרו, ללא מגבלה`;
 }
 
-export function MealCategoryPicker({ catalog, mealSlotId, selectedMeals, onToggleMeal }) {
+export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, selectedMeals, onToggleMeal, onSetMealPortions }) {
   const groups = useMemo(() => categoryGroups(catalog, mealSlotId), [catalog, mealSlotId]);
   const [activeGroupId, setActiveGroupId] = useState('');
 
@@ -69,9 +89,11 @@ export function MealCategoryPicker({ catalog, mealSlotId, selectedMeals, onToggl
     firstGroupWithSelection ||
     groups[0];
   const activeSelectedCount = selectedInGroup(activeGroup, mealSlotId, selectedMeals);
-  const activeComplete = isGroupComplete(activeGroup, activeSelectedCount);
+  const activeComplete = isGroupComplete(activeGroup, mealSlotId, selectedMeals, slotPortions);
   const maxAllowed = activeGroup.category?.max_allowed;
   const reachedLimit = maxAllowed != null && activeSelectedCount >= maxAllowed;
+  const isSplit = Boolean(activeGroup.category?.requires_portion_split);
+  const splitSum = isSplit ? splitSumInGroup(activeGroup, mealSlotId, selectedMeals) : 0;
 
   return (
     <div className={`rounded-lg border bg-white overflow-hidden ${
@@ -81,7 +103,7 @@ export function MealCategoryPicker({ catalog, mealSlotId, selectedMeals, onToggl
         {groups.map((group) => {
           const selectedCount = selectedInGroup(group, mealSlotId, selectedMeals);
           const isActive = group.id === activeGroup.id;
-          const complete = isGroupComplete(group, selectedCount);
+          const complete = isGroupComplete(group, mealSlotId, selectedMeals, slotPortions);
           const completedStyle = complete ? (isActive ? activeCompletedTabStyle : completedTabStyle) : undefined;
 
           return (
@@ -144,10 +166,16 @@ export function MealCategoryPicker({ catalog, mealSlotId, selectedMeals, onToggl
         </span>
       </div>
 
+      {/* בקטגוריה שמחלקת מנות: סרגל התאמה בין סך הכמויות למנות הסעודה */}
+      {isSplit && activeSelectedCount > 0 && (
+        <SplitPortionsBar sum={splitSum} target={slotPortions} count={activeSelectedCount} />
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 px-2 pb-2 pt-2">
         {activeGroup.meals.map((meal) => {
           const key = `${mealSlotId}:${meal.id}`;
-          const selected = Boolean(selectedMeals[key]);
+          const value = selectedMeals[key];
+          const selected = Object.prototype.hasOwnProperty.call(selectedMeals, key);
           const disabled = reachedLimit && !selected;
 
           return (
@@ -168,10 +196,46 @@ export function MealCategoryPicker({ catalog, mealSlotId, selectedMeals, onToggl
               {meal.requires_extra_charge && (
                 <span className="block text-xs opacity-70 mt-0.5">+ {meal.extra_charge_amount}</span>
               )}
+              {/* בקטגוריה שמחלקת מנות ונבחרו 2+ מאכלים — שדה כמות למאכל */}
+              {isSplit && selected && activeSelectedCount > 1 && (
+                <input
+                  type="number"
+                  min="0"
+                  dir="ltr"
+                  value={typeof value === 'number' ? value : ''}
+                  placeholder="מנות"
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    const n = e.target.value === '' ? 0 : Number(e.target.value);
+                    onSetMealPortions(mealSlotId, meal.id, n);
+                  }}
+                  className="mt-1.5 w-full rounded border border-white/40 bg-white/90 px-1.5 py-1 text-center text-sm text-brand-burgundy"
+                />
+              )}
             </button>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function SplitPortionsBar({ sum, target, count }) {
+  const match = sum === target;
+  const single = count === 1;
+  return (
+    <div className={`mx-3 mt-1 mb-1 rounded-lg px-3 py-1.5 text-sm font-medium ${
+      single
+        ? 'bg-brand-cream/50 text-brand-burgundy/70'
+        : match
+          ? 'bg-green-50 text-green-800'
+          : 'bg-amber-50 text-amber-800'
+    }`}>
+      {single
+        ? `סוג יחיד — יקבל את כל ${target} המנות`
+        : match
+          ? `סך הכמויות: ${sum} / ${target} — תואם ✓`
+          : `סך הכמויות: ${sum} / ${target} — חובה שיהיה שווה למספר המנות`}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { MealCategoryPicker } from '../components/MealCategoryPicker.jsx';
 import { formatGregorianDate, formatShabbatHebrewDate, formatShabbatTitle } from '../lib/dates.js';
+import { slotComboKey } from '../lib/pricing.js';
 
 export default function NewOrder({ customer }) {
   const nav = useNavigate();
@@ -42,12 +43,10 @@ export default function NewOrder({ customer }) {
   );
 
   const priceEstimate = useMemo(() => {
-    if (!catalog) return { base: 0, extras: 0, total: 0 };
-    const count = selectedSlots.length;
-    const track = catalog.price_tracks.find((t) => t.meals_count === count)
-      || [...catalog.price_tracks]
-        .filter((t) => (t.meals_count || 0) <= count)
-        .sort((a, b) => b.meals_count - a.meals_count)[0];
+    if (!catalog) return { base: 0, extras: 0, total: 0, noMatch: false };
+    // בחירת מסלול לפי צירוף הסעודות המדויק (סעיף 15).
+    const selectedKey = slotComboKey(selectedSlots.map((s) => s.meal_slot_id));
+    const track = catalog.price_tracks.find((t) => slotComboKey(t.meal_slot_ids) === selectedKey);
     const perPortion = track ? Number(track.price_per_portion) : 0;
     const totalPortions = selectedSlots.reduce((s, x) => s + x.portions, 0);
     const base = totalPortions * perPortion;
@@ -56,7 +55,9 @@ export default function NewOrder({ customer }) {
       const e = catalog.extras.find((x) => x.id === id);
       if (e && Number(qty) > 0) ex += Number(e.unit_price) * Number(qty);
     }
-    return { base, extras: ex, total: base + ex };
+    // אין מסלול לצירוף שנבחר → אין מחיר בסיס, ההזמנה תיחסם בשרת.
+    const noMatch = selectedSlots.length > 0 && !track;
+    return { base, extras: ex, total: base + ex, noMatch };
   }, [catalog, selectedSlots, extras]);
 
   const orderPreview = useMemo(() => {
@@ -66,12 +67,14 @@ export default function NewOrder({ customer }) {
       slots: selectedSlots.map(({ meal_slot_id, portions }) => {
         const slot = catalog.meal_slots.find((s) => s.id === meal_slot_id);
         const selectedMeals = Object.entries(meals)
-          .filter(([key, chosen]) => chosen && key.startsWith(`${meal_slot_id}:`))
-          .map(([key]) => {
+          .filter(([key]) => key.startsWith(`${meal_slot_id}:`))
+          .map(([key, value]) => {
             const mealId = key.split(':')[1];
             const meal = catalog.meals.find((m) => m.id === mealId);
             const category = catalog.categories.find((c) => c.id === meal?.category_id);
-            return meal ? { ...meal, category_name: category?.name || 'ללא קטגוריה' } : null;
+            // כמות מנות מוצגת רק בקטגוריה שמחלקת מנות (ערך מספרי)
+            const mealPortions = typeof value === 'number' ? value : null;
+            return meal ? { ...meal, category_name: category?.name || 'ללא קטגוריה', meal_portions: mealPortions } : null;
           })
           .filter(Boolean);
 
@@ -92,10 +95,64 @@ export default function NewOrder({ customer }) {
     };
   }, [catalog, selectedSlots, meals, extras]);
 
+  // מפה: category_id -> requires_portion_split
+  const splitCategoryIds = useMemo(() => {
+    const s = new Set();
+    for (const c of catalog?.categories || []) if (c.requires_portion_split) s.add(c.id);
+    return s;
+  }, [catalog]);
+
+  function isSplitMeal(mealId) {
+    const meal = catalog?.meals.find((m) => m.id === mealId);
+    return meal ? splitCategoryIds.has(meal.category_id) : false;
+  }
+
   function toggleMeal(slotId, mealId) {
     const key = `${slotId}:${mealId}`;
-    setMeals((m) => ({ ...m, [key]: !m[key] }));
+    setMeals((m) => {
+      const next = { ...m };
+      // "נבחר" = המפתח קיים (הערך יכול להיות 0 בקטגוריה שמחלקת מנות).
+      if (Object.prototype.hasOwnProperty.call(next, key)) {
+        delete next[key];
+      } else {
+        // בקטגוריה שמחלקת מנות שומרים מספר (0 עד שהלקוח יזין); אחרת true.
+        next[key] = isSplitMeal(mealId) ? 0 : true;
+      }
+      return next;
+    });
   }
+
+  function setMealPortions(slotId, mealId, portions) {
+    const key = `${slotId}:${mealId}`;
+    setMeals((m) => ({ ...m, [key]: portions }));
+  }
+
+  // ולידציה: בכל (סעודה × קטגוריה שמחלקת מנות) עם 2+ מאכלים — הסכום = מנות הסעודה.
+  const splitErrors = useMemo(() => {
+    if (!catalog) return [];
+    const portionsBySlot = Object.fromEntries(selectedSlots.map((s) => [s.meal_slot_id, s.portions]));
+    const groups = {}; // `${slotId}:${catId}` -> { slotId, catId, sum, count }
+    // כל מפתח שקיים במפה הוא מאכל שנבחר (הערך יכול להיות 0 עד שתוזן כמות).
+    for (const [key, value] of Object.entries(meals)) {
+      const [slotId, mealId] = key.split(':');
+      const meal = catalog.meals.find((mm) => mm.id === mealId);
+      if (!meal || !splitCategoryIds.has(meal.category_id)) continue;
+      const g = (groups[`${slotId}:${meal.category_id}`] ||= { slotId, catId: meal.category_id, sum: 0, count: 0 });
+      g.count += 1;
+      g.sum += typeof value === 'number' ? value : 0;
+    }
+    const errs = [];
+    for (const g of Object.values(groups)) {
+      if (g.count < 2) continue; // סוג יחיד → השרת ישייך את כל המנות
+      const target = portionsBySlot[g.slotId] || 0;
+      if (g.sum !== target) {
+        const cat = catalog.categories.find((c) => c.id === g.catId);
+        const slot = catalog.meal_slots.find((s) => s.id === g.slotId);
+        errs.push(`${slot?.name || 'סעודה'} · ${cat?.name || 'קטגוריה'}: סך המנות ${g.sum} מתוך ${target} הנדרשות.`);
+      }
+    }
+    return errs;
+  }, [catalog, meals, selectedSlots, splitCategoryIds]);
 
   function validateOrder() {
     setError('');
@@ -105,6 +162,10 @@ export default function NewOrder({ customer }) {
     }
     if (selectedSlots.length === 0) {
       setError('נא לבחור לפחות סעודה אחת עם מספר מנות.');
+      return false;
+    }
+    if (splitErrors.length > 0) {
+      setError(`יש להתאים את כמויות המנות בקטגוריות המחלקות מנות:\n${splitErrors.join('\n')}`);
       return false;
     }
     return true;
@@ -120,9 +181,11 @@ export default function NewOrder({ customer }) {
 
     setSubmitting(true);
     try {
-      const mealsPayload = Object.entries(meals).filter(([, v]) => v).map(([k]) => {
+      // כל מפתח שקיים במפה הוא מאכל שנבחר (הערך יכול להיות 0 בקטגוריה שמחלקת).
+      const mealsPayload = Object.entries(meals).map(([k, v]) => {
         const [meal_slot_id, meal_id] = k.split(':');
-        return { meal_slot_id, meal_id };
+        // בקטגוריה שמחלקת מנות שולחים את הכמות; אחרת null (השרת ישייך כל מנות הסעודה).
+        return { meal_slot_id, meal_id, portions: typeof v === 'number' ? v : null };
       });
       const extrasPayload = Object.entries(extras).filter(([, q]) => Number(q) > 0)
         .map(([extra_id, q]) => ({ extra_id, actual_quantity: Number(q) }));
@@ -146,7 +209,7 @@ export default function NewOrder({ customer }) {
 
   return (
     <Page title="הזמנה חדשה" subtitle="בחר/י שבת, סעודות, מאכלים ותוספות">
-      {error && <div className="bg-red-50 text-red-700 rounded-xl p-3 mb-4">{error}</div>}
+      {error && <div className="bg-red-50 text-red-700 rounded-xl p-3 mb-4 whitespace-pre-line">{error}</div>}
 
       <section className="card mb-5">
         <h2 className="font-bold text-brand-burgundy mb-3">1. בחירת שבת</h2>
@@ -223,8 +286,10 @@ export default function NewOrder({ customer }) {
                 <MealCategoryPicker
                   catalog={catalog}
                   mealSlotId={meal_slot_id}
+                  slotPortions={selectedSlots.find((s) => s.meal_slot_id === meal_slot_id)?.portions || 0}
                   selectedMeals={meals}
                   onToggleMeal={toggleMeal}
+                  onSetMealPortions={setMealPortions}
                 />
               </div>
             );
@@ -273,10 +338,20 @@ export default function NewOrder({ customer }) {
               בסיס {priceEstimate.base.toFixed(0)} ש"ח + תוספות {priceEstimate.extras.toFixed(0)} ש"ח
             </div>
           </div>
-          <button className="btn-primary text-lg px-8" type="button" onClick={openPreview} disabled={submitting}>
+          <button className="btn-primary text-lg px-8" type="button" onClick={openPreview} disabled={submitting || priceEstimate.noMatch || splitErrors.length > 0}>
             הצגת ההזמנה לפני שליחה
           </button>
         </div>
+        {splitErrors.length > 0 && (
+          <ul className="text-sm text-amber-700 mt-2 list-disc pr-5 space-y-0.5">
+            {splitErrors.map((e, i) => <li key={i}>{e}</li>)}
+          </ul>
+        )}
+        {priceEstimate.noMatch && (
+          <p className="text-sm text-red-600 mt-2 font-medium">
+            לא הוגדר מחיר לצירוף הסעודות שנבחר. יש לבחור צירוף אחר או לפנות למנהל להגדרת מסלול מתאים.
+          </p>
+        )}
         <p className="text-xs text-brand-burgundy/50 mt-2">
           לפני השליחה תוצג ההזמנה המלאה לאישור. המחיר הסופי מחושב על ידי המערכת.
         </p>
@@ -324,6 +399,9 @@ function OrderPreviewModal({ customer, shabbat, preview, priceEstimate, delivery
                   {slot.meals.map((meal) => (
                     <span key={meal.id} className="rounded-lg bg-brand-cream/70 px-2.5 py-1 text-sm text-brand-burgundy">
                       {meal.name}
+                      {meal.meal_portions != null && (
+                        <span className="font-bold text-brand-burgundy-dark"> × {meal.meal_portions}</span>
+                      )}
                       <span className="text-brand-burgundy/45"> · {meal.category_name}</span>
                     </span>
                   ))}

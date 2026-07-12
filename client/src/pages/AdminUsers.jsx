@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
+import { ActionIconButton } from '../components/ActionIcon.jsx';
+import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 const ROLES = [
   { value: 'developer', label: 'מפתחת' },
@@ -146,19 +148,22 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
                   <td className="p-3 text-sm" dir="ltr">{user.email}</td>
                   <td className="p-3 text-sm" dir="ltr">{user.phone || '-'}</td>
                   <td className="p-3 text-sm">{ROLE_LABEL[user.role] || user.role}</td>
-                  <td className="p-3 text-sm">{user.is_active ? 'פעיל' : 'לא פעיל'}</td>
+                  <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={user.is_active ? 'active' : 'inactive'} /></td>
                   <td className="p-3 text-sm" dir="ltr">{formatDate(user.last_login_at)}</td>
                   <td className="p-3 text-sm whitespace-nowrap">
-                    <button onClick={() => setEditing(user)} className="text-brand-burgundy hover:underline ml-3">עריכה</button>
-                    <button onClick={() => setPasswordUser(user)} className="text-brand-burgundy hover:underline ml-3">איפוס סיסמה</button>
-                    <button onClick={() => toggleActive(user)} className="text-brand-burgundy/60 hover:underline">
-                      {user.is_active ? 'השבתה' : 'הפעלה'}
-                    </button>
+                    <div className="flex flex-wrap gap-1">
+                    <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(user)} />
+                    <ActionIconButton icon="password" label="איפוס סיסמה" onClick={() => setPasswordUser(user)} />
+                    <ActionIconButton
+                      icon={user.is_active ? 'deactivate' : 'activate'}
+                      label={user.is_active ? 'השבתה' : 'הפעלה'}
+                      tone="muted"
+                      onClick={() => toggleActive(user)}
+                    />
                     {canDelete && user.id !== currentAdmin?.id && (
-                      <button onClick={() => deleteUser(user)} className="text-red-600 hover:underline mr-3">
-                        מחיקה
-                      </button>
+                      <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteUser(user)} />
                     )}
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
+import { ActionIconButton } from '../components/ActionIcon.jsx';
+import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 // ניהול מתנדבים ומשימות קבועות (סעיף 24). מסך ניהול גלובלי.
 const AREAS = [
@@ -122,17 +124,20 @@ function VolunteersManager({ meals, onErr, canDelete }) {
                 <td className="p-3 text-sm text-brand-burgundy/60">{v.meals?.name || '—'}</td>
                 <td className="p-3 text-center">{v.has_vehicle ? '🚗' : '—'}</td>
                 <td className="p-3 text-center">{v.is_regular ? '✓' : '—'}</td>
-                <td className="p-3 text-sm">{v.is_active ? 'פעיל' : 'לא פעיל'}</td>
+                <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={v.is_active ? 'active' : 'inactive'} /></td>
                 <td className="p-3 text-sm whitespace-nowrap">
-                  <button onClick={() => setEditing(v)} className="text-brand-burgundy hover:underline ml-3">עריכה</button>
-                  <button onClick={() => toggleActive(v)} className="text-brand-burgundy/60 hover:underline">
-                    {v.is_active ? 'השבתה' : 'הפעלה'}
-                  </button>
+                  <div className="flex flex-wrap gap-1">
+                  <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(v)} />
+                  <ActionIconButton
+                    icon={v.is_active ? 'deactivate' : 'activate'}
+                    label={v.is_active ? 'השבתה' : 'הפעלה'}
+                    tone="muted"
+                    onClick={() => toggleActive(v)}
+                  />
                   {canDelete && (
-                    <button onClick={() => deleteVolunteer(v)} className="text-red-600 hover:underline mr-3">
-                      מחיקה
-                    </button>
+                    <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteVolunteer(v)} />
                   )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -311,17 +316,20 @@ function TasksManager({ meals, onErr, canDelete }) {
                 <td className="p-3 font-medium">{t.name}</td>
                 <td className="p-3 text-sm">{AREA_LABEL[t.area]}</td>
                 <td className="p-3 text-sm text-brand-burgundy/60">{t.meals?.name || '—'}</td>
-                <td className="p-3 text-sm">{t.is_active ? 'פעיל' : 'לא פעיל'}</td>
+                <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={t.is_active ? 'active' : 'inactive'} /></td>
                 <td className="p-3 text-sm whitespace-nowrap">
-                  <button onClick={() => setEditing(t)} className="text-brand-burgundy hover:underline ml-3">עריכה</button>
-                  <button onClick={() => toggleActive(t)} className="text-brand-burgundy/60 hover:underline">
-                    {t.is_active ? 'השבתה' : 'הפעלה'}
-                  </button>
+                  <div className="flex flex-wrap gap-1">
+                  <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(t)} />
+                  <ActionIconButton
+                    icon={t.is_active ? 'deactivate' : 'activate'}
+                    label={t.is_active ? 'השבתה' : 'הפעלה'}
+                    tone="muted"
+                    onClick={() => toggleActive(t)}
+                  />
                   {canDelete && (
-                    <button onClick={() => deleteTask(t)} className="text-red-600 hover:underline mr-3">
-                      מחיקה
-                    </button>
+                    <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteTask(t)} />
                   )}
+                  </div>
                 </td>
               </tr>
             ))}

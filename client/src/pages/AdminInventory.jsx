@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
+import { ActionIconButton } from '../components/ActionIcon.jsx';
+import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 // ניהול מלאי CRUD (סעיף 25). מסך ניהול גלובלי: פריטי מלאי, קטגוריות, שינוי ידני.
 // דוח החוסרים והפחתה לאחר הכנות נמצאים בתיק שבת (לשונית מלאי).
@@ -180,19 +182,22 @@ function ItemsManager({ onErr, canDelete }) {
                   </td>
                   <td className="p-3 text-sm text-brand-burgundy/60">{it.min_alert_quantity != null ? fmt(it.min_alert_quantity) : '—'}</td>
                   <td className="p-3 text-sm text-brand-burgundy/60">{it.default_supplier?.name || '—'}</td>
-                  <td className="p-3 text-sm">{it.is_active ? 'פעיל' : 'לא פעיל'}</td>
+                  <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={it.is_active ? 'active' : 'inactive'} /></td>
                   <td className="p-3 text-sm whitespace-nowrap">
-                    <button onClick={() => setAdjusting(it)} className="text-brand-burgundy hover:underline ml-3">שינוי כמות</button>
-                    <button onClick={() => setEditing(it)} className="text-brand-burgundy hover:underline ml-3">עריכה</button>
-                    <button onClick={() => openHistory(it)} className="text-brand-burgundy/60 hover:underline ml-3">תנועות</button>
-                    <button onClick={() => toggleActive(it)} className="text-brand-burgundy/60 hover:underline">
-                      {it.is_active ? 'השבתה' : 'הפעלה'}
-                    </button>
+                    <div className="flex flex-wrap gap-1">
+                    <ActionIconButton icon="adjust" label="שינוי כמות" onClick={() => setAdjusting(it)} />
+                    <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(it)} />
+                    <ActionIconButton icon="history" label="תנועות" tone="muted" onClick={() => openHistory(it)} />
+                    <ActionIconButton
+                      icon={it.is_active ? 'deactivate' : 'activate'}
+                      label={it.is_active ? 'השבתה' : 'הפעלה'}
+                      tone="muted"
+                      onClick={() => toggleActive(it)}
+                    />
                     {canDelete && (
-                      <button onClick={() => deleteItem(it)} className="text-red-600 hover:underline mr-3">
-                        מחיקה
-                      </button>
+                      <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteItem(it)} />
                     )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -462,17 +467,20 @@ function CategoriesManager({ onErr, canDelete }) {
               <tr key={c.id} className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!c.is_active ? 'opacity-50' : ''}`}>
                 <td className="p-3 text-sm text-brand-burgundy/50">{c.display_order}</td>
                 <td className="p-3 font-medium">{c.name}</td>
-                <td className="p-3 text-sm">{c.is_active ? 'פעיל' : 'לא פעיל'}</td>
+                <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={c.is_active ? 'active' : 'inactive'} /></td>
                 <td className="p-3 text-sm whitespace-nowrap">
-                  <button onClick={() => setEditing(c)} className="text-brand-burgundy hover:underline ml-3">עריכה</button>
-                  <button onClick={() => toggleActive(c)} className="text-brand-burgundy/60 hover:underline">
-                    {c.is_active ? 'השבתה' : 'הפעלה'}
-                  </button>
+                  <div className="flex flex-wrap gap-1">
+                  <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(c)} />
+                  <ActionIconButton
+                    icon={c.is_active ? 'deactivate' : 'activate'}
+                    label={c.is_active ? 'השבתה' : 'הפעלה'}
+                    tone="muted"
+                    onClick={() => toggleActive(c)}
+                  />
                   {canDelete && (
-                    <button onClick={() => deleteCategory(c)} className="text-red-600 hover:underline mr-3">
-                      מחיקה
-                    </button>
+                    <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteCategory(c)} />
                   )}
+                  </div>
                 </td>
               </tr>
             ))}

@@ -33,7 +33,7 @@ export default function Login({ onLogin }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-brand-burgundy px-4">
+    <div className="min-h-screen flex items-center justify-center bg-brand-cream px-4 py-10">
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
           <img src="/logo.png" alt="מטבח החסד" className="h-32 w-32 object-contain mx-auto mb-3" />

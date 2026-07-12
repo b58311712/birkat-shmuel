@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { MealCategoryPicker } from '../components/MealCategoryPicker.jsx';
+import { slotComboKey } from '../lib/pricing.js';
 
 const MIN_PORTIONS = 50;
 const MAX_PORTIONS = 100;
@@ -49,7 +50,11 @@ export default function AdminOrderEdit({ onAuthError }) {
         // אתחול מצב מההזמנה הקיימת
         setShabbatId(ord.shabbat_id);
         setSlots(Object.fromEntries((ord.slots || []).map((s) => [s.meal_slot_id, String(s.portions)])));
-        setMeals(Object.fromEntries((ord.meals || []).map((m) => [`${m.meal_slot_id}:${m.meal_id}`, true])));
+        // ערך המאכל: מספר מנות אם נשמר (קטגוריה שמחלקת מנות), אחרת true (בחירה רגילה)
+        setMeals(Object.fromEntries((ord.meals || []).map((m) => [
+          `${m.meal_slot_id}:${m.meal_id}`,
+          m.portions != null ? Number(m.portions) : true,
+        ])));
         setExtras(Object.fromEntries((ord.extras || []).map((e) => [e.extra_id, String(e.actual_quantity)])));
         setDelivery(ord.delivery_method || 'volunteer_transport');
         setContactName(ord.contact_name || '');
@@ -71,12 +76,11 @@ export default function AdminOrderEdit({ onAuthError }) {
     [slots]
   );
 
-  // אומדן מחיר בצד לקוח (השרת סמכותי)
+  // אומדן מחיר בצד לקוח (השרת סמכותי) — בחירת מסלול לפי צירוף הסעודות המדויק (סעיף 15)
   const priceEstimate = useMemo(() => {
-    if (!catalog) return { base: 0, extras: 0, total: 0 };
-    const count = selectedSlots.length;
-    const track = catalog.price_tracks.find((t) => t.meals_count === count)
-      || [...catalog.price_tracks].filter((t) => (t.meals_count || 0) <= count).sort((a, b) => b.meals_count - a.meals_count)[0];
+    if (!catalog) return { base: 0, extras: 0, total: 0, noMatch: false };
+    const selectedKey = slotComboKey(selectedSlots.map((s) => s.meal_slot_id));
+    const track = catalog.price_tracks.find((t) => slotComboKey(t.meal_slot_ids) === selectedKey);
     const perPortion = track ? Number(track.price_per_portion) : 0;
     const totalPortions = selectedSlots.reduce((s, x) => s + x.portions, 0);
     const base = totalPortions * perPortion;
@@ -85,13 +89,63 @@ export default function AdminOrderEdit({ onAuthError }) {
       const e = catalog.extras.find((x) => x.id === eid);
       if (e && Number(qty) > 0) ex += Number(e.unit_price) * Number(qty);
     }
-    return { base, extras: ex, total: base + ex };
+    const noMatch = selectedSlots.length > 0 && !track;
+    return { base, extras: ex, total: base + ex, noMatch };
   }, [catalog, selectedSlots, extras]);
+
+  const splitCategoryIds = useMemo(() => {
+    const s = new Set();
+    for (const c of catalog?.categories || []) if (c.requires_portion_split) s.add(c.id);
+    return s;
+  }, [catalog]);
+
+  function isSplitMeal(mealId) {
+    const meal = catalog?.meals.find((m) => m.id === mealId);
+    return meal ? splitCategoryIds.has(meal.category_id) : false;
+  }
 
   function toggleMeal(slotId, mealId) {
     const key = `${slotId}:${mealId}`;
-    setMeals((m) => ({ ...m, [key]: !m[key] }));
+    setMeals((m) => {
+      const next = { ...m };
+      // "נבחר" = המפתח קיים (הערך יכול להיות 0 בקטגוריה שמחלקת מנות).
+      if (Object.prototype.hasOwnProperty.call(next, key)) delete next[key];
+      else next[key] = isSplitMeal(mealId) ? 0 : true;
+      return next;
+    });
   }
+
+  function setMealPortions(slotId, mealId, portions) {
+    const key = `${slotId}:${mealId}`;
+    setMeals((m) => ({ ...m, [key]: portions }));
+  }
+
+  // ולידציה: בכל (סעודה × קטגוריה שמחלקת מנות) עם 2+ מאכלים — הסכום = מנות הסעודה.
+  const splitErrors = useMemo(() => {
+    if (!catalog) return [];
+    const portionsBySlot = Object.fromEntries(selectedSlots.map((s) => [s.meal_slot_id, s.portions]));
+    const groups = {};
+    // כל מפתח שקיים במפה הוא מאכל שנבחר (הערך יכול להיות 0 עד שתוזן כמות).
+    for (const [key, value] of Object.entries(meals)) {
+      const [slotId, mealId] = key.split(':');
+      const meal = catalog.meals.find((mm) => mm.id === mealId);
+      if (!meal || !splitCategoryIds.has(meal.category_id)) continue;
+      const g = (groups[`${slotId}:${meal.category_id}`] ||= { slotId, catId: meal.category_id, sum: 0, count: 0 });
+      g.count += 1;
+      g.sum += typeof value === 'number' ? value : 0;
+    }
+    const errs = [];
+    for (const g of Object.values(groups)) {
+      if (g.count < 2) continue;
+      const target = portionsBySlot[g.slotId] || 0;
+      if (g.sum !== target) {
+        const cat = catalog.categories.find((c) => c.id === g.catId);
+        const slot = catalog.meal_slots.find((s) => s.id === g.slotId);
+        errs.push(`${slot?.name || 'סעודה'} · ${cat?.name || 'קטגוריה'}: סך המנות ${g.sum} מתוך ${target} הנדרשות.`);
+      }
+    }
+    return errs;
+  }, [catalog, meals, selectedSlots, splitCategoryIds]);
 
   const customerChanged = order && (
     custName !== (order.customers?.full_name || '') ||
@@ -107,6 +161,9 @@ export default function AdminOrderEdit({ onAuthError }) {
     if (selectedSlots.some((slot) => slot.portions < MIN_PORTIONS || slot.portions > MAX_PORTIONS)) {
       return setError(`מספר המנות בכל סעודה חייב להיות בין ${MIN_PORTIONS} ל-${MAX_PORTIONS}.`);
     }
+    if (splitErrors.length > 0) {
+      return setError(`יש להתאים את כמויות המנות בקטגוריות המחלקות מנות:\n${splitErrors.join('\n')}`);
+    }
 
     setSaving(true);
     try {
@@ -118,9 +175,10 @@ export default function AdminOrderEdit({ onAuthError }) {
       }
 
       // 2) גוף ההזמנה — מחיר מחושב מחדש בשרת
-      const mealsPayload = Object.entries(meals).filter(([, v]) => v).map(([k]) => {
+      // כל מפתח שקיים במפה הוא מאכל שנבחר (הערך יכול להיות 0 בקטגוריה שמחלקת).
+      const mealsPayload = Object.entries(meals).map(([k, v]) => {
         const [meal_slot_id, meal_id] = k.split(':');
-        return { meal_slot_id, meal_id };
+        return { meal_slot_id, meal_id, portions: typeof v === 'number' ? v : null };
       });
       const extrasPayload = Object.entries(extras).filter(([, q]) => Number(q) > 0)
         .map(([extra_id, q]) => ({ extra_id, actual_quantity: Number(q) }));
@@ -161,7 +219,7 @@ export default function AdminOrderEdit({ onAuthError }) {
         <Link to={`/admin/orders/${id}`} className="btn-ghost">← ביטול וחזרה לפרטים</Link>
       </div>
 
-      {error && <div className="bg-red-50 text-red-700 rounded-xl p-3 mb-4">{error}</div>}
+      {error && <div className="bg-red-50 text-red-700 rounded-xl p-3 mb-4 whitespace-pre-line">{error}</div>}
 
       {/* פרטי לקוח */}
       <section className="card mb-5">
@@ -243,8 +301,10 @@ export default function AdminOrderEdit({ onAuthError }) {
                 <MealCategoryPicker
                   catalog={catalog}
                   mealSlotId={meal_slot_id}
+                  slotPortions={selectedSlots.find((s) => s.meal_slot_id === meal_slot_id)?.portions || 0}
                   selectedMeals={meals}
                   onToggleMeal={toggleMeal}
+                  onSetMealPortions={setMealPortions}
                 />
               </div>
             );
@@ -277,10 +337,20 @@ export default function AdminOrderEdit({ onAuthError }) {
             <div className="text-2xl font-extrabold text-brand-burgundy">{priceEstimate.total.toFixed(2)} ₪</div>
             <div className="text-xs text-brand-burgundy/50">בסיס {priceEstimate.base.toFixed(0)}₪ + תוספות {priceEstimate.extras.toFixed(0)}₪</div>
           </div>
-          <button className="btn-primary text-lg px-8" onClick={save} disabled={saving}>
+          <button className="btn-primary text-lg px-8" onClick={save} disabled={saving || priceEstimate.noMatch || splitErrors.length > 0}>
             {saving ? 'שומר...' : 'שמירת שינויים'}
           </button>
         </div>
+        {splitErrors.length > 0 && (
+          <ul className="text-sm text-amber-700 mt-2 list-disc pr-5 space-y-0.5">
+            {splitErrors.map((e, i) => <li key={i}>{e}</li>)}
+          </ul>
+        )}
+        {priceEstimate.noMatch && (
+          <p className="text-sm text-red-600 mt-2 font-medium">
+            לא הוגדר מחיר לצירוף הסעודות שנבחר. יש להגדיר מסלול מחיר מתאים לפני שמירה.
+          </p>
+        )}
         <p className="text-xs text-brand-burgundy/50 mt-2">המחיר הסופי מחושב מחדש ע"י המערכת מהמחירון הפעיל.</p>
       </section>
     </Page>

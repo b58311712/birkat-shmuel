@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { api } from '../lib/api.js';
 
-const adminMenuGroups = [
+export const adminMenuGroups = [
   {
     id: 'community',
     label: 'קהילה',
@@ -18,6 +18,7 @@ const adminMenuGroups = [
     items: [
       { to: '/admin/orders', label: 'הזמנות' },
       { to: '/admin/shabbat', label: 'תיקי שבת' },
+      { to: '/admin/print-form', label: 'דף הזמנה להדפסה' },
     ],
   },
   {
@@ -35,6 +36,7 @@ const adminMenuGroups = [
     label: 'מערכת',
     items: [
       { to: '/admin/finance', label: 'מודול כספי' },
+      { to: '/admin/email', label: 'מיילים' },
       { to: '/admin/users', label: 'משתמשים' },
     ],
   },
@@ -98,9 +100,9 @@ export function Header({ customer, onLogout, admin, onAdminLogout }) {
   }, []);
 
   return (
-    <header className="bg-brand-burgundy text-brand-cream shadow-lg">
-      <div ref={navRef} className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
-        <Link to={isAdmin ? '/admin' : '/'} className="flex items-center gap-3 shrink-0">
+    <header className="sticky top-0 z-40 border-b border-brand-cream-dark bg-white/95 text-brand-burgundy-dark shadow-card backdrop-blur">
+      <div ref={navRef} className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <Link to={isAdmin ? '/admin' : '/'} className="flex min-w-0 shrink-0 items-center gap-3">
           <img src="/logo.png" alt="מטבח החסד" className="h-14 w-14 object-contain" />
           <div>
             <div className="text-xl font-extrabold leading-tight">מטבח החסד</div>
@@ -108,11 +110,11 @@ export function Header({ customer, onLogout, admin, onAdminLogout }) {
           </div>
         </Link>
 
-        <nav className="flex flex-wrap items-center justify-end gap-1">
+        <nav className="flex flex-1 flex-wrap items-center justify-end gap-2">
           {isAdmin ? (
             <>
               {admin && (
-                <div className="order-[21] flex items-center gap-2 border-r border-brand-cream/20 pr-3 mr-2">
+                <div className="order-[21] mr-1 flex items-center gap-2 border-r border-brand-cream-dark pr-3">
                   <AdminAccountMenu
                     admin={admin}
                     open={accountOpen}
@@ -175,7 +177,7 @@ export function Header({ customer, onLogout, admin, onAdminLogout }) {
   );
 }
 
-function AdminAccountMenu({ admin, open, onToggle, onLogout }) {
+export function AdminAccountMenu({ admin, open, onToggle, onLogout }) {
   const displayName = admin.full_name || admin.email || 'מנהל';
 
   return (
@@ -184,11 +186,13 @@ function AdminAccountMenu({ admin, open, onToggle, onLogout }) {
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className={`h-10 rounded-lg px-3 transition-colors inline-flex items-center gap-2 ${
-          open ? 'bg-brand-gold text-brand-burgundy-dark' : 'text-brand-cream hover:bg-brand-burgundy-light'
+        className={`h-10 rounded-lg border px-3 transition-colors inline-flex items-center gap-2 ${
+          open
+            ? 'border-brand-gold bg-brand-gold/15 text-brand-burgundy-dark'
+            : 'border-transparent text-brand-burgundy/75 hover:border-brand-cream-dark hover:bg-brand-cream'
         }`}
       >
-        <span className="h-7 w-7 rounded-full bg-brand-cream/15 flex items-center justify-center">
+        <span className="h-7 w-7 rounded-lg bg-brand-cream flex items-center justify-center text-brand-burgundy">
           <UserIcon />
         </span>
         <span className="max-w-32 truncate text-sm font-semibold">{displayName}</span>
@@ -216,7 +220,7 @@ function AdminAccountMenu({ admin, open, onToggle, onLogout }) {
   );
 }
 
-function AdminNotificationsBell({ notifications, open, onToggle, onClose, onRead, className = '' }) {
+export function AdminNotificationsBell({ notifications, open, onToggle, onClose, onRead, className = '' }) {
   const items = notifications?.items || [];
   const total = notifications?.total ?? items.length;
   const hasNotifications = total > 0;
@@ -234,8 +238,10 @@ function AdminNotificationsBell({ notifications, open, onToggle, onClose, onRead
         onClick={onToggle}
         aria-label="התראות"
         aria-expanded={open}
-        className={`relative h-10 w-10 rounded-lg transition-colors flex items-center justify-center ${
-          open ? 'bg-brand-gold text-brand-burgundy-dark' : 'text-brand-cream hover:bg-brand-burgundy-light'
+        className={`relative h-10 w-10 rounded-lg border transition-colors flex items-center justify-center ${
+          open
+            ? 'border-brand-gold bg-brand-gold/15 text-brand-burgundy-dark'
+            : 'border-transparent text-brand-burgundy/75 hover:border-brand-cream-dark hover:bg-brand-cream'
         }`}
       >
         <BellIcon />
@@ -316,8 +322,10 @@ function NavLink({ to, label, exact = false, onClick }) {
     <Link
       to={to}
       onClick={onClick}
-      className={`px-3 py-2 rounded-lg font-medium transition-colors whitespace-nowrap ${
-        active ? 'bg-brand-gold text-brand-burgundy-dark' : 'text-brand-cream hover:bg-brand-burgundy-light'
+      className={`px-3 py-2 rounded-lg border text-sm font-semibold transition-colors whitespace-nowrap ${
+        active
+          ? 'border-brand-gold bg-brand-gold/15 text-brand-burgundy-dark'
+          : 'border-transparent text-brand-burgundy/70 hover:border-brand-cream-dark hover:bg-brand-cream hover:text-brand-burgundy-dark'
       }`}
     >
       {label}
@@ -335,8 +343,10 @@ function NavMenu({ label, items, open, onToggle, onClose }) {
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className={`px-3 py-2 rounded-lg font-medium transition-colors whitespace-nowrap inline-flex items-center gap-1 ${
-          active || open ? 'bg-brand-gold text-brand-burgundy-dark' : 'text-brand-cream hover:bg-brand-burgundy-light'
+        className={`px-3 py-2 rounded-lg border text-sm font-semibold transition-colors whitespace-nowrap inline-flex items-center gap-1 ${
+          active || open
+            ? 'border-brand-gold bg-brand-gold/15 text-brand-burgundy-dark'
+            : 'border-transparent text-brand-burgundy/70 hover:border-brand-cream-dark hover:bg-brand-cream hover:text-brand-burgundy-dark'
         }`}
       >
         <span>{label}</span>
@@ -374,11 +384,17 @@ function isRouteActive(pathname, to, exact = false) {
 
 export function Page({ title, children, subtitle }) {
   return (
-    <main className="max-w-6xl mx-auto px-4 py-6">
+    <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
       {title && (
-        <div className="mb-5">
-          <h1 className="text-2xl font-extrabold text-brand-burgundy">{title}</h1>
-          {subtitle && <p className="text-brand-burgundy/70 mt-1">{subtitle}</p>}
+        <div className="mb-6">
+          <div className="mb-2.5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-brand-gold-dark">
+            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-brand-gold" />
+            מטבח החסד
+          </div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-brand-burgundy sm:text-3xl">{title}</h1>
+          {/* מבטא-זהב דק מתחת לכותרת — עקבי עם שפת העיצוב של הדשבורד */}
+          <div aria-hidden="true" className="mt-3 h-0.5 w-16 rounded-full bg-gradient-to-l from-brand-gold via-brand-gold-light to-transparent" />
+          {subtitle && <p className="mt-3 max-w-2xl leading-relaxed text-brand-burgundy/70">{subtitle}</p>}
         </div>
       )}
       {children}

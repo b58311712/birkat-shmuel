@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
+import { ActionIconButton, ActionIconLink } from '../components/ActionIcon.jsx';
 import { Badge, CUSTOMER_STATUS, ORDER_STATUS, PAYMENT_STATUS } from '../lib/status.jsx';
 
 const STATUSES = [
@@ -252,19 +253,19 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
                   <td className="p-3 text-sm"><Badge map={CUSTOMER_STATUS} value={customer.status} /></td>
                   <td className="p-3 text-sm" dir="ltr">{formatDate(customer.created_at)}</td>
                   <td className="p-3 text-sm whitespace-nowrap">
-                    <button onClick={() => openDetail(customer)} className="text-brand-burgundy hover:underline ml-3">צפייה</button>
-                    <button onClick={() => setEditing(customer)} className="text-brand-burgundy hover:underline ml-3">עריכה</button>
-                    <button
+                    <div className="flex flex-wrap gap-1">
+                    <ActionIconButton icon="view" label="צפייה" onClick={() => openDetail(customer)} />
+                    <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(customer)} />
+                    <ActionIconButton
+                      icon={customer.status === 'active' ? 'deactivate' : 'activate'}
+                      label={customer.status === 'active' ? 'השבתה' : 'הפעלה'}
+                      tone="muted"
                       onClick={() => setStatus(customer, customer.status === 'active' ? 'inactive' : 'active')}
-                      className="text-brand-burgundy/60 hover:underline ml-3"
-                    >
-                      {customer.status === 'active' ? 'השבתה' : 'הפעלה'}
-                    </button>
+                    />
                     {canDelete && (
-                      <button onClick={() => deleteCustomer(customer)} className="text-red-600 hover:underline">
-                        מחיקה
-                      </button>
+                      <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteCustomer(customer)} />
                     )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -440,7 +441,7 @@ function CustomerDetail({ data, onClose, onEdit, onSetStatus, onDelete }) {
                     <td className="p-2"><Badge map={PAYMENT_STATUS} value={order.payment_status} /></td>
                     <td className="p-2" dir="ltr">{order.final_amount != null ? `₪${order.final_amount}` : '-'}</td>
                     <td className="p-2">
-                      <Link to={`/admin/orders/${order.id}`} className="text-brand-burgundy hover:underline">פתיחה</Link>
+                      <ActionIconLink as={Link} to={`/admin/orders/${order.id}`} icon="open" label="פתיחה" />
                     </td>
                   </tr>
                 ))}

@@ -35,7 +35,7 @@ async function loadShabbatOrders(shabbatId) {
       final_amount, base_amount,
       customers ( full_name, phone ),
       order_meal_slots ( meal_slot_id, portions ),
-      order_meals ( meal_slot_id, meal_id, meal_name_snapshot )
+      order_meals ( meal_slot_id, meal_id, meal_name_snapshot, portions )
     `)
     .eq('shabbat_id', shabbatId)
     .order('order_number');
@@ -101,7 +101,8 @@ function computePortionsByMeal(orders) {
       slotMap[ms.meal_slot_id] = Number(ms.portions || 0);
     }
     for (const om of o.order_meals || []) {
-      const p = slotMap[om.meal_slot_id] || 0;
+      // מאכל בקטגוריה שמחלקת מנות → הכמות שלו (om.portions); אחרת כל מנות הסעודה.
+      const p = om.portions != null ? Number(om.portions) : (slotMap[om.meal_slot_id] || 0);
       if (!p) continue;
       portionsByMeal[om.meal_id] = (portionsByMeal[om.meal_id] || 0) + p;
       nameByMeal[om.meal_id] = om.meal_name_snapshot;
@@ -230,7 +231,8 @@ export async function buildPackingReport(shabbatId) {
     // אריזות: לכל מאכל בהזמנה, לפי מנות הסעודה שלו וכללי האריזה
     const packages = [];
     for (const om of o.order_meals || []) {
-      const p = portionsBySlot[om.meal_slot_id] || 0;
+      // כמות המאכל: הכמות שלו אם הקטגוריה מחלקת מנות, אחרת כל מנות הסעודה.
+      const p = om.portions != null ? Number(om.portions) : (portionsBySlot[om.meal_slot_id] || 0);
       const mealRules = rulesByMeal[om.meal_id] || [];
       const packLines = mealRules.map((r) => ({
         packaging_label: r.packaging_label,
@@ -578,8 +580,12 @@ export async function buildCustomerSlips(shabbatId) {
     const bySlot = {};
     for (const om of o.order_meals || []) {
       const sid = om.meal_slot_id;
+      // בקטגוריה שמחלקת מנות מציגים גם את הכמות לצד שם המאכל (למשל "סלמון × 30").
+      const label = om.portions != null
+        ? `${om.meal_name_snapshot} × ${Number(om.portions)}`
+        : om.meal_name_snapshot;
       (bySlot[sid] ||= { slot_id: sid, slot_name: slotName[sid] || 'סעודה', portions: portionsBySlot[sid] || 0, meals: [] })
-        .meals.push(om.meal_name_snapshot);
+        .meals.push(label);
     }
     const slotsOut = Object.values(bySlot)
       .sort((a, b) => (slotOrder[a.slot_id] ?? 999) - (slotOrder[b.slot_id] ?? 999));

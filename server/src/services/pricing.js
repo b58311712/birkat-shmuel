@@ -1,33 +1,40 @@
 // שירות חישוב מחיר הזמנה (סעיף 15, 14, 16)
 import { roundUp } from '../lib/helpers.js';
 
-// מחשב מחיר בסיס לפי מספר סעודות שנבחרו ומספר מנות לכל סעודה.
-// מסלול המחיר נבחר לפי מספר הסעודות (סעיף 15.1, 15.2).
-//   priceTracks: כל המסלולים הפעילים (עם meals_count ו-price_per_portion)
+// מחשב מחיר בסיס לפי *צירוף הסעודות המדויק* שנבחר (סעיף 15).
+// כל מסלול משויך לקבוצת סעודות (price_track_meal_slots); נבחר המסלול שקבוצת
+// הסעודות שלו זהה בדיוק לצירוף שהלקוח בחר. אין התאמה מדויקת → אין מחיר (noMatch).
+//   priceTracks: כל המסלולים הפעילים, כל אחד עם meal_slot_ids: uuid[]
 //   selectedSlots: [{ meal_slot_id, portions }]
 export function calcBase(priceTracks, selectedSlots) {
-  const slotsCount = selectedSlots.length;
+  const selectedKey = slotKey(selectedSlots.map((s) => s.meal_slot_id));
 
-  // מוצאים מסלול שתואם למספר הסעודות, אחרת המסלול עם הכי הרבה סעודות שקטן/שווה
-  let track =
-    priceTracks.find((t) => t.meals_count === slotsCount) ||
-    priceTracks
-      .filter((t) => (t.meals_count ?? 0) <= slotsCount)
-      .sort((a, b) => (b.meals_count ?? 0) - (a.meals_count ?? 0))[0] ||
-    null;
+  // צירוף זהה בדיוק: אותה קבוצת מזהי-סעודות (ללא תלות בסדר).
+  const track = priceTracks.find((t) => slotKey(t.meal_slot_ids || []) === selectedKey) || null;
 
-  const pricePerPortion = track ? Number(track.price_per_portion) : 0;
-
-  // מחיר בסיס = סך המנות בכל הסעודות * מחיר למנה
   const totalPortions = selectedSlots.reduce((sum, s) => sum + Number(s.portions || 0), 0);
+
+  if (!track) {
+    // אין מסלול לצירוף הזה — מסמנים חוסר-התאמה כדי שהקורא יחסום את ההזמנה.
+    return { track: null, noMatch: true, pricePerPortion: 0, totalPortions, baseAmount: 0 };
+  }
+
+  const pricePerPortion = Number(track.price_per_portion);
+  // מחיר בסיס = סך המנות בכל הסעודות * מחיר למנה
   const baseAmount = totalPortions * pricePerPortion;
 
   return {
     track,
+    noMatch: false,
     pricePerPortion,
     totalPortions,
     baseAmount: round2(baseAmount),
   };
+}
+
+// מפתח נורמלי (ממוין, ייחודי) לקבוצת מזהי-סעודות — לשם השוואת צירופים.
+export function slotKey(ids) {
+  return [...new Set((ids || []).filter(Boolean).map(String))].sort().join('|');
 }
 
 // מחשב כמות מוצעת לתוספת לפי נוסחה (סעיף 14.4), מעוגל כלפי מעלה (14.5)

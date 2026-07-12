@@ -2,6 +2,8 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api.js';
 import { parseRecipe } from '../lib/recipeParser.js';
 import { Page } from '../components/Layout.jsx';
+import { ActionIconButton } from '../components/ActionIcon.jsx';
+import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 const inputCls = 'w-full border border-brand-cream-dark rounded-lg p-2 focus:border-brand-gold outline-none';
 
@@ -47,6 +49,7 @@ export default function AdminCatalog({ onAuthError, currentAdmin }) {
           ['meals', 'מאכלים'],
           ['categories', 'קטגוריות'],
           ['extras', 'תוספות בתשלום'],
+          ['price-tracks', 'מחיר בסיס'],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -80,6 +83,9 @@ export default function AdminCatalog({ onAuthError, currentAdmin }) {
       {view === 'extras' && (
         <ExtrasManager onErr={handleErr} canDelete={canDelete} />
       )}
+      {view === 'price-tracks' && (
+        <PriceTracksManager mealSlots={mealSlots} onErr={handleErr} canDelete={canDelete} />
+      )}
     </Page>
   );
 }
@@ -87,6 +93,8 @@ export default function AdminCatalog({ onAuthError, currentAdmin }) {
 function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
   const [list, setList] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [draggedMealId, setDraggedMealId] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [filter, setFilter] = useState({ active: 'true', category_id: '', search: '' });
 
@@ -145,6 +153,34 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
     } catch (e) { onErr(e); }
   }
 
+  const canReorder = filter.active === 'true' && !filter.category_id && !filter.search.trim();
+
+  async function moveMeal(targetMealId) {
+    if (!canReorder || savingOrder || !draggedMealId || draggedMealId === targetMealId) return;
+    const previous = list;
+    const fromIndex = previous.findIndex((meal) => meal.id === draggedMealId);
+    const toIndex = previous.findIndex((meal) => meal.id === targetMealId);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const reordered = [...previous];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    const normalized = reordered.map((meal, index) => ({ ...meal, display_order: index + 1 }));
+
+    setList(normalized);
+    setDraggedMealId(null);
+    setSavingOrder(true);
+    try {
+      await Promise.all(normalized.map((meal) =>
+        api.updateCatalogMeal(meal.id, { display_order: meal.display_order })));
+    } catch (e) {
+      setList(previous);
+      onErr(e);
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
   if (!list) return <p>טוען...</p>;
 
   return (
@@ -180,6 +216,13 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
             <option value="">הכל</option>
           </select>
         </Field>
+        <span className="pb-2 text-xs text-brand-burgundy/55">
+          {savingOrder
+            ? 'שומר את סדר המאכלים...'
+            : canReorder
+              ? 'אפשר לגרור שורות כדי לקבוע את הסדר בממשק ההזמנות'
+              : 'כדי לשנות סדר יש לנקות חיפוש ומסננים ולהציג מאכלים פעילים'}
+        </span>
       </div>
 
       {/* מאכל חדש נפתח מעל הטבלה (אין לו שורה מתאימה); עריכת מאכל קיים נפתחת
@@ -202,7 +245,7 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
         <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
           <thead className="bg-brand-burgundy text-brand-cream text-sm">
             <tr>
-              <th className="p-3 text-right">סדר</th>
+              <th className="p-3 text-right w-16">סדר</th>
               <th className="p-3 text-right">מאכל</th>
               <th className="p-3 text-right">קטגוריה</th>
               <th className="p-3 text-right">זמין בסעודות</th>
@@ -214,8 +257,30 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
           <tbody>
             {list.map((meal) => (
               <Fragment key={meal.id}>
-                <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!meal.is_active ? 'opacity-50' : ''} ${editing?.id === meal.id ? 'bg-brand-cream/40' : ''}`}>
-                  <td className="p-3 text-sm text-brand-burgundy/50">{meal.display_order}</td>
+                <tr
+                  draggable={canReorder && !savingOrder && editing?.id !== meal.id}
+                  onDragStart={(e) => {
+                    setDraggedMealId(meal.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', meal.id);
+                  }}
+                  onDragOver={(e) => {
+                    if (canReorder && draggedMealId && draggedMealId !== meal.id) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    moveMeal(meal.id);
+                  }}
+                  onDragEnd={() => setDraggedMealId(null)}
+                  className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${canReorder ? 'cursor-grab active:cursor-grabbing' : ''} ${draggedMealId === meal.id ? 'opacity-40' : ''} ${!meal.is_active ? 'opacity-50' : ''} ${editing?.id === meal.id ? 'bg-brand-cream/40' : ''}`}
+                >
+                  <td className="p-3 text-brand-burgundy/45" title="גרירה לשינוי סדר">
+                    <span aria-hidden="true" className="text-xl leading-none">⠿</span>
+                    <span className="sr-only">גרירת {meal.name}</span>
+                  </td>
                   <td className="p-3">
                     <div className="font-medium">{meal.name}</div>
                     {(meal.kitchen_prep_notes || meal.kitchen_report_notes) && (
@@ -229,19 +294,24 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
                   <td className="p-3 text-sm">
                     {meal.requires_extra_charge ? `תוספת ₪${fmt(meal.extra_charge_amount)}` : (meal.included_in_base ? 'כלול בבסיס' : 'לא כלול')}
                   </td>
-                  <td className="p-3 text-sm">{meal.is_active ? 'פעיל' : 'לא פעיל'}</td>
+                  <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={meal.is_active ? 'active' : 'inactive'} /></td>
                   <td className="p-3 text-sm whitespace-nowrap">
-                    <button onClick={() => setEditing(editing?.id === meal.id ? null : meal)} className="text-brand-burgundy hover:underline ml-3">
-                      {editing?.id === meal.id ? 'סגירה' : 'עריכה'}
-                    </button>
-                    <button onClick={() => toggleActive(meal)} className="text-brand-burgundy/60 hover:underline">
-                      {meal.is_active ? 'השבתה' : 'הפעלה'}
-                    </button>
+                    <div className="flex flex-wrap gap-1">
+                    <ActionIconButton
+                      icon={editing?.id === meal.id ? 'cancel' : 'edit'}
+                      label={editing?.id === meal.id ? 'סגירה' : 'עריכה'}
+                      onClick={() => setEditing(editing?.id === meal.id ? null : meal)}
+                    />
+                    <ActionIconButton
+                      icon={meal.is_active ? 'deactivate' : 'activate'}
+                      label={meal.is_active ? 'השבתה' : 'הפעלה'}
+                      tone="muted"
+                      onClick={() => toggleActive(meal)}
+                    />
                     {canDelete && (
-                      <button onClick={() => deleteMeal(meal)} className="text-red-600 hover:underline mr-3">
-                        מחיקה
-                      </button>
+                      <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteMeal(meal)} />
                     )}
+                    </div>
                   </td>
                 </tr>
                 {editing?.id === meal.id && (
@@ -357,9 +427,6 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, onInventoryI
             <option value="">בחר קטגוריה</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-        </Field>
-        <Field label="סדר תצוגה">
-          <input type="number" value={f.display_order} onChange={(e) => set('display_order', e.target.value)} className={inputCls} dir="ltr" />
         </Field>
         <Field label="מחיר">
           <div className="flex flex-wrap gap-3 p-2 border border-brand-cream-dark rounded-lg">
@@ -669,7 +736,7 @@ function RecipeEditor({ loading, portions, onPortionsChange, lines, onLinesChang
                       />
                     </td>
                     <td className="p-2">
-                      <button type="button" onClick={() => removeLine(idx)} className="btn-ghost px-2 py-1">מחיקה</button>
+                      <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => removeLine(idx)} />
                     </td>
                   </tr>
                 ))}
@@ -703,6 +770,8 @@ function RecipeEditor({ loading, portions, onPortionsChange, lines, onLinesChang
 function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
   const [list, setList] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [draggedCategoryId, setDraggedCategoryId] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [filter, setFilter] = useState({ active: 'true', search: '' });
 
   const load = useCallback(() => {
@@ -718,7 +787,10 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
   async function save(form) {
     try {
       if (form.id) await api.updateCatalogCategory(form.id, form);
-      else await api.createCatalogCategory(form);
+      else {
+        const lastOrder = Math.max(0, ...(list || []).map((category) => Number(category.display_order) || 0));
+        await api.createCatalogCategory({ ...form, display_order: lastOrder + 1 });
+      }
       setEditing(null);
       load();
       onChanged?.();
@@ -740,6 +812,35 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
       load();
       onChanged?.();
     } catch (e) { onErr(e); }
+  }
+
+  const canReorder = filter.active === 'true' && !filter.search.trim();
+
+  async function moveCategory(targetCategoryId) {
+    if (!canReorder || savingOrder || !draggedCategoryId || draggedCategoryId === targetCategoryId) return;
+    const previous = list;
+    const fromIndex = previous.findIndex((category) => category.id === draggedCategoryId);
+    const toIndex = previous.findIndex((category) => category.id === targetCategoryId);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const reordered = [...previous];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    const normalized = reordered.map((category, index) => ({ ...category, display_order: index + 1 }));
+
+    setList(normalized);
+    setDraggedCategoryId(null);
+    setSavingOrder(true);
+    try {
+      await Promise.all(normalized.map((category) =>
+        api.updateCatalogCategory(category.id, { display_order: category.display_order })));
+      onChanged?.();
+    } catch (e) {
+      setList(previous);
+      onErr(e);
+    } finally {
+      setSavingOrder(false);
+    }
   }
 
   if (!list) return <p>טוען...</p>;
@@ -767,6 +868,13 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
             <option value="">הכל</option>
           </select>
         </Field>
+        <span className="pb-2 text-xs text-brand-burgundy/55">
+          {savingOrder
+            ? 'שומר את סדר הקטגוריות...'
+            : canReorder
+              ? 'אפשר לגרור שורות כדי לקבוע את הסדר בממשק ההזמנות'
+              : 'כדי לשנות סדר יש לנקות את החיפוש ולהציג קטגוריות פעילות'}
+        </span>
       </div>
 
       {editing && (
@@ -782,7 +890,7 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
         <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
           <thead className="bg-brand-burgundy text-brand-cream text-sm">
             <tr>
-              <th className="p-3 text-right">סדר</th>
+              <th className="p-3 text-right w-16">סדר</th>
               <th className="p-3 text-right">קטגוריה</th>
               <th className="p-3 text-right">סעודות</th>
               <th className="p-3 text-right">כללי בחירה</th>
@@ -792,8 +900,31 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
           </thead>
           <tbody>
             {list.map((category) => (
-              <tr key={category.id} className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!category.is_active ? 'opacity-50' : ''}`}>
-                <td className="p-3 text-sm text-brand-burgundy/50">{category.display_order}</td>
+              <tr
+                key={category.id}
+                draggable={canReorder && !savingOrder && editing?.id !== category.id}
+                onDragStart={(e) => {
+                  setDraggedCategoryId(category.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', category.id);
+                }}
+                onDragOver={(e) => {
+                  if (canReorder && draggedCategoryId && draggedCategoryId !== category.id) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  moveCategory(category.id);
+                }}
+                onDragEnd={() => setDraggedCategoryId(null)}
+                className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${canReorder ? 'cursor-grab active:cursor-grabbing' : ''} ${draggedCategoryId === category.id ? 'opacity-40' : ''} ${!category.is_active ? 'opacity-50' : ''}`}
+              >
+                <td className="p-3 text-brand-burgundy/45" title="גרירה לשינוי סדר">
+                  <span aria-hidden="true" className="text-xl leading-none">⠿</span>
+                  <span className="sr-only">גרירת {category.name}</span>
+                </td>
                 <td className="p-3">
                   <div className="font-medium">{category.name}</div>
                   {category.internal_description && (
@@ -806,17 +937,20 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
                     ? `מומלץ: ${category.recommended_min ?? '-'} | מקסימום: ${category.max_allowed ?? '-'}`
                     : 'ללא כלל'}
                 </td>
-                <td className="p-3 text-sm">{category.is_active ? 'פעילה' : 'לא פעילה'}</td>
+                <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={category.is_active ? 'active_female' : 'inactive_female'} /></td>
                 <td className="p-3 text-sm whitespace-nowrap">
-                  <button onClick={() => setEditing(category)} className="text-brand-burgundy hover:underline ml-3">עריכה</button>
-                  <button onClick={() => toggleActive(category)} className="text-brand-burgundy/60 hover:underline">
-                    {category.is_active ? 'השבתה' : 'הפעלה'}
-                  </button>
+                  <div className="flex flex-wrap gap-1">
+                  <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(category)} />
+                  <ActionIconButton
+                    icon={category.is_active ? 'deactivate' : 'activate'}
+                    label={category.is_active ? 'השבתה' : 'הפעלה'}
+                    tone="muted"
+                    onClick={() => toggleActive(category)}
+                  />
                   {canDelete && (
-                    <button onClick={() => deleteCategory(category)} className="text-red-600 hover:underline mr-3">
-                      מחיקה
-                    </button>
+                    <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteCategory(category)} />
                   )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -838,6 +972,7 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
     display_order: initial.display_order ?? 0,
     recommended_min: initial.recommended_min ?? '',
     max_allowed: initial.max_allowed ?? '',
+    requires_portion_split: initial.requires_portion_split || false,
     meal_slot_ids: initial.meal_slot_ids || [],
   });
 
@@ -857,6 +992,7 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
       display_order: Number(f.display_order) || 0,
       recommended_min: f.recommended_min === '' ? null : Number(f.recommended_min),
       max_allowed: f.max_allowed === '' ? null : Number(f.max_allowed),
+      requires_portion_split: Boolean(f.requires_portion_split),
     });
   }
 
@@ -866,9 +1002,6 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם קטגוריה *">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />
-        </Field>
-        <Field label="סדר תצוגה">
-          <input type="number" value={f.display_order} onChange={(e) => set('display_order', e.target.value)} className={inputCls} dir="ltr" />
         </Field>
         <Field label="מינימום מומלץ">
           <input type="number" min="0" value={f.recommended_min} onChange={(e) => set('recommended_min', e.target.value)} className={inputCls} dir="ltr" placeholder="ללא" />
@@ -880,6 +1013,20 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
       <Field label="תיאור פנימי">
         <textarea value={f.internal_description} onChange={(e) => set('internal_description', e.target.value)} className={inputCls} rows={2} />
       </Field>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={f.requires_portion_split}
+          onChange={(e) => set('requires_portion_split', e.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          <span className="font-medium text-brand-burgundy">חלוקת מנות בין המאכלים</span>
+          <span className="block text-xs text-brand-burgundy/60">
+            הלקוח יזין כמה מנות מכל מאכל שנבחר בקטגוריה, וסך הכמויות יהיה שווה למספר מנות הסעודה (למשל דגים, מנה עיקרית).
+          </span>
+        </span>
+      </label>
       <Field label="קטגוריה רלוונטית לסעודות">
         <CheckboxGrid
           options={mealSlots}
@@ -1001,19 +1148,24 @@ function ExtrasManager({ onErr, canDelete }) {
                       ? `${suggestionBasisLabel(extra.suggestion_basis)} (יחס ${fmt(extra.suggestion_ratio)})`
                       : 'ללא'}
                   </td>
-                  <td className="p-3 text-sm">{extra.is_active ? 'פעילה' : 'לא פעילה'}</td>
+                  <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={extra.is_active ? 'active_female' : 'inactive_female'} /></td>
                   <td className="p-3 text-sm whitespace-nowrap">
-                    <button onClick={() => setEditing(editing?.id === extra.id ? null : extra)} className="text-brand-burgundy hover:underline ml-3">
-                      {editing?.id === extra.id ? 'סגירה' : 'עריכה'}
-                    </button>
-                    <button onClick={() => toggleActive(extra)} className="text-brand-burgundy/60 hover:underline">
-                      {extra.is_active ? 'השבתה' : 'הפעלה'}
-                    </button>
+                    <div className="flex flex-wrap gap-1">
+                    <ActionIconButton
+                      icon={editing?.id === extra.id ? 'cancel' : 'edit'}
+                      label={editing?.id === extra.id ? 'סגירה' : 'עריכה'}
+                      onClick={() => setEditing(editing?.id === extra.id ? null : extra)}
+                    />
+                    <ActionIconButton
+                      icon={extra.is_active ? 'deactivate' : 'activate'}
+                      label={extra.is_active ? 'השבתה' : 'הפעלה'}
+                      tone="muted"
+                      onClick={() => toggleActive(extra)}
+                    />
                     {canDelete && (
-                      <button onClick={() => deleteExtra(extra)} className="text-red-600 hover:underline mr-3">
-                        מחיקה
-                      </button>
+                      <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteExtra(extra)} />
                     )}
+                    </div>
                   </td>
                 </tr>
                 {editing?.id === extra.id && (
@@ -1109,6 +1261,213 @@ function ExtraForm({ initial, onSave, onCancel }) {
       </div>
       <Field label="הערה ללקוח">
         <input value={f.customer_note} onChange={(e) => set('customer_note', e.target.value)} className={inputCls} placeholder="טקסט קצר שיוצג ללקוח ליד התוספת" />
+      </Field>
+      <div className="flex gap-2">
+        <button type="submit" className="btn-primary">שמירה</button>
+        <button type="button" onClick={onCancel} className="btn-ghost">ביטול</button>
+      </div>
+    </form>
+  );
+}
+
+function PriceTracksManager({ mealSlots, onErr, canDelete }) {
+  const [list, setList] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [filter, setFilter] = useState({ active: 'true', search: '' });
+
+  const load = useCallback(() => {
+    const params = new URLSearchParams();
+    if (filter.active) params.set('active', filter.active);
+    if (filter.search.trim()) params.set('search', filter.search.trim());
+    const q = params.toString();
+    api.catalogPriceTracks(q ? `?${q}` : '').then(setList).catch(onErr);
+  }, [filter, onErr]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function save(form) {
+    try {
+      if (form.id) await api.updateCatalogPriceTrack(form.id, form);
+      else await api.createCatalogPriceTrack(form);
+      setEditing(null);
+      load();
+    } catch (e) { onErr(e); }
+  }
+
+  async function toggleActive(track) {
+    try {
+      await api.updateCatalogPriceTrack(track.id, { is_active: !track.is_active });
+      load();
+    } catch (e) { onErr(e); }
+  }
+
+  async function deleteTrack(track) {
+    if (!confirm(`למחוק לצמיתות את המסלול ${track.name}?`)) return;
+    try {
+      await api.deleteCatalogPriceTrack(track.id);
+      load();
+    } catch (e) { onErr(e); }
+  }
+
+  if (!list) return <p>טוען...</p>;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-brand-burgundy/60">
+        מחיר הבסיס נקבע לפי <b>צירוף הסעודות המדויק</b> שהלקוח בוחר (סעיף 15). כל מסלול משויך לקבוצת סעודות
+        ולו מחיר <b>למנה אחת</b>, והמערכת מכפילה אותו בסך המנות. הזמנה שצירוף הסעודות שלה זהה בדיוק למסלול —
+        תתומחר לפיו. אין להגדיר שני מסלולים לאותו צירוף, וצירוף ללא מסלול ייחסם בהזמנה.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <button onClick={() => setEditing({})} className="btn-primary">+ מסלול מחיר חדש</button>
+        <Field label="חיפוש">
+          <input
+            value={filter.search}
+            onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
+            className={inputCls}
+            placeholder="שם מסלול או תנאי"
+          />
+        </Field>
+        <Field label="סטטוס">
+          <select
+            value={filter.active}
+            onChange={(e) => setFilter((f) => ({ ...f, active: e.target.value }))}
+            className={inputCls}
+          >
+            <option value="true">פעילים</option>
+            <option value="false">לא פעילים</option>
+            <option value="">הכל</option>
+          </select>
+        </Field>
+      </div>
+
+      {editing && !editing.id && (
+        <PriceTrackForm initial={editing} mealSlots={mealSlots} onSave={save} onCancel={() => setEditing(null)} />
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
+          <thead className="bg-brand-burgundy text-brand-cream text-sm">
+            <tr>
+              <th className="p-3 text-right">מסלול</th>
+              <th className="p-3 text-right">צירוף סעודות</th>
+              <th className="p-3 text-right">מחיר למנה</th>
+              <th className="p-3 text-right">תחולה מ־</th>
+              <th className="p-3 text-right">סטטוס</th>
+              <th className="p-3 text-right"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((track) => (
+              <Fragment key={track.id}>
+                <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!track.is_active ? 'opacity-50' : ''} ${editing?.id === track.id ? 'bg-brand-cream/40' : ''}`}>
+                  <td className="p-3">
+                    <div className="font-medium">{track.name}</div>
+                    {track.condition_note && (
+                      <div className="text-xs text-brand-burgundy/50 mt-0.5">{track.condition_note}</div>
+                    )}
+                  </td>
+                  <td className="p-3 text-sm">{slotNames(track.meal_slot_ids, mealSlots)}</td>
+                  <td className="p-3 text-sm font-medium">₪{fmt(track.price_per_portion)}</td>
+                  <td className="p-3 text-sm">{track.effective_from || '—'}</td>
+                  <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={track.is_active ? 'active' : 'inactive'} /></td>
+                  <td className="p-3 text-sm whitespace-nowrap">
+                    <div className="flex flex-wrap gap-1">
+                    <ActionIconButton
+                      icon={editing?.id === track.id ? 'cancel' : 'edit'}
+                      label={editing?.id === track.id ? 'סגירה' : 'עריכה'}
+                      onClick={() => setEditing(editing?.id === track.id ? null : track)}
+                    />
+                    <ActionIconButton
+                      icon={track.is_active ? 'deactivate' : 'activate'}
+                      label={track.is_active ? 'השבתה' : 'הפעלה'}
+                      tone="muted"
+                      onClick={() => toggleActive(track)}
+                    />
+                    {canDelete && (
+                      <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteTrack(track)} />
+                    )}
+                    </div>
+                  </td>
+                </tr>
+                {editing?.id === track.id && (
+                  <tr>
+                    <td colSpan={6} className="p-3 bg-brand-cream/20">
+                      <PriceTrackForm initial={editing} mealSlots={mealSlots} onSave={save} onCancel={() => setEditing(null)} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+            {list.length === 0 && (
+              <tr><td colSpan={6} className="p-6 text-center text-brand-burgundy/50">אין מסלולי מחיר להצגה.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PriceTrackForm({ initial, mealSlots, onSave, onCancel }) {
+  const [f, setF] = useState({
+    id: initial.id,
+    name: initial.name || '',
+    price_per_portion: initial.price_per_portion ?? '',
+    condition_note: initial.condition_note || '',
+    effective_from: initial.effective_from || '',
+    meal_slot_ids: initial.meal_slot_ids || [],
+  });
+
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const toggleSlot = (id) => {
+    set('meal_slot_ids', f.meal_slot_ids.includes(id)
+      ? f.meal_slot_ids.filter((x) => x !== id)
+      : [...f.meal_slot_ids, id]);
+  };
+
+  function submit(e) {
+    e.preventDefault();
+    if (!f.name.trim()) return alert('חובה להזין שם מסלול.');
+    if (f.price_per_portion === '' || Number(f.price_per_portion) < 0) return alert('יש להזין מחיר למנה תקין.');
+    if (f.meal_slot_ids.length === 0) return alert('יש לבחור לפחות סעודה אחת לצירוף המסלול.');
+    onSave({
+      ...f,
+      name: f.name.trim(),
+      price_per_portion: Number(f.price_per_portion),
+      condition_note: f.condition_note.trim() || null,
+      effective_from: f.effective_from || null,
+      meal_slot_ids: f.meal_slot_ids,
+    });
+  }
+
+  return (
+    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
+      <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת מסלול מחיר' : 'מסלול מחיר חדש'}</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="שם מסלול *">
+          <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} placeholder="ליל שבת בלבד, ליל שבת + שחרית..." />
+        </Field>
+        <Field label="מחיר למנה (₪) *">
+          <input type="number" step="0.01" min="0" value={f.price_per_portion} onChange={(e) => set('price_per_portion', e.target.value)} className={inputCls} dir="ltr" />
+        </Field>
+        <Field label="בתוקף מתאריך">
+          <input type="date" value={f.effective_from} onChange={(e) => set('effective_from', e.target.value)} className={inputCls} dir="ltr" />
+        </Field>
+      </div>
+      <Field label="צירוף הסעודות שהמסלול חל עליו *">
+        <CheckboxGrid
+          options={mealSlots}
+          selected={f.meal_slot_ids}
+          onToggle={toggleSlot}
+          emptyText="אין סעודות פעילות."
+        />
+        <span className="text-xs text-brand-burgundy/50 block mt-1">
+          המחיר יחול על הזמנה שבחרה בדיוק את הסעודות המסומנות כאן — לא פחות ולא יותר.
+        </span>
+      </Field>
+      <Field label="תנאי מסלול (הערה)">
+        <input value={f.condition_note} onChange={(e) => set('condition_note', e.target.value)} className={inputCls} placeholder="טקסט תיאורי של תנאי המסלול" />
       </Field>
       <div className="flex gap-2">
         <button type="submit" className="btn-primary">שמירה</button>

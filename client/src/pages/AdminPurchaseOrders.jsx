@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
+import { ActionIconButton } from '../components/ActionIcon.jsx';
 import { Badge, PO_STATUS } from '../lib/status.jsx';
 
 // הזמנות רכש (סעיף 27.2-27.3): רשימה, סינון ויצירת הזמנה חדשה (טיוטה).
@@ -104,9 +105,7 @@ export default function AdminPurchaseOrders({ onAuthError, currentAdmin }) {
                 <td className="p-3 text-sm text-brand-burgundy/60" dir="ltr">{new Date(po.created_at).toLocaleDateString('he-IL')}</td>
                 {canDelete && (
                   <td className="p-3 text-sm" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => deletePurchaseOrder(po)} className="text-red-600 hover:underline">
-                      מחיקה
-                    </button>
+                    <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deletePurchaseOrder(po)} />
                   </td>
                 )}
               </tr>

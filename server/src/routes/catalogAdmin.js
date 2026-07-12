@@ -6,9 +6,10 @@ import { requireRole } from '../lib/auth.js';
 
 const router = Router();
 
-const CATEGORY_SELECT = 'id, name, internal_description, display_order, recommended_min, max_allowed, is_active, created_at, updated_at';
+const CATEGORY_SELECT = 'id, name, internal_description, display_order, recommended_min, max_allowed, requires_portion_split, is_active, created_at, updated_at';
 const MEAL_SELECT = 'id, name, category_id, included_in_base, requires_extra_charge, extra_charge_amount, kitchen_prep_notes, kitchen_report_notes, preparation_instructions, display_order, is_active, created_at, updated_at, category:category_id (id, name)';
 const EXTRA_SELECT = 'id, name, unit_price, billing_unit, suggestion_ratio, suggestion_basis, customer_note, display_order, is_active, created_at, updated_at';
+const PRICE_TRACK_SELECT = 'id, name, condition_note, meals_count, price_per_portion, effective_from, is_active, created_at, updated_at';
 const SUGGESTION_BASES = ['per_portion', 'per_portion_per_slot', 'fixed_per_order'];
 
 async function auditDelete(req, entityType, entityId, details = null) {
@@ -33,6 +34,11 @@ function intOrNull(v) {
   return n === null ? null : Math.trunc(n);
 }
 
+// מפתח נורמלי (ממוין, ייחודי) לצירוף מזהי-סעודות — להשוואת ייחודיות מסלולים.
+function slotComboKey(ids) {
+  return [...new Set((ids || []).filter(Boolean).map(String))].sort().join('|');
+}
+
 function normalizeCategory(body, { partial = false } = {}) {
   const patch = {};
 
@@ -47,6 +53,7 @@ function normalizeCategory(body, { partial = false } = {}) {
   if (!partial || body.display_order !== undefined) patch.display_order = intOrNull(body.display_order) ?? 0;
   if (!partial || body.recommended_min !== undefined) patch.recommended_min = intOrNull(body.recommended_min);
   if (!partial || body.max_allowed !== undefined) patch.max_allowed = intOrNull(body.max_allowed);
+  if (!partial || body.requires_portion_split !== undefined) patch.requires_portion_split = Boolean(body.requires_portion_split);
   if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
 
   if (patch.recommended_min != null && patch.recommended_min < 0) return { error: 'מינימום מומלץ לא יכול להיות שלילי.' };
@@ -141,6 +148,36 @@ function normalizeExtra(body, { partial = false } = {}) {
   return { patch };
 }
 
+function normalizePriceTrack(body, { partial = false } = {}) {
+  const patch = {};
+
+  if (!partial || body.name !== undefined) {
+    const name = String(body.name || '').trim();
+    if (!name) return { error: 'נא להזין שם מסלול מחיר.' };
+    patch.name = name;
+  }
+  if (!partial || body.price_per_portion !== undefined) {
+    const price = num(body.price_per_portion);
+    if (price === null) return { error: 'נא להזין מחיר למנה.' };
+    if (price < 0) return { error: 'מחיר למנה לא יכול להיות שלילי.' };
+    patch.price_per_portion = price;
+  }
+  if (!partial || body.condition_note !== undefined) {
+    patch.condition_note = body.condition_note ? String(body.condition_note).trim() : null;
+  }
+  if (!partial || body.effective_from !== undefined) {
+    patch.effective_from = body.effective_from ? String(body.effective_from).trim() : null;
+  }
+  if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
+
+  // meals_count נגזר אוטומטית ממספר הסעודות בצירוף — נשמר לתאימות בלבד.
+  if (Array.isArray(body.meal_slot_ids)) {
+    patch.meals_count = [...new Set(body.meal_slot_ids.filter(Boolean))].length || null;
+  }
+
+  return { patch };
+}
+
 function normalizeRecipeLines(body) {
   const portions = num(body.recipe_portions, 1);
   if (portions === null || portions <= 0) return { error: 'מספר המנות במתכון חייב להיות גדול מאפס.' };
@@ -220,6 +257,32 @@ async function replaceMealSlots(mealId, slotIds) {
   const { error } = await supabase
     .from('meal_available_slots')
     .insert(clean.map((meal_slot_id) => ({ meal_id: mealId, meal_slot_id })));
+  if (error) throw error;
+}
+
+async function priceTracksWithSlots(data) {
+  const ids = (data || []).map((t) => t.id);
+  if (ids.length === 0) return data || [];
+
+  const { data: links, error } = await supabase
+    .from('price_track_meal_slots')
+    .select('price_track_id, meal_slot_id')
+    .in('price_track_id', ids);
+  if (error) throw error;
+
+  const byTrack = {};
+  for (const row of links || []) (byTrack[row.price_track_id] ||= []).push(row.meal_slot_id);
+  return data.map((t) => ({ ...t, meal_slot_ids: byTrack[t.id] || [] }));
+}
+
+async function replacePriceTrackSlots(trackId, slotIds) {
+  const del = await supabase.from('price_track_meal_slots').delete().eq('price_track_id', trackId);
+  if (del.error) throw del.error;
+  const clean = [...new Set(Array.isArray(slotIds) ? slotIds.filter(Boolean) : [])];
+  if (!clean.length) return;
+  const { error } = await supabase
+    .from('price_track_meal_slots')
+    .insert(clean.map((meal_slot_id) => ({ price_track_id: trackId, meal_slot_id })));
   if (error) throw error;
 }
 
@@ -547,6 +610,109 @@ router.delete('/extras/:id', requireRole('developer'), asyncHandler(async (req, 
   if (error) throw error;
   if (!data) return fail(res, 404, 'תוספת לא נמצאה.');
   await auditDelete(req, 'extra', req.params.id);
+  res.json({ ok: true });
+}));
+
+// ---------------------------------------------------------------------------
+// price_tracks — מסלולי מחיר / מחיר הבסיס לפי מספר סעודות (סעיף 15)
+// ---------------------------------------------------------------------------
+router.get('/price-tracks', asyncHandler(async (req, res) => {
+  let q = supabase.from('price_tracks').select(PRICE_TRACK_SELECT).order('meals_count', { nullsFirst: true }).order('name');
+  if (req.query.active === 'true') q = q.eq('is_active', true);
+  if (req.query.active === 'false') q = q.eq('is_active', false);
+  if (req.query.search) {
+    const s = String(req.query.search).trim();
+    if (s) q = q.or(`name.ilike.%${s}%,condition_note.ilike.%${s}%`);
+  }
+
+  const { data, error } = await q;
+  if (error) throw error;
+  res.json(await priceTracksWithSlots(data));
+}));
+
+// בודק שאין מסלול פעיל אחר עם אותו צירוף סעודות בדיוק (כדי שהבחירה תהיה חד-משמעית).
+async function findDuplicateCombo(slotIds, excludeId = null) {
+  const key = slotComboKey(slotIds);
+  if (!key) return null; // צירוף ריק — נבדק בנפרד
+  const { data: tracks, error } = await supabase.from('price_tracks').select('id').eq('is_active', true);
+  if (error) throw error;
+  const others = (tracks || []).filter((t) => t.id !== excludeId);
+  if (others.length === 0) return null;
+  const withSlots = await priceTracksWithSlots(others.map((t) => ({ id: t.id })));
+  return withSlots.find((t) => slotComboKey(t.meal_slot_ids) === key) || null;
+}
+
+router.post('/price-tracks', asyncHandler(async (req, res) => {
+  const cleaned = normalizePriceTrack(req.body || {});
+  if (cleaned.error) return fail(res, 400, cleaned.error);
+
+  const slotIds = Array.isArray(req.body.meal_slot_ids) ? req.body.meal_slot_ids.filter(Boolean) : [];
+  if (slotIds.length === 0) return fail(res, 400, 'יש לבחור לפחות סעודה אחת לצירוף המסלול.');
+  const active = req.body.is_active !== false;
+  if (active && (await findDuplicateCombo(slotIds))) {
+    return fail(res, 409, 'כבר קיים מסלול פעיל לצירוף הסעודות הזה. אין שני מסלולים לאותו צירוף.');
+  }
+
+  const { data, error } = await supabase
+    .from('price_tracks')
+    .insert(cleaned.patch)
+    .select(PRICE_TRACK_SELECT)
+    .single();
+  if (error) throw error;
+
+  await replacePriceTrackSlots(data.id, slotIds);
+  const [price_track] = await priceTracksWithSlots([data]);
+  res.json({ ok: true, price_track });
+}));
+
+router.patch('/price-tracks/:id', asyncHandler(async (req, res) => {
+  const cleaned = normalizePriceTrack(req.body || {}, { partial: true });
+  if (cleaned.error) return fail(res, 400, cleaned.error);
+
+  const changingSlots = Array.isArray(req.body.meal_slot_ids);
+  if (changingSlots) {
+    const slotIds = req.body.meal_slot_ids.filter(Boolean);
+    if (slotIds.length === 0) return fail(res, 400, 'יש לבחור לפחות סעודה אחת לצירוף המסלול.');
+    // אם המסלול נשאר/הופך לפעיל, ודא שאין מסלול אחר עם אותו צירוף.
+    const willBeActive = req.body.is_active !== false;
+    if (willBeActive && (await findDuplicateCombo(slotIds, req.params.id))) {
+      return fail(res, 409, 'כבר קיים מסלול פעיל לצירוף הסעודות הזה. אין שני מסלולים לאותו צירוף.');
+    }
+  }
+
+  let track;
+  if (Object.keys(cleaned.patch).length > 0) {
+    const { data, error } = await supabase
+      .from('price_tracks')
+      .update(cleaned.patch)
+      .eq('id', req.params.id)
+      .select(PRICE_TRACK_SELECT)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return fail(res, 404, 'מסלול מחיר לא נמצא.');
+    track = data;
+  } else {
+    const { data, error } = await supabase.from('price_tracks').select(PRICE_TRACK_SELECT).eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!data) return fail(res, 404, 'מסלול מחיר לא נמצא.');
+    track = data;
+  }
+
+  if (changingSlots) await replacePriceTrackSlots(req.params.id, req.body.meal_slot_ids);
+  const [price_track] = await priceTracksWithSlots([track]);
+  res.json({ ok: true, price_track });
+}));
+
+router.delete('/price-tracks/:id', requireRole('developer'), asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('price_tracks')
+    .delete()
+    .eq('id', req.params.id)
+    .select('id')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return fail(res, 404, 'מסלול מחיר לא נמצא.');
+  await auditDelete(req, 'price_track', req.params.id);
   res.json({ ok: true });
 }));
 

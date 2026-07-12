@@ -71,6 +71,12 @@ export const api = {
   adminNotifications: () => request('/admin/notifications'),
   markNotificationRead: (id) => request(`/admin/notifications/${id}/read`, { method: 'POST' }),
 
+  // מיילים (סעיף 18)
+  emailTemplates: () => request('/admin/email/templates'),
+  updateEmailTemplate: (code, payload) => request(`/admin/email/templates/${code}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  emailLog: () => request('/admin/email/log'),
+  sendPaymentReminders: (overdueOnly) => request('/admin/orders/payment-reminders', { method: 'POST', body: JSON.stringify({ overdue_only: overdueOnly }) }),
+
   // גבייה מלקוחות (סעיף 17)
   orderPayments: (id) => request(`/admin/payments/orders/${id}/payments`),
   addOrderPayment: (id, payload) => request(`/admin/payments/orders/${id}/payments`, { method: 'POST', body: JSON.stringify(payload) }),
@@ -128,6 +134,12 @@ export const api = {
   updateCatalogExtra: (id, payload) => request(`/admin/catalog/extras/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteCatalogExtra: (id) => request(`/admin/catalog/extras/${id}`, { method: 'DELETE' }),
 
+  // מסלולי מחיר / מחיר בסיס לפי מספר סעודות (סעיף 15)
+  catalogPriceTracks: (q = '') => request(`/admin/catalog/price-tracks${q}`),
+  createCatalogPriceTrack: (payload) => request('/admin/catalog/price-tracks', { method: 'POST', body: JSON.stringify(payload) }),
+  updateCatalogPriceTrack: (id, payload) => request(`/admin/catalog/price-tracks/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteCatalogPriceTrack: (id) => request(`/admin/catalog/price-tracks/${id}`, { method: 'DELETE' }),
+
   // תיק שבת (סעיף 9)
   shabbatFiles: () => request('/admin/shabbat-files'),
   shabbatSummary: (id) => request(`/admin/shabbat-files/${id}/summary`),
@@ -140,6 +152,7 @@ export const api = {
   shabbatVolunteerAutoAssign: (id) => request(`/admin/shabbat-files/${id}/volunteers/auto-assign`, { method: 'POST' }),
   shabbatVolunteerAssign: (id, payload) => request(`/admin/shabbat-files/${id}/volunteers/assign`, { method: 'POST', body: JSON.stringify(payload) }),
   shabbatVolunteerUnassign: (id, assignmentId) => request(`/admin/shabbat-files/${id}/volunteers/assign/${assignmentId}`, { method: 'DELETE' }),
+  shabbatStatus: (id, status) => request(`/admin/shabbat-files/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   shabbatNotes: (id, notes) => request(`/admin/shabbat-files/${id}/notes`, { method: 'PATCH', body: JSON.stringify({ notes }) }),
   deleteShabbat: (id) => request(`/admin/shabbat-files/${id}`, { method: 'DELETE' }),
 

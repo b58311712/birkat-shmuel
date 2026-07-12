@@ -30,6 +30,7 @@ dist/
 *.png
 *.jpg
 *.jpeg
+*.webp
 # חריג: לוגו האפליקציה — נכס סטטי שחייב להיכנס ל-build ולדיפלוי (לא נתוני לקוחות)
 !client/public/logo.png
 
@@ -46,3 +47,7 @@ Thumbs.db
 .vscode/
 .idea/
 .agents/
+.claude/
+
+# --- תוצרי scratch / קבצים שהורדו (לא קוד) ---
+frame-*.html

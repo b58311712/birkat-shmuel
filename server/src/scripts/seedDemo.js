@@ -2,6 +2,7 @@
 // הרצה: npm run seed:demo
 import 'dotenv/config';
 import { supabase } from '../lib/supabase.js';
+import { parashaForDate } from '../lib/parasha.js';
 
 async function main() {
   console.log('🌱 מזין נתוני דמו...\n');
@@ -76,23 +77,32 @@ async function main() {
   console.log(`✓ ${demoExtras.length} תוספות בתשלום`);
 
   // --- שבתות דמו (4 שבתות עתידיות) ---
-  const parashot = ['ואתחנן', 'עקב', 'ראה', 'שופטים'];
-  const existing = await supabase.from('shabbatot').select('id, parasha').in('parasha', parashot);
-  if (existing.data?.length) await supabase.from('shabbatot').delete().in('id', existing.data.map((s) => s.id));
-
+  // הפרשה מחושבת מהתאריך הלועזי האמיתי (parasha.js), לא מקודדת-קשיח — כך
+  // שהשבת הקרובה תמיד תציג את הפרשה הנכונה, כולל פרשות מחוברות.
   let d = new Date();
   d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7)); // שבת הקרובה
-  for (const p of parashot) {
+
+  const weeks = [];
+  for (let i = 0; i < 4; i += 1) {
     const dateStr = d.toISOString().slice(0, 10);
+    weeks.push({ dateStr, parasha: parashaForDate(dateStr) });
+    d.setDate(d.getDate() + 7);
+  }
+
+  const parashot = weeks.map((w) => w.parasha).filter(Boolean);
+  const existing = await supabase.from('shabbatot').select('id, gregorian_date').in('gregorian_date', weeks.map((w) => w.dateStr));
+  if (existing.data?.length) await supabase.from('shabbatot').delete().in('id', existing.data.map((s) => s.id));
+
+  for (const { dateStr, parasha } of weeks) {
+    if (!parasha) continue; // חג/מועד ללא פרשה — מדלגים
     await supabase.from('shabbatot').insert({
-      parasha: p,
-      hebrew_date: `שבת פרשת ${p}`,
+      parasha,
+      hebrew_date: `שבת פרשת ${parasha}`,
       gregorian_date: dateStr,
       status: 'open',
     });
-    d.setDate(d.getDate() + 7);
   }
-  console.log(`✓ ${parashot.length} שבתות פתוחות`);
+  console.log(`✓ ${parashot.length} שבתות פתוחות (${parashot.join(', ')})`);
 
   // --- משתמש מנהל דמו (עם סיסמה לכניסת ניהול) ---
   const { hashPassword } = await import('../lib/auth.js');

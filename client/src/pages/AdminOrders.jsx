@@ -1,43 +1,50 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
-import { Page } from '../components/Layout.jsx';
+import { ActionIconButton } from '../components/ActionIcon.jsx';
 import { Badge, ORDER_STATUS, PAYMENT_STATUS } from '../lib/status.jsx';
 
-// רשימת הזמנות לניהול + פעולות (סעיף 9.3, 11)
+const filters = [
+  { key: '', label: 'כל ההזמנות' },
+  { key: 'pending_approval', label: 'ממתינות' },
+  { key: 'approved', label: 'מאושרות' },
+  { key: 'cancelled', label: 'מבוטלות' },
+];
+
 export default function AdminOrders({ onAuthError, currentAdmin }) {
   const [sp, setSp] = useSearchParams();
   const nav = useNavigate();
   const statusFilter = sp.get('status') || '';
   const [orders, setOrders] = useState([]);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const canDelete = currentAdmin?.role === 'developer';
 
-  // טוקן פג באמצע שימוש — מפנה לכניסת מנהל
-  function handleErr(e) {
-    if (e.name === 'AdminAuthError') { onAuthError?.(); return true; }
+  function handleErr(error) {
+    if (error.name === 'AdminAuthError') { onAuthError?.(); return true; }
     return false;
   }
 
   function load() {
     setLoading(true);
-    const q = statusFilter ? `?status=${statusFilter}` : '';
-    api.adminOrders(q).then(setOrders).catch(handleErr).finally(() => setLoading(false));
+    const query = statusFilter ? `?status=${statusFilter}` : '';
+    api.adminOrders(query).then(setOrders).catch(handleErr).finally(() => setLoading(false));
   }
+
   useEffect(load, [statusFilter]);
 
   async function doAction(fn, id, ...args) {
     setBusy(id);
     try { await fn(id, ...args); load(); }
-    catch (e) { if (!handleErr(e)) alert(e.message); }
+    catch (error) { if (!handleErr(error)) alert(error.message); }
     finally { setBusy(''); }
   }
 
   async function markPaid(id) {
     const amount = prompt('סכום ששולם (₪):');
     if (amount == null) return;
-    await doAction((oid) => api.updatePayment(oid, { payment_status: 'paid', amount, payment_method: 'bank_transfer' }), id);
+    await doAction((orderId) => api.updatePayment(orderId, { payment_status: 'paid', amount, payment_method: 'bank_transfer' }), id);
   }
 
   async function deleteOrder(order) {
@@ -45,83 +52,142 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
     await doAction(api.deleteOrder, order.id);
   }
 
-  const filters = [
-    { key: '', label: 'הכל' },
-    { key: 'pending_approval', label: 'ממתינות' },
-    { key: 'approved', label: 'מאושרות' },
-    { key: 'cancelled', label: 'מבוטלות' },
-  ];
+  const normalizedSearch = search.trim().toLocaleLowerCase('he-IL');
+  const visibleOrders = normalizedSearch
+    ? orders.filter((order) => [order.order_number, order.customers?.full_name, order.customers?.phone, order.shabbatot?.parasha]
+      .some((value) => String(value || '').toLocaleLowerCase('he-IL').includes(normalizedSearch)))
+    : orders;
+  const totalAmount = visibleOrders.reduce((sum, order) => sum + Number(order.final_amount || 0), 0);
+  const pendingCount = visibleOrders.filter((order) => order.order_status === 'pending_approval').length;
+  const unpaidCount = visibleOrders.filter((order) => order.payment_status !== 'paid' && order.order_status !== 'cancelled').length;
+
+  function renderActions(order) {
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        {order.order_status === 'pending_approval' && <ActionIconButton icon="approve" label="אישור" tone="success" disabled={busy === order.id} onClick={() => doAction(api.approveOrder, order.id)} />}
+        {order.order_status === 'approved' && order.payment_status !== 'paid' && <ActionIconButton icon="paid" label="סמן שולם" tone="warning" disabled={busy === order.id} onClick={() => markPaid(order.id)} />}
+        {order.order_status !== 'cancelled' && <ActionIconButton icon="cancel" label="ביטול" tone="danger" disabled={busy === order.id} onClick={() => confirm('לבטל את ההזמנה?') && doAction((id) => api.cancelOrder(id, ''), order.id)} />}
+        {canDelete && <ActionIconButton icon="delete" label="מחיקה" tone="danger" disabled={busy === order.id} onClick={() => deleteOrder(order)} />}
+      </div>
+    );
+  }
 
   return (
-    <Page title="ניהול הזמנות">
-      <div className="flex gap-2 mb-4 flex-wrap">
-        {filters.map((f) => (
-          <button key={f.key} onClick={() => setSp(f.key ? { status: f.key } : {})}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
-              statusFilter === f.key ? 'bg-brand-burgundy text-brand-cream' : 'bg-white border border-brand-cream-dark hover:border-brand-gold'
-            }`}>
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {loading ? <p>טוען...</p> : orders.length === 0 ? (
-        <div className="card text-center py-8 text-brand-burgundy/60">אין הזמנות בקטגוריה זו.</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
-            <thead className="bg-brand-burgundy text-brand-cream text-sm">
-              <tr>
-                <th className="p-3 text-right">מס׳</th>
-                <th className="p-3 text-right">לקוח</th>
-                <th className="p-3 text-right">שבת</th>
-                <th className="p-3 text-right">סכום</th>
-                <th className="p-3 text-right">סטטוס</th>
-                <th className="p-3 text-right">תשלום</th>
-                <th className="p-3 text-right">פעולות</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((o) => (
-                <tr key={o.id} onClick={() => nav(`/admin/orders/${o.id}`)}
-                  className="border-b border-brand-cream-dark hover:bg-brand-cream/30 cursor-pointer">
-                  <td className="p-3 font-mono text-sm">{o.order_number}</td>
-                  <td className="p-3">
-                    <div className="font-medium">{o.customers?.full_name}</div>
-                    <div className="text-xs text-brand-burgundy/50">{o.customers?.phone}</div>
-                  </td>
-                  <td className="p-3 text-sm">{o.shabbatot?.parasha}</td>
-                  <td className="p-3 font-bold">{Number(o.final_amount).toFixed(0)}₪</td>
-                  <td className="p-3"><Badge map={ORDER_STATUS} value={o.order_status} /></td>
-                  <td className="p-3"><Badge map={PAYMENT_STATUS} value={o.payment_status} /></td>
-                  <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex gap-1 flex-wrap">
-                      {o.order_status === 'pending_approval' && (
-                        <button disabled={busy === o.id} onClick={() => doAction(api.approveOrder, o.id)}
-                          className="text-xs px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700">אישור</button>
-                      )}
-                      {o.order_status === 'approved' && o.payment_status !== 'paid' && (
-                        <button disabled={busy === o.id} onClick={() => markPaid(o.id)}
-                          className="text-xs px-2 py-1 rounded bg-brand-gold-dark text-white hover:opacity-90">סמן שולם</button>
-                      )}
-                      {o.order_status !== 'cancelled' && (
-                        <button disabled={busy === o.id}
-                          onClick={() => confirm('לבטל את ההזמנה?') && doAction((id) => api.cancelOrder(id, ''), o.id)}
-                          className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700">ביטול</button>
-                      )}
-                      {canDelete && (
-                        <button disabled={busy === o.id}
-                          onClick={() => deleteOrder(o)}
-                          className="text-xs px-2 py-1 rounded bg-red-700 text-white hover:bg-red-800">מחיקה</button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <main id="admin-orders-content" className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-brand-gold/20 bg-brand-gold/[0.08] px-3 py-1 text-xs font-bold text-brand-gold-dark">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-gold" /> ניהול שוטף
+          </div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-[#2b2024] sm:text-3xl">הזמנות</h1>
+          <p className="mt-1 text-sm text-[#7c7175]">צפייה, אישור ומעקב אחר הזמנות ותשלומים.</p>
         </div>
-      )}
-    </Page>
+        <button type="button" onClick={load} disabled={loading} className="inline-flex w-fit items-center gap-2 rounded-xl border border-black/[0.07] bg-white px-4 py-2.5 text-sm font-bold text-brand-burgundy shadow-[0_5px_16px_rgba(42,31,36,0.05)] transition hover:border-brand-gold/35 disabled:opacity-50">
+          <RefreshIcon spinning={loading} /> רענון
+        </button>
+      </header>
+
+      <section className="mt-5 grid grid-cols-3 gap-3" aria-label="סיכום הזמנות">
+        <SummaryCard label="הזמנות בתצוגה" value={loading ? '–' : visibleOrders.length} />
+        <SummaryCard label="ממתינות לאישור" value={loading ? '–' : pendingCount} warning={pendingCount > 0} />
+        <SummaryCard label="סה״כ בתצוגה" value={loading ? '–' : `${totalAmount.toLocaleString('he-IL', { maximumFractionDigits: 0 })} ₪`} />
+      </section>
+
+      <section className="pilot-panel mt-5 overflow-hidden">
+        <div className="border-b border-black/[0.05] p-4 sm:px-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <label className="relative block w-full lg:max-w-sm">
+              <span className="sr-only">חיפוש הזמנות</span>
+              <span className="pointer-events-none absolute inset-y-0 right-3.5 grid place-items-center text-[#968c8f]"><SearchIcon /></span>
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="חיפוש לפי לקוח, טלפון או מספר הזמנה"
+                className="h-10 min-h-0 w-full rounded-xl border border-black/[0.065] bg-white py-2 pl-4 pr-10 text-sm text-[#3b3033] shadow-[0_2px_8px_rgba(42,31,36,0.025)] outline-none transition placeholder:text-[#a49b9e] focus:border-brand-gold/55 focus:ring-2 focus:ring-brand-gold/15"
+              />
+            </label>
+            <div className="flex gap-1 overflow-x-auto rounded-xl bg-[#f4f3f3] p-1" role="group" aria-label="סינון לפי סטטוס">
+            {filters.map((filter) => (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => setSp(filter.key ? { status: filter.key } : {})}
+                aria-pressed={statusFilter === filter.key}
+                className={`shrink-0 rounded-lg px-3.5 py-1.5 text-xs font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold sm:text-sm ${statusFilter === filter.key ? 'bg-white text-brand-burgundy shadow-[0_2px_7px_rgba(42,31,36,0.09)]' : 'text-[#81777a] hover:text-brand-burgundy'}`}
+              >
+                {filter.label}
+              </button>
+            ))}
+            </div>
+          </div>
+          {!loading && <div className="mt-3 flex items-center justify-between gap-3 text-xs font-semibold text-[#91878a]"><span>{visibleOrders.length} תוצאות</span><span>{unpaidCount > 0 ? `${unpaidCount} הזמנות עם תשלום פתוח` : 'אין תשלומים פתוחים בתצוגה'}</span></div>}
+        </div>
+
+        {loading ? <OrdersSkeleton /> : visibleOrders.length === 0 ? <EmptyState searching={Boolean(normalizedSearch)} /> : (
+          <>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="pilot-table w-full bg-white">
+                <thead className="bg-[#f7f7f7] text-xs">
+                  <tr>
+                    <th className="px-5 py-3.5 text-right">מס׳ הזמנה</th>
+                    <th className="px-4 py-3.5 text-right">לקוח</th>
+                    <th className="px-4 py-3.5 text-right">שבת</th>
+                    <th className="px-4 py-3.5 text-right">סכום</th>
+                    <th className="px-4 py-3.5 text-right">סטטוס</th>
+                    <th className="px-4 py-3.5 text-right">תשלום</th>
+                    <th className="px-5 py-3.5 text-right">פעולות</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-black/[0.05]">
+                  {visibleOrders.map((order) => (
+                    <tr key={order.id} onClick={() => nav(`/admin/orders/${order.id}`)} className="cursor-pointer transition hover:bg-[#fbfaf8] focus-within:bg-[#fbfaf8]">
+                      <td className="px-5 py-4"><span className="font-mono text-xs font-bold tabular-nums text-brand-burgundy">{order.order_number}</span></td>
+                      <td className="px-4 py-4"><div className="flex flex-col items-start"><div className="font-bold text-[#3c3034]">{order.customers?.full_name || '—'}</div><div className="mt-0.5 text-xs text-[#948a8d]" dir="ltr">{order.customers?.phone || '—'}</div></div></td>
+                      <td className="px-4 py-4 text-sm font-medium text-[#63585c]">{order.shabbatot?.parasha || '—'}</td>
+                      <td className="px-4 py-4 font-extrabold tabular-nums text-[#3c3034]">{Number(order.final_amount || 0).toLocaleString('he-IL', { maximumFractionDigits: 0 })} ₪</td>
+                      <td className="px-4 py-4"><Badge map={ORDER_STATUS} value={order.order_status} /></td>
+                      <td className="px-4 py-4"><Badge map={PAYMENT_STATUS} value={order.payment_status} /></td>
+                      <td className="px-5 py-4" onClick={(event) => event.stopPropagation()}>{renderActions(order)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="divide-y divide-black/[0.055] md:hidden">
+              {visibleOrders.map((order) => (
+                <article key={order.id} className="p-4 transition hover:bg-[#fbfaf8]">
+                  <button type="button" onClick={() => nav(`/admin/orders/${order.id}`)} className="w-full text-right focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold">
+                    <div className="flex items-start justify-between gap-3">
+                      <div><p className="font-extrabold text-[#35292d]">{order.customers?.full_name || 'ללא שם'}</p><p className="mt-0.5 text-xs text-[#948a8d]" dir="ltr">{order.customers?.phone || '—'}</p><p className="mt-1 font-mono text-xs font-bold text-brand-burgundy/55">#{order.order_number}</p></div>
+                      <p className="shrink-0 text-base font-extrabold tabular-nums text-[#35292d]">{Number(order.final_amount || 0).toLocaleString('he-IL', { maximumFractionDigits: 0 })} ₪</p>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2"><Badge map={ORDER_STATUS} value={order.order_status} /><Badge map={PAYMENT_STATUS} value={order.payment_status} />{order.shabbatot?.parasha && <span className="text-xs font-semibold text-[#8a7f82]">פרשת {order.shabbatot.parasha}</span>}</div>
+                  </button>
+                  <div className="mt-3 flex items-center justify-end border-t border-black/[0.05] pt-3"><div onClick={(event) => event.stopPropagation()}>{renderActions(order)}</div></div>
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+    </main>
   );
 }
+
+function SummaryCard({ label, value, warning }) {
+  return <div className="pilot-panel min-w-0 p-3.5 sm:p-5"><p className="truncate text-[11px] font-bold text-[#8b8084] sm:text-sm">{label}</p><p className={`mt-1 truncate text-lg font-extrabold tabular-nums sm:text-2xl ${warning ? 'text-amber-700' : 'text-[#33272b]'}`}>{value}</p></div>;
+}
+
+function OrdersSkeleton() {
+  return <div className="space-y-px bg-black/[0.04]" aria-live="polite" aria-label="טוען הזמנות">{[1, 2, 3, 4].map((item) => <div key={item} className="flex items-center gap-5 bg-white px-5 py-5"><span className="h-7 w-20 animate-pulse rounded-lg bg-[#f0eded]" /><span className="h-4 w-32 animate-pulse rounded bg-[#f0eded]" /><span className="h-4 w-20 animate-pulse rounded bg-[#f0eded]" /></div>)}</div>;
+}
+
+function EmptyState({ searching }) {
+  return <div className="flex flex-col items-center px-6 py-14 text-center"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-brand-gold/10 text-brand-gold-dark"><EmptyIcon /></span><h2 className="mt-4 font-extrabold text-[#3a2e32]">{searching ? 'לא נמצאו הזמנות מתאימות' : 'אין הזמנות בתצוגה הזו'}</h2><p className="mt-1 text-sm text-[#897e82]">{searching ? 'אפשר לנסות חיפוש קצר יותר או לשנות את המסנן.' : 'אפשר לבחור מסנן אחר כדי לראות הזמנות נוספות.'}</p></div>;
+}
+
+function RefreshIcon({ spinning }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={`h-4 w-4 ${spinning ? 'animate-spin' : ''}`} aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></svg>; }
+function SearchIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-4 w-4" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>; }
+function EmptyIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" /><path d="M8 10h8M8 14h5" /></svg>; }

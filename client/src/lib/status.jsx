@@ -30,6 +30,13 @@ export const CUSTOMER_STATUS = {
   blocked: { label: 'חסום', cls: 'bg-red-100 text-red-700' },
 };
 
+export const ACTIVE_STATUS = {
+  active: { label: 'פעיל', cls: 'bg-green-100 text-green-800' },
+  active_female: { label: 'פעילה', cls: 'bg-green-100 text-green-800' },
+  inactive: { label: 'לא פעיל', cls: 'bg-gray-200 text-gray-600' },
+  inactive_female: { label: 'לא פעילה', cls: 'bg-gray-200 text-gray-600' },
+};
+
 // תיאורים בעברית לשדות שהתקבלו מהטופס (ללא צבע — טקסט בלבד)
 export const DELIVERY_METHOD = {
   volunteer_transport: 'שינוע ע"י מתנדבים',

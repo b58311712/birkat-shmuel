@@ -18,14 +18,16 @@ insert into meal_slots (name, display_order, requires_companion, is_active) valu
 -- קטגוריות מאכלים ברירת מחדל (סעיף 13.2)
 -- ----------------------------------------------------------------------------
 insert into categories (name, display_order, is_active) values
-  ('כללי',          1, true),
-  ('מרק',           2, true),
-  ('סלטים',         3, true),
-  ('דגים',          4, true),
-  ('מנה עיקרית',    5, true),
-  ('תוספות',        6, true),
-  ('מנה אחרונה',    7, true),
-  ('סעודה שלישית',  8, true);
+  ('סלטים',          1, true),
+  ('דגים',           2, true),
+  ('מרק',            3, true),
+  ('מנה עיקרית',     4, true),
+  ('תוספות',         5, true),
+  ('מנה אחרונה',     6, true),
+  ('ביצים וכבד',      7, true),
+  ('טשולנט',          8, true),
+  ('כללי',            9, true),
+  ('סעודה שלישית',   10, true);
 
 -- ----------------------------------------------------------------------------
 -- מסלולי מחיר ברירת מחדל (סעיף 15.1) — יש לעדכן מחירים בפועל דרך הממשק
@@ -34,6 +36,18 @@ insert into price_tracks (name, condition_note, meals_count, price_per_portion, 
   ('סעודה אחת',   'מחיר למנה עבור סעודה אחת',   1, 0, true),
   ('שתי סעודות',  'מחיר למנה עבור שתי סעודות',  2, 0, true);
 -- שלוש סעודות: מחיר שתי סעודות + תוספת לפי מנה (סעיף 15.4) — יוגדר בהמשך
+
+-- שיוך כל מסלול לצירוף הסעודות המדויק שלו (סעיף 15, מיגרציה 15):
+-- "סעודה אחת" ← ליל שבת בלבד. "שתי סעודות" ← ליל שבת + שבת בבוקר.
+insert into price_track_meal_slots (price_track_id, meal_slot_id)
+select pt.id, ms.id from price_tracks pt
+join meal_slots ms on ms.name = 'ליל שבת'
+where pt.name = 'סעודה אחת';
+
+insert into price_track_meal_slots (price_track_id, meal_slot_id)
+select pt.id, ms.id from price_tracks pt
+join meal_slots ms on ms.name in ('ליל שבת', 'שבת בבוקר')
+where pt.name = 'שתי סעודות';
 
 -- ----------------------------------------------------------------------------
 -- קטגוריות מלאי ברירת מחדל (סעיף 25.1)
@@ -92,4 +106,16 @@ insert into email_templates (code, subject, body, is_active) values
    'הזמנה חדשה ממתינה לאישור',
    'התקבלה הזמנה חדשה מספר {order_number} מאת {customer_name} לשבת פרשת {parasha}.
 נא להיכנס למערכת לאישור.',
+   true),
+  ('payment_reminder',
+   'תזכורת תשלום — מטבח החסד',
+   'שלום {customer_name},
+
+זוהי תזכורת לתשלום עבור הזמנתך מספר {order_number} לשבת פרשת {parasha}.
+סכום לתשלום: {final_amount} ש"ח
+אמצעי תשלום שנבחר: {payment_method}
+מועד אחרון לתשלום: {payment_deadline}
+
+תודה,
+מטבח החסד',
    true);

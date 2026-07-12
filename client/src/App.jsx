@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Header } from './components/Layout.jsx';
+import AdminDashboardShell from './components/AdminDashboardShell.jsx';
 import { adminAuth } from './lib/api.js';
 import Login from './pages/Login.jsx';
 import AdminLogin from './pages/AdminLogin.jsx';
@@ -22,7 +23,9 @@ import AdminPurchaseOrders from './pages/AdminPurchaseOrders.jsx';
 import AdminPurchaseOrderView from './pages/AdminPurchaseOrderView.jsx';
 import AdminUsers from './pages/AdminUsers.jsx';
 import AdminCatalog from './pages/AdminCatalog.jsx';
+import AdminPrintForm from './pages/AdminPrintForm.jsx';
 import AdminFinance from './pages/AdminFinance.jsx';
+import AdminEmail from './pages/AdminEmail.jsx';
 
 const STORAGE_KEY = 'matbach_customer';
 const ADMIN_USER_KEY = 'matbach_admin_user';
@@ -71,14 +74,14 @@ export default function App() {
       ) : (
         <>
           <Route path="/admin" element={
-            <AdminShell admin={admin} onAdminLogout={adminLogout}>
+            <AdminDashboardShell admin={admin} onAdminLogout={adminLogout}>
               <AdminDashboard onAuthError={adminLogout} />
-            </AdminShell>
+            </AdminDashboardShell>
           } />
           <Route path="/admin/orders" element={
-            <AdminShell admin={admin} onAdminLogout={adminLogout}>
+            <AdminDashboardShell admin={admin} onAdminLogout={adminLogout}>
               <AdminOrders onAuthError={adminLogout} currentAdmin={admin} />
-            </AdminShell>
+            </AdminDashboardShell>
           } />
           <Route path="/admin/customers" element={
             <AdminShell admin={admin} onAdminLogout={adminLogout}>
@@ -125,6 +128,11 @@ export default function App() {
               <AdminCatalog onAuthError={adminLogout} currentAdmin={admin} />
             </AdminShell>
           } />
+          <Route path="/admin/print-form" element={
+            <AdminShell admin={admin} onAdminLogout={adminLogout}>
+              <AdminPrintForm onAuthError={adminLogout} />
+            </AdminShell>
+          } />
           <Route path="/admin/suppliers" element={
             <AdminShell admin={admin} onAdminLogout={adminLogout}>
               <AdminSuppliers onAuthError={adminLogout} currentAdmin={admin} />
@@ -148,6 +156,11 @@ export default function App() {
           <Route path="/admin/finance" element={
             <AdminShell admin={admin} onAdminLogout={adminLogout}>
               <AdminFinance onAuthError={adminLogout} />
+            </AdminShell>
+          } />
+          <Route path="/admin/email" element={
+            <AdminShell admin={admin} onAdminLogout={adminLogout}>
+              <AdminEmail onAuthError={adminLogout} />
             </AdminShell>
           } />
           <Route path="/admin/*" element={<Navigate to="/admin" replace />} />
@@ -181,9 +194,8 @@ function Shell({ customer, onLogout, children }) {
 
 function AdminShell({ admin, onAdminLogout, children }) {
   return (
-    <div className="min-h-screen">
-      <Header admin={admin} onAdminLogout={onAdminLogout} />
+    <AdminDashboardShell admin={admin} onAdminLogout={onAdminLogout}>
       {children}
-    </div>
+    </AdminDashboardShell>
   );
 }

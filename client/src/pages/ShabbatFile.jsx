@@ -17,6 +17,18 @@ const TABS = [
   { key: 'print', label: 'הדפסות' },
 ];
 
+const SHABBAT_STATUS = {
+  open: { label: 'פתוחה להזמנות', cls: 'bg-green-100 text-green-800' },
+  closed: { label: 'סגורה להזמנות', cls: 'bg-amber-100 text-amber-800' },
+  completed: { label: 'הושלמה', cls: 'bg-blue-100 text-blue-800' },
+  cancelled: { label: 'מבוטלת / המטבח לא פעיל', cls: 'bg-gray-200 text-gray-600' },
+};
+
+const SHABBAT_STATUS_OPTIONS = Object.entries(SHABBAT_STATUS).map(([value, status]) => ({
+  value,
+  label: status.label,
+}));
+
 export default function ShabbatFile({ onAuthError }) {
   const { id } = useParams();
   const [tab, setTab] = useState('summary');
@@ -42,9 +54,14 @@ export default function ShabbatFile({ onAuthError }) {
           {sh ? `תיק שבת — ${formatShabbatTitle(sh)}` : 'תיק שבת'}
         </h1>
         {sh && (
-          <div className="text-brand-burgundy/70">
-            <div className="text-sm font-medium text-brand-gold-dark/90">{formatShabbatHebrewDate(sh)}</div>
-            <div>{formatGregorianDate(sh.gregorian_date)}</div>
+          <div className="flex flex-wrap items-center gap-3 text-brand-burgundy/70">
+            <div>
+              <div className="text-sm font-medium text-brand-gold-dark/90">{formatShabbatHebrewDate(sh)}</div>
+              <div>{formatGregorianDate(sh.gregorian_date)}</div>
+            </div>
+            <span className={`badge ${SHABBAT_STATUS[sh.status]?.cls || 'bg-gray-100 text-gray-600'}`}>
+              {SHABBAT_STATUS[sh.status]?.label || sh.status}
+            </span>
           </div>
         )}
       </div>
@@ -63,7 +80,7 @@ export default function ShabbatFile({ onAuthError }) {
         ))}
       </div>
 
-      {tab === 'summary' && <SummaryTab summary={summary} id={id} onAuthError={handleErr} onNotes={setSummary} />}
+      {tab === 'summary' && <SummaryTab summary={summary} id={id} onAuthError={handleErr} onNotes={setSummary} onStatus={setSummary} />}
       {tab === 'orders' && <OrdersTab id={id} onAuthError={handleErr} />}
       {tab === 'kitchen' && <KitchenTab id={id} onAuthError={handleErr} />}
       {tab === 'inventory' && <InventoryTab id={id} onAuthError={handleErr} />}
@@ -87,9 +104,10 @@ function Stat({ label, value, hint }) {
 }
 
 // ---- לשונית סיכום (סעיף 9.2) ----
-function SummaryTab({ summary, id, onNotes }) {
+function SummaryTab({ summary, id, onNotes, onStatus }) {
   const [notes, setNotesLocal] = useState('');
   const [saving, setSaving] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
 
   useEffect(() => { setNotesLocal(summary?.shabbat?.notes || ''); }, [summary]);
 
@@ -104,8 +122,39 @@ function SummaryTab({ summary, id, onNotes }) {
     finally { setSaving(false); }
   }
 
+  async function updateStatus(status) {
+    if (status === summary.shabbat.status) return;
+    setSavingStatus(true);
+    try {
+      const result = await api.shabbatStatus(id, status);
+      onStatus?.((s) => s ? { ...s, shabbat: { ...s.shabbat, ...result.shabbat } } : s);
+    } catch (e) { alert(e.message); }
+    finally { setSavingStatus(false); }
+  }
+
   return (
     <div className="space-y-5">
+      <div className="card">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 className="font-bold text-brand-burgundy mb-1">סטטוס שבת</h3>
+            <p className="text-sm text-brand-burgundy/60">
+              רק שבת פתוחה להזמנות מופיעה ללקוחות וניתן ליצור אליה הזמנה חדשה.
+            </p>
+          </div>
+          <select
+            value={summary.shabbat.status}
+            disabled={savingStatus}
+            onChange={(e) => updateStatus(e.target.value)}
+            className="w-full rounded-lg border border-brand-cream-dark bg-white px-3 py-2 text-sm text-brand-burgundy outline-none focus:border-brand-gold disabled:opacity-60 sm:w-64"
+          >
+            {SHABBAT_STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Stat label="סך הזמנות" value={summary.total_orders} hint="לא כולל מבוטלות" />
         <Stat label="סך מנות" value={summary.total_portions} />

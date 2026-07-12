@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import { asyncHandler, fail } from '../lib/helpers.js';
 import { buildOrderItems } from '../services/orderItems.js';
 import { createAdminNotification } from '../services/adminNotifications.js';
+import { sendTemplateEmail, orderVars } from '../services/email.js';
 
 const router = Router();
 
@@ -37,7 +38,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
   // --- שבת חייבת להיות פתוחה (סעיף 8.4) ---
   const { data: shabbat, error: shErr } = await supabase
-    .from('shabbatot').select('id, status, parasha').eq('id', b.shabbat_id).single();
+    .from('shabbatot').select('id, status, parasha, payment_deadline').eq('id', b.shabbat_id).single();
   if (shErr) throw shErr;
   if (shabbat.status !== 'open')
     return fail(res, 400, 'השבת שנבחרה סגורה להזמנות.');
@@ -102,6 +103,22 @@ router.post('/', asyncHandler(async (req, res) => {
     body: `הזמנה ${order.order_number}`,
     link_path: `/admin/orders/${order.id}`,
   });
+
+  // --- מיילים (סעיף 18) — תופעת-לוואי, לא מפילה את יצירת ההזמנה ---
+  const { data: customer } = await supabase
+    .from('customers').select('full_name, email').eq('id', b.customer_id).maybeSingle();
+  const vars = orderVars({ order, customer, shabbat });
+
+  // 18.1 — סיכום הזמנה ללקוח (אם יש מייל)
+  await sendTemplateEmail({ code: 'order_summary', to: customer?.email, vars, orderId: order.id });
+
+  // 18.2 — התראה למנהלים/רכזים על הזמנה חדשה (בנוסף להתראה במסך שכבר נוצרה למעלה)
+  const { data: managers } = await supabase
+    .from('app_users').select('email')
+    .in('role', ['manager', 'coordinator', 'developer']).eq('is_active', true);
+  for (const m of managers || []) {
+    await sendTemplateEmail({ code: 'new_order_manager_alert', to: m.email, vars, orderId: order.id });
+  }
 
   res.status(201).json({ ok: true, order });
 }));

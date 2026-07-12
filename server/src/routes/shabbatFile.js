@@ -15,6 +15,7 @@ import {
 } from '../services/shabbatFile.js';
 
 const router = Router();
+const SHABBAT_STATUSES = ['open', 'closed', 'completed', 'cancelled'];
 
 async function auditDelete(req, entityType, entityId, details = null) {
   const { error } = await supabase.from('audit_log').insert({
@@ -56,6 +57,31 @@ router.get('/', asyncHandler(async (req, res) => {
   }
 
   res.json((shabbatot || []).map((s) => ({ ...s, order_count: countByShabbat[s.id] || 0 })));
+}));
+
+// PATCH /api/admin/shabbat-files/:id/status -- שינוי סטטוס שבת על ידי מנהל/רכז (סעיף 8.4)
+router.patch('/:id/status', asyncHandler(async (req, res) => {
+  const status = String(req.body?.status || '').trim();
+  if (!SHABBAT_STATUSES.includes(status)) return fail(res, 400, 'סטטוס שבת לא תקין.');
+
+  const { data, error } = await supabase
+    .from('shabbatot')
+    .update({ status })
+    .eq('id', req.params.id)
+    .select('id, parasha, hebrew_date, gregorian_date, status, payment_deadline, notes')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return fail(res, 404, 'שבת לא נמצאה.');
+
+  await supabase.from('audit_log').insert({
+    entity_type: 'shabbat',
+    entity_id: req.params.id,
+    action: 'update',
+    actor_id: req.appUser?.sub || null,
+    details: { status },
+  });
+
+  res.json({ ok: true, shabbat: data });
 }));
 
 // DELETE /api/admin/shabbat-files/:id -- developer hard delete of a shabbat and its work file.

@@ -38,31 +38,95 @@ export async function buildOrderItems(input) {
     throw err;
   }
 
-  // --- מסלולי מחיר לחישוב בסיס (סעיף 15) ---
+  // --- מסלולי מחיר לחישוב בסיס לפי צירוף הסעודות המדויק (סעיף 15) ---
   const { data: priceTracks } = await supabase
     .from('price_tracks').select('*').eq('is_active', true);
-  const base = calcBase(priceTracks || [], slots);
+  const { data: trackSlots } = await supabase
+    .from('price_track_meal_slots').select('price_track_id, meal_slot_id');
+  const slotsByTrack = {};
+  for (const row of trackSlots || []) (slotsByTrack[row.price_track_id] ||= []).push(row.meal_slot_id);
+  const tracksWithSlots = (priceTracks || []).map((t) => ({ ...t, meal_slot_ids: slotsByTrack[t.id] || [] }));
+
+  const base = calcBase(tracksWithSlots, slots);
+  if (base.noMatch) {
+    const err = new Error('no-price-track');
+    err.userMessage = 'לא הוגדר מחיר לצירוף הסעודות שנבחר. יש לפנות למנהל להגדרת מסלול מחיר מתאים.';
+    throw err;
+  }
 
   // --- מאכלים: snapshot של שם + תוספת מחיר אם דורש (סעיף 13.5) ---
+  // בקטגוריות עם חלוקת מנות (requires_portion_split): לכל מאכל כמות מנות משלו,
+  // וסך הכמויות בכל (סעודה × קטגוריה כזו) חייב להשתוות למנות הסעודה (סעיף 13).
   const mealsInput = Array.isArray(input.meals) ? input.meals : [];
   let mealExtraCharges = 0;
   const mealRows = [];
   if (mealsInput.length > 0) {
     const mealIds = [...new Set(mealsInput.map((m) => m.meal_id))];
     const { data: mealsData } = await supabase
-      .from('meals').select('id, name, requires_extra_charge, extra_charge_amount')
+      .from('meals').select('id, name, category_id, requires_extra_charge, extra_charge_amount')
       .in('id', mealIds);
     const byId = Object.fromEntries((mealsData || []).map((m) => [m.id, m]));
+
+    // אילו קטגוריות דורשות חלוקת מנות
+    const catIds = [...new Set((mealsData || []).map((m) => m.category_id).filter(Boolean))];
+    const splitCategories = new Set();
+    if (catIds.length > 0) {
+      const { data: cats } = await supabase
+        .from('categories').select('id, requires_portion_split').in('id', catIds);
+      for (const c of cats || []) if (c.requires_portion_split) splitCategories.add(c.id);
+    }
+    const portionsBySlot = Object.fromEntries(slots.map((s) => [s.meal_slot_id, Number(s.portions)]));
+
+    // סך כמויות שהוזנו לכל (סעודה × קטגוריה שדורשת חלוקה) — לאימות מול מנות הסעודה
+    const splitTotals = {}; // `${slotId}:${catId}` -> { sum, count, slotId, catId }
+    for (const m of mealsInput) {
+      const meal = byId[m.meal_id];
+      if (!meal || !splitCategories.has(meal.category_id)) continue;
+      const key = `${m.meal_slot_id}:${meal.category_id}`;
+      const entry = (splitTotals[key] ||= { sum: 0, count: 0, slotId: m.meal_slot_id });
+      entry.count += 1;
+      // סוג יחיד בקטגוריה → מקבל אוטומטית את כל מנות הסעודה
+      const declared = m.portions != null ? Number(m.portions) : null;
+      entry.declaredSum = (entry.declaredSum || 0) + (declared != null ? declared : 0);
+      entry.allDeclared = (entry.allDeclared ?? true) && declared != null;
+    }
+    for (const [, entry] of Object.entries(splitTotals)) {
+      const slotPortions = portionsBySlot[entry.slotId] || 0;
+      if (entry.count === 1) continue; // סוג יחיד — יקבל את כל המנות בלולאה למטה
+      if (!entry.allDeclared) {
+        const err = new Error('portion-split-missing');
+        err.userMessage = 'יש להזין מספר מנות לכל מאכל בקטגוריה שמחייבת חלוקת כמויות.';
+        throw err;
+      }
+      if (entry.declaredSum !== slotPortions) {
+        const err = new Error('portion-split-mismatch');
+        err.userMessage = `סך המנות של המאכלים בקטגוריה חייב להיות שווה למספר המנות של הסעודה (${slotPortions}).`;
+        throw err;
+      }
+    }
+
     for (const m of mealsInput) {
       const meal = byId[m.meal_id];
       if (!meal) continue;
       const charge = meal.requires_extra_charge ? Number(meal.extra_charge_amount || 0) : 0;
       mealExtraCharges += charge;
+
+      // כמות מנות למאכל: רק בקטגוריות שדורשות חלוקה; NULL בשאר (כל מנות הסעודה)
+      let mealPortions = null;
+      if (splitCategories.has(meal.category_id)) {
+        const key = `${m.meal_slot_id}:${meal.category_id}`;
+        const slotPortions = portionsBySlot[m.meal_slot_id] || 0;
+        mealPortions = splitTotals[key]?.count === 1
+          ? slotPortions                                   // סוג יחיד → כל המנות
+          : Number(m.portions);                            // חולק — כבר אומת למעלה
+      }
+
       mealRows.push({
         meal_slot_id: m.meal_slot_id,
         meal_id: m.meal_id,
         meal_name_snapshot: meal.name,
         extra_charge_amount: charge,
+        portions: mealPortions,
       });
     }
   }

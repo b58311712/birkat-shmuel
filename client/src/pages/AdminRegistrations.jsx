@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
+import { ActionIconButton } from '../components/ActionIcon.jsx';
 
 export default function AdminRegistrations({ onAuthError }) {
   const [searchParams] = useSearchParams();
@@ -98,20 +99,22 @@ export default function AdminRegistrations({ onAuthError }) {
                   <td className="p-3 text-sm">{request.address || '-'}</td>
                   <td className="p-3 text-sm" dir="ltr">{formatDate(request.created_at)}</td>
                   <td className="p-3 text-sm whitespace-nowrap">
-                    <button
+                    <div className="flex flex-wrap gap-1">
+                    <ActionIconButton
+                      icon="approve"
+                      label={busy === request.id ? 'מאשר...' : 'אישור רישום'}
+                      tone="success"
                       onClick={() => approve(request)}
                       disabled={busy === request.id}
-                      className="text-xs px-3 py-1.5 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-60"
-                    >
-                      {busy === request.id ? 'מאשר...' : 'אישור רישום'}
-                    </button>
-                    <button
+                    />
+                    <ActionIconButton
+                      icon="cancel"
+                      label="דחיית רישום"
+                      tone="danger"
                       onClick={() => reject(request)}
                       disabled={busy === request.id}
-                      className="mr-2 text-xs px-3 py-1.5 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
-                    >
-                      דחיית רישום
-                    </button>
+                    />
+                    </div>
                   </td>
                 </tr>
               ))}

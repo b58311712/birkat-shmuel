@@ -56,7 +56,10 @@ export default function OrderView() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {(mealsBySlot[s.meal_slot_id] || []).map((m) => (
-                  <span key={m.id} className="badge bg-brand-cream text-brand-burgundy">{m.meal_name_snapshot}</span>
+                  <span key={m.id} className="badge bg-brand-cream text-brand-burgundy">
+                    {m.meal_name_snapshot}
+                    {m.portions != null && <span className="font-bold"> × {Number(m.portions)}</span>}
+                  </span>
                 ))}
                 {!(mealsBySlot[s.meal_slot_id] || []).length && <span className="text-sm text-brand-burgundy/40">לא נבחרו מאכלים</span>}
               </div>

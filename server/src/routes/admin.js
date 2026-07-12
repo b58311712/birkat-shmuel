@@ -5,6 +5,8 @@ import { asyncHandler, fail } from '../lib/helpers.js';
 import { buildOrderItems } from '../services/orderItems.js';
 import { normalizePhone, isValidPhone } from '../lib/helpers.js';
 import { hashPassword, requireRole } from '../lib/auth.js';
+import { sendTemplateEmail, orderVars } from '../services/email.js';
+import { createAdminNotification } from '../services/adminNotifications.js';
 
 const router = Router();
 
@@ -771,6 +773,19 @@ router.post('/orders/:id/approve', asyncHandler(async (req, res) => {
     order_id: req.params.id, action: 'ההזמנה אושרה',
   });
   await markEntityNotificationsRead('orders', req.params.id);
+
+  // 18.3 — מייל אישור ללקוח (כולל תזכורת לתשלום)
+  const { data: customer } = await supabase
+    .from('customers').select('full_name, email').eq('id', data.customer_id).maybeSingle();
+  const { data: shabbat } = await supabase
+    .from('shabbatot').select('parasha, payment_deadline').eq('id', data.shabbat_id).maybeSingle();
+  await sendTemplateEmail({
+    code: 'order_approved',
+    to: customer?.email,
+    vars: orderVars({ order: data, customer, shabbat }),
+    orderId: data.id,
+  });
+
   res.json({ ok: true, order: data });
 }));
 
@@ -950,6 +965,53 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
     unpaid_approved: unpaidActive.count || 0,
     pending_registrations: pendingRegistrations || 0,
   });
+}));
+
+// POST /api/admin/orders/payment-reminders — שליחת תזכורות תשלום (סעיף 18.4)
+// שולח תזכורת לכל ההזמנות המאושרות שטרם שולמו במלואן.
+// body: { overdue_only?: boolean } — אם true, רק הזמנות שעבר מועד התשלום שלהן.
+// ללקוח עם מייל: נשלח מייל (או dry_run). ללקוח ללא מייל: נוצרת התראה פנימית (סעיף 18.4).
+router.post('/orders/payment-reminders', asyncHandler(async (req, res) => {
+  const overdueOnly = req.body?.overdue_only === true;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data: orders, error } = await supabase
+    .from('orders')
+    .select('id, order_number, final_amount, preferred_payment_method, customer_id, shabbat_id, customers(full_name, email), shabbatot(parasha, payment_deadline)')
+    .eq('order_status', 'approved')
+    .in('payment_status', ['unpaid', 'partially_paid']);
+  if (error) throw error;
+
+  let emailed = 0, dryRun = 0, internal = 0, skipped = 0;
+  for (const o of orders || []) {
+    const deadline = o.shabbatot?.payment_deadline;
+    if (overdueOnly && !(deadline && deadline < today)) { skipped++; continue; }
+
+    const customer = o.customers;
+    const vars = orderVars({ order: o, customer, shabbat: o.shabbatot });
+
+    if (customer?.email) {
+      const result = await sendTemplateEmail({
+        code: 'payment_reminder', to: customer.email, vars, orderId: o.id,
+      });
+      if (result?.status === 'sent') emailed++;
+      else if (result?.status === 'dry_run') dryRun++;
+      else skipped++;
+    } else {
+      // אין מייל ללקוח — התראה פנימית למנהל/רכז (סעיף 18.4)
+      await createAdminNotification({
+        notification_type: 'payment_reminder',
+        entity_table: 'orders',
+        entity_id: o.id,
+        title: 'תזכורת תשלום ללא מייל לקוח',
+        body: `הזמנה ${o.order_number} — ${o.customers?.full_name || ''} (אין מייל, יש ליצור קשר ידני)`,
+        link_path: `/admin/orders/${o.id}`,
+      });
+      internal++;
+    }
+  }
+
+  res.json({ ok: true, total: (orders || []).length, emailed, dry_run: dryRun, internal, skipped });
 }));
 
 // GET /api/admin/registrations — בקשות רישום ממתינות (סעיף 7)
