@@ -15,6 +15,7 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
   const [sp, setSp] = useSearchParams();
   const nav = useNavigate();
   const statusFilter = sp.get('status') || '';
+  const shabbatFilter = sp.get('shabbat_id') || '';
   const [orders, setOrders] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -28,11 +29,14 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
 
   function load() {
     setLoading(true);
-    const query = statusFilter ? `?status=${statusFilter}` : '';
+    const params = new URLSearchParams();
+    if (statusFilter) params.set('status', statusFilter);
+    if (shabbatFilter) params.set('shabbat_id', shabbatFilter);
+    const query = params.size ? `?${params.toString()}` : '';
     api.adminOrders(query).then(setOrders).catch(handleErr).finally(() => setLoading(false));
   }
 
-  useEffect(load, [statusFilter]);
+  useEffect(load, [statusFilter, shabbatFilter]);
 
   async function doAction(fn, id, ...args) {
     setBusy(id);
@@ -76,9 +80,6 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
     <main id="admin-orders-content" className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-brand-gold/20 bg-brand-gold/[0.08] px-3 py-1 text-xs font-bold text-brand-gold-dark">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand-gold" /> ניהול שוטף
-          </div>
           <h1 className="text-2xl font-extrabold tracking-tight text-[#2b2024] sm:text-3xl">הזמנות</h1>
           <p className="mt-1 text-sm text-[#7c7175]">צפייה, אישור ומעקב אחר הזמנות ותשלומים.</p>
         </div>
@@ -112,7 +113,12 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
               <button
                 key={filter.key}
                 type="button"
-                onClick={() => setSp(filter.key ? { status: filter.key } : {})}
+                onClick={() => {
+                  const params = {};
+                  if (filter.key) params.status = filter.key;
+                  if (shabbatFilter) params.shabbat_id = shabbatFilter;
+                  setSp(params);
+                }}
                 aria-pressed={statusFilter === filter.key}
                 className={`shrink-0 rounded-lg px-3.5 py-1.5 text-xs font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold sm:text-sm ${statusFilter === filter.key ? 'bg-white text-brand-burgundy shadow-[0_2px_7px_rgba(42,31,36,0.09)]' : 'text-[#81777a] hover:text-brand-burgundy'}`}
               >

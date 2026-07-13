@@ -129,6 +129,8 @@ export const api = {
   deleteCatalogMealSlot: (id) => request(`/admin/catalog/meal-slots/${id}`, { method: 'DELETE' }),
   catalogMealRecipe: (id) => request(`/admin/catalog/meals/${id}/recipe`),
   setCatalogMealRecipe: (id, payload) => request(`/admin/catalog/meals/${id}/recipe`, { method: 'PUT', body: JSON.stringify(payload) }),
+  catalogMealPacking: (id) => request(`/admin/catalog/meals/${id}/packing`),
+  setCatalogMealPacking: (id, payload) => request(`/admin/catalog/meals/${id}/packing`, { method: 'PUT', body: JSON.stringify(payload) }),
   catalogExtras: (q = '') => request(`/admin/catalog/extras${q}`),
   createCatalogExtra: (payload) => request('/admin/catalog/extras', { method: 'POST', body: JSON.stringify(payload) }),
   updateCatalogExtra: (id, payload) => request(`/admin/catalog/extras/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),

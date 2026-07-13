@@ -58,6 +58,16 @@
   .badge {
     @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-semibold ring-1 ring-inset ring-black/[0.04];
   }
+  /* Payment is a separate status dimension: keep the semantic hue, but use an
+     outlined badge and a currency marker so it cannot be mistaken for workflow status. */
+  .badge-payment {
+    background-color: rgba(255, 255, 255, 0.82) !important;
+    @apply border border-current ring-0;
+  }
+  .badge-payment-mark {
+    background-color: color-mix(in srgb, currentColor 10%, transparent);
+    @apply inline-flex h-4 min-w-4 items-center justify-center rounded-full text-[0.65rem] leading-none;
+  }
   /* מבטא כותרת-קטע קטן (eyebrow) בזהב — קו-על אחיד למסכים. */
   .section-title {
     @apply text-xs font-bold uppercase tracking-wide text-brand-gold-dark;
@@ -341,10 +351,11 @@ header .text-brand-gold-light {
 }
 
 header a:has(img[src="/logo.png"]) img {
-  padding: 0.125rem;
-  background: #f5efe0;
-  border: 1px solid rgba(199, 154, 75, 0.35);
-  box-shadow: 0 2px 12px rgba(66, 18, 31, 0.08);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .min-h-screen.bg-brand-cream > .w-full.max-w-md > .text-center img[src="/logo.png"] {
@@ -355,6 +366,123 @@ header a:has(img[src="/logo.png"]) img {
   background: #fff;
   border: 1px solid rgba(199, 154, 75, 0.35);
   box-shadow: 0 2px 12px rgba(66, 18, 31, 0.08);
+}
+
+/* Customer ordering experience — aligned with the new light dashboard language. */
+.customer-login,
+.customer-ui {
+  background:
+    radial-gradient(circle at 85% 5%, rgba(199, 154, 75, 0.12), transparent 24rem),
+    #f1f2f4;
+}
+
+.customer-login img[src="/logo.png"],
+.customer-ui img[src="/logo.png"] {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.login-card {
+  border: 1px solid rgba(42, 31, 36, 0.06);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  box-shadow: 0 24px 70px rgba(42, 31, 36, 0.09);
+}
+
+.customer-ui > header {
+  border-color: rgba(42, 31, 36, 0.055);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8px 28px rgba(42, 31, 36, 0.045);
+}
+
+.customer-ui > header img[src="/logo.png"] {
+  width: 3rem;
+  height: 3rem;
+}
+
+.customer-ui main {
+  max-width: 1180px;
+}
+
+.customer-ui main > .mb-6:first-child h1 {
+  color: #2b2024;
+  letter-spacing: -0.025em;
+}
+
+.customer-ui main > .mb-6:first-child > .h-0\.5 {
+  display: none;
+}
+
+.customer-ui .card {
+  border-color: rgba(42, 31, 36, 0.06);
+  border-radius: 22px;
+  box-shadow: 0 10px 35px rgba(42, 31, 36, 0.055);
+}
+
+.customer-ui .card > h2 {
+  color: #2b2024;
+  font-size: 1.05rem;
+}
+
+.customer-ui input:not([type="checkbox"]):not([type="radio"]),
+.customer-login input:not([type="checkbox"]):not([type="radio"]) {
+  border-color: rgba(42, 31, 36, 0.09);
+  border-radius: 12px;
+  background: #f8f8f7;
+  box-shadow: none;
+}
+
+.customer-ui input:not([type="checkbox"]):not([type="radio"]):focus,
+.customer-login input:not([type="checkbox"]):not([type="radio"]):focus {
+  border-color: rgba(199, 154, 75, 0.7);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(199, 154, 75, 0.13);
+}
+
+.customer-ui .btn-primary,
+.customer-login .btn-primary {
+  min-height: 2.75rem;
+  border-radius: 12px;
+  background: #5c1a2e;
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(92, 26, 46, 0.18);
+}
+
+.customer-ui .btn-primary:hover,
+.customer-login .btn-primary:hover {
+  background: #6b1e2d;
+}
+
+@media (max-width: 639px) {
+  .customer-ui > header > div {
+    gap: 0.65rem;
+    padding-block: 0.65rem;
+  }
+
+  .customer-ui > header nav {
+    width: 100%;
+    flex-basis: 100%;
+    justify-content: stretch;
+  }
+
+  .customer-ui > header nav > span {
+    display: none;
+  }
+
+  .customer-ui > header nav > a,
+  .customer-ui > header nav > button {
+    flex: 1;
+    text-align: center;
+  }
+
+  .customer-ui .card {
+    padding: 1rem;
+    border-radius: 18px;
+  }
 }
 
 .min-h-screen.bg-brand-cream > .w-full.max-w-md > .text-center .text-brand-cream {

@@ -32,8 +32,15 @@ export default function NewOrder({ customer }) {
 
   const selectedSlots = useMemo(
     () => Object.entries(slots)
-      .filter(([, p]) => Number(p) > 0)
+      .filter(([, p]) => Number(p) >= 50 && Number(p) <= 100)
       .map(([id, p]) => ({ meal_slot_id: id, portions: Number(p) })),
+    [slots]
+  );
+
+  const invalidSlotIds = useMemo(
+    () => Object.entries(slots)
+      .filter(([, portions]) => portions !== '' && (Number(portions) < 50 || Number(portions) > 100))
+      .map(([id]) => id),
     [slots]
   );
 
@@ -160,8 +167,12 @@ export default function NewOrder({ customer }) {
       setError('נא לבחור שבת.');
       return false;
     }
+    if (invalidSlotIds.length > 0) {
+      setError('מספר המנות בכל סעודה שנבחרה חייב להיות בין 50 ל־100.');
+      return false;
+    }
     if (selectedSlots.length === 0) {
-      setError('נא לבחור לפחות סעודה אחת עם מספר מנות.');
+      setError('נא לבחור לפחות סעודה אחת עם 50 עד 100 מנות.');
       return false;
     }
     if (splitErrors.length > 0) {
@@ -208,7 +219,7 @@ export default function NewOrder({ customer }) {
   if (loading) return <Page title="הזמנה חדשה"><p>טוען...</p></Page>;
 
   return (
-    <Page title="הזמנה חדשה" subtitle="בחר/י שבת, סעודות, מאכלים ותוספות">
+    <Page title="הזמנה חדשה">
       {error && <div className="bg-red-50 text-red-700 rounded-xl p-3 mb-4 whitespace-pre-line">{error}</div>}
 
       <section className="card mb-5">
@@ -241,7 +252,8 @@ export default function NewOrder({ customer }) {
         <h2 className="font-bold text-brand-burgundy mb-3">2. סעודות ומספר מנות</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {catalog.meal_slots.map((slot) => {
-            const hasPortions = Number(slots[slot.id]) > 0;
+            const hasPortions = Number(slots[slot.id]) >= 50 && Number(slots[slot.id]) <= 100;
+            const invalidPortions = invalidSlotIds.includes(slot.id);
 
             return (
               <div
@@ -262,13 +274,18 @@ export default function NewOrder({ customer }) {
                   <span className="text-xs text-brand-burgundy/60">מנות</span>
                   <input
                     type="number"
-                    min="0"
-                    className="input w-16 px-2 py-1 text-center text-base"
+                    min="50"
+                    max="100"
+                    aria-invalid={invalidPortions}
+                    className={`input w-20 px-2 py-1 text-center text-base ${invalidPortions ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}
                     value={slots[slot.id] || ''}
-                    placeholder="0"
+                    placeholder="50–100"
                     onChange={(e) => setSlots({ ...slots, [slot.id]: e.target.value })}
                   />
                 </label>
+                {invalidPortions && (
+                  <span className="text-xs font-medium text-red-600">יש להזין 50–100</span>
+                )}
               </div>
             );
           })}
@@ -297,37 +314,41 @@ export default function NewOrder({ customer }) {
         </section>
       )}
 
-      <section className="card mb-5">
-        <h2 className="font-bold text-brand-burgundy mb-3">4. תוספות בתשלום</h2>
-        <div className="space-y-2">
-          {catalog.extras.map((e) => (
-            <div key={e.id} className="flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-brand-cream/40">
-              <div>
-                <span className="font-medium">{e.name}</span>
-                <span className="text-sm text-brand-burgundy/60"> - {e.unit_price} ש"ח ל{e.billing_unit}</span>
-                {e.customer_note && <div className="text-xs text-brand-gold-dark">{e.customer_note}</div>}
-              </div>
-              <input
-                type="number"
-                min="0"
-                className="input w-24 py-1 text-center"
-                placeholder="0"
-                value={extras[e.id] || ''}
-                onChange={(ev) => setExtras({ ...extras, [e.id]: ev.target.value })}
-              />
+      {selectedSlots.length > 0 && (
+        <>
+          <section className="card mb-5">
+            <h2 className="font-bold text-brand-burgundy mb-3">4. תוספות בתשלום</h2>
+            <div className="space-y-2">
+              {catalog.extras.map((e) => (
+                <div key={e.id} className="flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-brand-cream/40">
+                  <div>
+                    <span className="font-medium">{e.name}</span>
+                    <span className="text-sm text-brand-burgundy/60"> - {e.unit_price} ש"ח ל{e.billing_unit}</span>
+                    {e.customer_note && <div className="text-xs text-brand-gold-dark">{e.customer_note}</div>}
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    className="input w-24 py-1 text-center"
+                    placeholder="0"
+                    value={extras[e.id] || ''}
+                    onChange={(ev) => setExtras({ ...extras, [e.id]: ev.target.value })}
+                  />
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
+          </section>
 
-      <section className="card mb-5">
-        <h2 className="font-bold text-brand-burgundy mb-3">5. פרטי משלוח</h2>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <LabeledInput label="כתובת האולם" value={venueAddress} onChange={setVenueAddress} />
-          <LabeledInput label="איש קשר לקבלת המשלוח" value={contactName} onChange={setContactName} />
-          <LabeledInput label="טלפון איש קשר" value={contactPhone} onChange={setContactPhone} dir="ltr" />
-        </div>
-      </section>
+          <section className="card mb-5">
+            <h2 className="font-bold text-brand-burgundy mb-3">5. פרטי משלוח</h2>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,0.85fr)] sm:items-end">
+              <LabeledInput label="כתובת האולם" value={venueAddress} onChange={setVenueAddress} />
+              <LabeledInput label="איש קשר" value={contactName} onChange={setContactName} />
+              <LabeledInput label="טלפון" value={contactPhone} onChange={setContactPhone} dir="ltr" />
+            </div>
+          </section>
+        </>
+      )}
 
       <section className="card sticky bottom-4 border-2 border-brand-gold">
         <div className="flex items-center justify-between flex-wrap gap-3">

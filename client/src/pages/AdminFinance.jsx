@@ -49,6 +49,19 @@ export default function AdminFinance({ onAuthError }) {
         <SecondaryMetric label="חובות לספקים" value={reports.supplier_debts_total} tone={reports.supplier_debts_total > 0 ? 'warning' : 'neutral'} />
       </section>
 
+      <section className="pilot-panel mt-5 p-5 sm:p-6" aria-labelledby="expense-sources-title">
+        <div>
+          <p className="text-xs font-bold text-brand-gold-dark">מקור הנתונים</p>
+          <h2 id="expense-sources-title" className="mt-0.5 text-lg font-extrabold text-[#2b2024]">ממה מורכבות ההוצאות?</h2>
+          <p className="mt-1 text-sm text-[#7c7175]">הסכום הכולל מחבר תשלומים שבוצעו לספקים והוצאות כלליות שנרשמו במערכת.</p>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <ExpenseSource label="תשלומים לספקים" value={expenses.supplier_paid} detail="לפי הסכום ששולם בפועל" />
+          <ExpenseSource label="הוצאות כלליות" value={expenses.general_expenses} detail="לפי ההוצאות שנרשמו במערכת" />
+          <ExpenseSource label="סה״כ הוצאות" value={expenses.total} detail="חיבור שני מקורות ההוצאה" total />
+        </div>
+      </section>
+
       <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,.75fr)]" aria-label="ניתוח חזותי">
         <MonthlyChart income={income.by_month} expenses={expenses.by_month} />
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-1">
@@ -132,6 +145,16 @@ export default function AdminFinance({ onAuthError }) {
 
 const round2 = (number) => Math.round((Number(number) + Number.EPSILON) * 100) / 100;
 const nis = (number) => `${Number(number || 0).toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`;
+
+function ExpenseSource({ label, value, detail, total = false }) {
+  return (
+    <div className={`rounded-2xl border p-4 ${total ? 'border-brand-gold/30 bg-brand-gold/[0.08]' : 'border-black/[0.06] bg-white'}`}>
+      <p className="text-sm font-bold text-[#655b5f]">{label}</p>
+      <p className="mt-1 text-xl font-extrabold text-[#2b2024]" dir="ltr">{nis(value)}</p>
+      <p className="mt-1 text-xs font-medium text-[#91878a]">{detail}</p>
+    </div>
+  );
+}
 
 function MonthlyChart({ income, expenses }) {
   const expenseByMonth = new Map(expenses.map((row) => [row.month, Number(row.amount || 0)]));

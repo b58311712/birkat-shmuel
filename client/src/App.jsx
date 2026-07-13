@@ -185,7 +185,7 @@ export default function App() {
 
 function Shell({ customer, onLogout, children }) {
   return (
-    <div className="min-h-screen">
+    <div className="customer-ui min-h-screen">
       <Header customer={customer} onLogout={onLogout} />
       {children}
     </div>

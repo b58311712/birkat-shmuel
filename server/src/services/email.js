@@ -12,6 +12,7 @@
 // =============================================================================
 import nodemailer from 'nodemailer';
 import { supabase } from '../lib/supabase.js';
+import { renderBrandedEmail, brandLogoAttachment } from './emailTemplate.js';
 
 // תיאורים בעברית לאמצעי תשלום — לשימוש ב-placeholder {payment_method}
 const PAYMENT_METHOD_HE = {
@@ -105,8 +106,19 @@ export async function sendTemplateEmail({ code, to, vars = {}, orderId = null })
       return { status: 'dry_run' };
     }
 
+    // עוטפים את גוף הטקסט של המנהל במעטפת HTML מותגית; הטקסט נשמר כגיבוי.
+    const logoAttachment = brandLogoAttachment();
+    const html = renderBrandedEmail({ subject, body, hasLogo: !!logoAttachment });
+
     try {
-      await transporter.sendMail({ from: fromAddress(), to, subject, text: body });
+      await transporter.sendMail({
+        from: fromAddress(),
+        to,
+        subject,
+        text: body,
+        html,
+        attachments: logoAttachment ? [logoAttachment] : [],
+      });
       await logEmail({ template_code: code, to_email: to, subject, body, status: 'sent', order_id: orderId });
       return { status: 'sent' };
     } catch (sendErr) {

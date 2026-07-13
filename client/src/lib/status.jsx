@@ -77,5 +77,12 @@ export const SUPPLIER_CHANNEL = {
 
 export function Badge({ map, value }) {
   const s = map[value] || { label: value, cls: 'bg-gray-100 text-gray-600' };
-  return <span className={`badge ${s.cls}`}>{s.label}</span>;
+  const isPayment = map === PAYMENT_STATUS || map === SUPPLIER_PAYMENT_STATUS;
+
+  return (
+    <span className={`badge ${isPayment ? 'badge-payment' : ''} ${s.cls}`}>
+      {isPayment && <span className="badge-payment-mark" aria-hidden="true">₪</span>}
+      {s.label}
+    </span>
+  );
 }

@@ -387,10 +387,6 @@ export function Page({ title, children, subtitle }) {
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
       {title && (
         <div className="mb-6">
-          <div className="mb-2.5 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-brand-gold-dark">
-            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-brand-gold" />
-            מטבח החסד
-          </div>
           <h1 className="text-2xl font-extrabold tracking-tight text-brand-burgundy sm:text-3xl">{title}</h1>
           {/* מבטא-זהב דק מתחת לכותרת — עקבי עם שפת העיצוב של הדשבורד */}
           <div aria-hidden="true" className="mt-3 h-0.5 w-16 rounded-full bg-gradient-to-l from-brand-gold via-brand-gold-light to-transparent" />

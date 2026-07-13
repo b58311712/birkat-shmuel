@@ -9,6 +9,7 @@ export default function AdminDashboardShell({ admin, onAdminLogout, children }) 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifications, setNotifications] = useState(null);
+  const [dashboard, setDashboard] = useState(null);
   const controlsRef = useRef(null);
 
   useEffect(() => {
@@ -27,6 +28,14 @@ export default function AdminDashboardShell({ admin, onAdminLogout, children }) 
       cancelled = true;
       window.clearInterval(timer);
     };
+  }, [onAdminLogout]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.adminDashboard()
+      .then((result) => { if (!cancelled) setDashboard(result); })
+      .catch((err) => { if (err.name === 'AdminAuthError') onAdminLogout?.(); });
+    return () => { cancelled = true; };
   }, [onAdminLogout]);
 
   useEffect(() => {
@@ -75,11 +84,13 @@ export default function AdminDashboardShell({ admin, onAdminLogout, children }) 
             </div>
           </div>
 
+          <NextShabbatSummary dashboard={dashboard} />
+
           <div ref={controlsRef} className="flex items-center gap-1.5 sm:gap-2">
-            <Link to="/admin/orders" className="hidden rounded-xl border border-black/[0.06] bg-white px-4 py-2.5 text-sm font-bold text-brand-burgundy shadow-[0_4px_16px_rgba(42,31,36,0.05)] transition hover:border-brand-gold/40 hover:bg-brand-cream/35 sm:inline-flex">
+            <Link to="/admin/orders" className="hidden rounded-xl border border-black/[0.06] bg-white px-4 py-2.5 text-sm font-bold text-brand-burgundy shadow-[0_4px_16px_rgba(42,31,36,0.05)] transition hover:border-brand-gold/40 hover:bg-brand-cream/35 xl:inline-flex">
               כל ההזמנות
             </Link>
-            <Link to="/admin/orders?status=pending_approval" className="hidden rounded-xl bg-brand-burgundy px-4 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(92,26,46,0.18)] transition hover:bg-brand-burgundy-light md:inline-flex">
+            <Link to="/admin/orders?status=pending_approval" className="hidden rounded-xl bg-brand-burgundy px-4 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(92,26,46,0.18)] transition hover:bg-brand-burgundy-light xl:inline-flex">
               טיפול בהזמנות
             </Link>
             <AdminNotificationsBell
@@ -119,6 +130,70 @@ export default function AdminDashboardShell({ admin, onAdminLogout, children }) 
       </div>
     </div>
   );
+}
+
+function NextShabbatSummary({ dashboard }) {
+  const shabbat = dashboard?.next_shabbat;
+  const to = shabbat ? `/admin/shabbat/${shabbat.id}` : '/admin/shabbat';
+  const hebrewDate = formatHebrewDate(shabbat?.gregorian_date);
+
+  return (
+    <Link
+      to={to}
+      className="group hidden min-w-0 items-center gap-2 rounded-xl border border-brand-gold/20 bg-brand-cream/30 px-3 py-2 text-sm transition hover:border-brand-gold/45 hover:bg-brand-cream/50 md:flex"
+      aria-label="השבת הקרובה"
+    >
+      <span className="shrink-0 text-brand-gold-dark"><CandleIcon /></span>
+      {dashboard === null ? (
+        <span className="h-4 w-48 animate-pulse rounded bg-brand-gold/10" />
+      ) : shabbat ? (
+        <span className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+          <strong className="text-brand-burgundy">פרשת {shabbat.parasha}</strong>
+          {hebrewDate && <span className="text-[#756a6e]">{hebrewDate}</span>}
+          {shabbat.gregorian_date && <span className="hidden tabular-nums text-[#91868a] xl:inline" dir="ltr">{shabbat.gregorian_date}</span>}
+          <span className="rounded-lg bg-white/80 px-2 py-0.5 font-bold text-brand-burgundy shadow-sm">
+            <span className="ml-1 tabular-nums text-brand-gold-dark">{dashboard.orders?.next_shabbat ?? 0}</span>
+            הזמנות
+          </span>
+        </span>
+      ) : (
+        <strong className="text-brand-burgundy">תיקי שבת</strong>
+      )}
+      <span className="text-brand-gold-dark transition group-hover:-translate-x-0.5" aria-hidden="true">←</span>
+    </Link>
+  );
+}
+
+function formatHebrewDate(gregorianDate) {
+  if (!gregorianDate) return '';
+  const date = new Date(`${gregorianDate}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const parts = new Intl.DateTimeFormat('he-IL-u-ca-hebrew', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).formatToParts(date);
+  const value = (type) => parts.find((part) => part.type === type)?.value;
+  const day = Number(value('day'));
+  const year = Number(value('year')) % 1000;
+  const month = value('month');
+  if (!day || !year || !month) return '';
+  return `${toHebrewNumeral(day)} ${month} ${toHebrewNumeral(year)}`;
+}
+
+function toHebrewNumeral(number) {
+  const values = [[400, 'ת'], [300, 'ש'], [200, 'ר'], [100, 'ק'], [90, 'צ'], [80, 'פ'], [70, 'ע'], [60, 'ס'], [50, 'נ'], [40, 'מ'], [30, 'ל'], [20, 'כ'], [10, 'י'], [9, 'ט'], [8, 'ח'], [7, 'ז'], [6, 'ו'], [5, 'ה'], [4, 'ד'], [3, 'ג'], [2, 'ב'], [1, 'א']];
+  let remaining = number;
+  let result = '';
+  while (remaining > 0) {
+    if (remaining === 15) { result += 'טו'; break; }
+    if (remaining === 16) { result += 'טז'; break; }
+    const [value, letter] = values.find(([value]) => value <= remaining);
+    result += letter;
+    remaining -= value;
+  }
+  return result.length === 1 ? `${result}׳` : `${result.slice(0, -1)}״${result.slice(-1)}`;
 }
 
 function DesktopSidebar() {
@@ -232,3 +307,4 @@ function NavIcon({ name }) {
 
 function MenuIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>; }
 function CloseIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>; }
+function CandleIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true"><path d="M12 3c1.2 1 1.2 2.2.4 3.2M9 9h6v9a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1zM8 22h8" /></svg>; }

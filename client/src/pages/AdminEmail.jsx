@@ -98,6 +98,15 @@ export default function AdminEmail({ onAuthError }) {
         </div>
       </section>
 
+      {/* הסבר על מעטפת המייל המותגית */}
+      <section className="card mb-6">
+        <h2 className="mb-2 text-lg font-bold text-brand-burgundy">עיצוב המייל</h2>
+        <p className="text-sm text-brand-burgundy/70">
+          את/ה עורך/ת כאן <strong>טקסט בלבד</strong>. המערכת עוטפת אותו אוטומטית במעטפת רשמית ואחידה —
+          כותרת עם הלוגו, גוף מעוצב בצבעי המותג, וכותרת תחתונה עם פרטי מטבח החסד. שורה ריקה מפרידה בין פסקאות.
+        </p>
+      </section>
+
       {/* מקרא placeholders */}
       <section className="card mb-6">
         <h2 className="mb-2 text-lg font-bold text-brand-burgundy">שדות זמינים לנוסח</h2>

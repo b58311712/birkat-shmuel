@@ -208,6 +208,34 @@ function normalizeRecipeLines(body) {
   return { portions, rows };
 }
 
+// כללי אריזה למאכל (סעיף 22): לכל שורה — אריזה (מפריטי המלאי) וכמה מנות נכנסות באריזה אחת.
+function normalizePackingRules(body) {
+  if (!Array.isArray(body.rules)) return { error: 'יש לשלוח רשימת כללי אריזה.' };
+
+  const rows = [];
+  for (const raw of body.rules) {
+    const label = String(raw.packaging_label || '').trim();
+    const perPackage = num(raw.portions_per_package);
+    const packagingItemId = raw.packaging_item_id || null;
+
+    // שורה ריקה לגמרי — מדלגים.
+    if (!label && perPackage == null && !packagingItemId) continue;
+    if (!label) return { error: 'יש להזין תיאור אריזה לכל שורה (למשל: קופסה 4 ליטר).' };
+    if (perPackage === null || perPackage <= 0) {
+      return { error: `מספר המנות באריזה "${label}" חייב להיות גדול מאפס.` };
+    }
+
+    rows.push({
+      packaging_item_id: packagingItemId,
+      packaging_label: label,
+      portions_per_package: perPackage,
+      notes: raw.notes ? String(raw.notes).trim() : null,
+    });
+  }
+
+  return { rows };
+}
+
 async function categoriesWithSlots(data) {
   const ids = (data || []).map((c) => c.id);
   if (ids.length === 0) return data || [];
@@ -535,6 +563,55 @@ router.put('/meals/:id/recipe', asyncHandler(async (req, res) => {
   }
 
   res.json({ ok: true, recipe_portions: cleaned.portions, lines_count: cleaned.rows.length });
+}));
+
+// ---------------------------------------------------------------------------
+// packing_rules — כללי אריזה למאכל (סעיף 22)
+// לכל מאכל: אילו אריזות ומכמה מנות (portions_per_package). האריזות נבחרות מפריטי
+// המלאי המסומנים is_packaging. תיק השבת גוזר מזה כמה אריזות צריך (ceil(מנות/perPkg)).
+// ---------------------------------------------------------------------------
+router.get('/meals/:id/packing', asyncHandler(async (req, res) => {
+  const { data: meal, error: mealErr } = await supabase
+    .from('meals')
+    .select('id')
+    .eq('id', req.params.id)
+    .maybeSingle();
+  if (mealErr) throw mealErr;
+  if (!meal) return fail(res, 404, 'מאכל לא נמצא.');
+
+  const { data, error } = await supabase
+    .from('packing_rules')
+    .select('id, meal_id, packaging_item_id, packaging_label, portions_per_package, notes, packaging_item:packaging_item_id (id, name, unit)')
+    .eq('meal_id', req.params.id)
+    .order('packaging_label');
+  if (error) throw error;
+
+  res.json({ rules: data || [] });
+}));
+
+router.put('/meals/:id/packing', asyncHandler(async (req, res) => {
+  const { data: meal, error: mealErr } = await supabase
+    .from('meals')
+    .select('id')
+    .eq('id', req.params.id)
+    .maybeSingle();
+  if (mealErr) throw mealErr;
+  if (!meal) return fail(res, 404, 'מאכל לא נמצא.');
+
+  const cleaned = normalizePackingRules(req.body || {});
+  if (cleaned.error) return fail(res, 400, cleaned.error);
+
+  const del = await supabase.from('packing_rules').delete().eq('meal_id', req.params.id);
+  if (del.error) throw del.error;
+
+  if (cleaned.rows.length) {
+    const { error } = await supabase
+      .from('packing_rules')
+      .insert(cleaned.rows.map((row) => ({ ...row, meal_id: req.params.id })));
+    if (error) throw error;
+  }
+
+  res.json({ ok: true, rules_count: cleaned.rows.length });
 }));
 
 // ---------------------------------------------------------------------------

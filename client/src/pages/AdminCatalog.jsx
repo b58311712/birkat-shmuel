@@ -120,7 +120,7 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
 
   async function save(form) {
     try {
-      const { recipe_portions, recipe_lines, ...mealPayload } = form;
+      const { recipe_portions, recipe_lines, packing_rules, ...mealPayload } = form;
       const result = form.id
         ? await api.updateCatalogMeal(form.id, mealPayload)
         : await api.createCatalogMeal(mealPayload);
@@ -129,6 +129,9 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
         await api.setCatalogMealRecipe(mealId, {
           recipe_portions,
           lines: recipe_lines,
+        });
+        await api.setCatalogMealPacking(mealId, {
+          rules: packing_rules,
         });
       }
       setEditing(null);
@@ -360,6 +363,8 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, onInventoryI
   const [recipePortions, setRecipePortions] = useState(1);
   const [recipeLines, setRecipeLines] = useState([]);
   const [recipeLoading, setRecipeLoading] = useState(!!initial.id);
+  const [packingRules, setPackingRules] = useState([]);
+  const [packingLoading, setPackingLoading] = useState(!!initial.id);
 
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const toggleSlot = (id) => {
@@ -372,6 +377,7 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, onInventoryI
     let alive = true;
     if (!initial.id) {
       setRecipeLoading(false);
+      setPackingLoading(false);
       return () => { alive = false; };
     }
 
@@ -395,6 +401,22 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, onInventoryI
       .catch((e) => alert(e.message))
       .finally(() => { if (alive) setRecipeLoading(false); });
 
+    setPackingLoading(true);
+    api.catalogMealPacking(initial.id)
+      .then((packing) => {
+        if (!alive) return;
+        const rules = packing?.rules || [];
+        setPackingRules(rules.map((r) => ({
+          id: r.id,
+          packaging_item_id: r.packaging_item_id || '',
+          packaging_label: r.packaging_label || '',
+          portions_per_package: r.portions_per_package ?? '',
+          notes: r.notes || '',
+        })));
+      })
+      .catch((e) => alert(e.message))
+      .finally(() => { if (alive) setPackingLoading(false); });
+
     return () => { alive = false; };
   }, [initial.id]);
 
@@ -412,6 +434,7 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, onInventoryI
       extra_charge_amount: f.requires_extra_charge ? Number(f.extra_charge_amount) : null,
       recipe_portions: portions,
       recipe_lines: recipeLines,
+      packing_rules: packingRules,
     });
   }
 
@@ -483,6 +506,13 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, onInventoryI
         onInstructionsChange={(v) => set('preparation_instructions', v)}
         inventoryItems={inventoryItems}
         onInventoryItemCreated={onInventoryItemCreated}
+      />
+
+      <PackingEditor
+        loading={packingLoading}
+        rules={packingRules}
+        onRulesChange={setPackingRules}
+        inventoryItems={inventoryItems}
       />
 
       <div className="flex gap-2">
@@ -763,6 +793,132 @@ function RecipeEditor({ loading, portions, onPortionsChange, lines, onLinesChang
           placeholder="הוראות ההכנה שלב-אחר-שלב..."
         />
       </Field>
+    </section>
+  );
+}
+
+// עורך כללי אריזה למאכל (סעיף 22): לכל שורה — אריזה (מפריטי המלאי המסומנים "אריזה")
+// וכמה מנות נכנסות באריזה אחת. תיק השבת גוזר מזה כמה אריזות צריך לפי מספר המנות.
+function PackingEditor({ loading, rules, onRulesChange, inventoryItems }) {
+  const packagingItems = useMemo(
+    () => (inventoryItems || []).filter((it) => it.is_packaging),
+    [inventoryItems],
+  );
+
+  const updateRule = (idx, patch) => {
+    onRulesChange(rules.map((rule, i) => (i === idx ? { ...rule, ...patch } : rule)));
+  };
+
+  const addRule = () => {
+    onRulesChange([
+      ...rules,
+      { packaging_item_id: '', packaging_label: '', portions_per_package: '', notes: '' },
+    ]);
+  };
+
+  const removeRule = (idx) => {
+    onRulesChange(rules.filter((_, i) => i !== idx));
+  };
+
+  // בחירת פריט אריזה משלימה אוטומטית את תיאור האריזה משם הפריט (אם עוד ריק).
+  const chooseItem = (idx, itemId) => {
+    const item = packagingItems.find((it) => it.id === itemId);
+    updateRule(idx, {
+      packaging_item_id: itemId,
+      packaging_label: rules[idx].packaging_label?.trim() ? rules[idx].packaging_label : (item?.name || ''),
+    });
+  };
+
+  return (
+    <section className="border border-brand-cream-dark rounded-lg p-3 space-y-3">
+      <div>
+        <h4 className="font-bold text-brand-burgundy">אריזה</h4>
+        <p className="text-xs text-brand-burgundy/50 mt-1">
+          לכל סוג אריזה — כמה מנות נכנסות באריזה אחת. בתיק השבת המערכת תחשב כמה אריזות צריך לפי מספר המנות.
+          האריזות נבחרות מפריטי המלאי המסומנים כ"אריזה".
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-brand-burgundy/50">טוען אריזות...</p>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-brand-burgundy/70">
+                <tr className="border-b border-brand-cream-dark">
+                  <th className="p-2 text-right min-w-44">אריזה (פריט מלאי)</th>
+                  <th className="p-2 text-right min-w-40">תיאור אריזה *</th>
+                  <th className="p-2 text-right min-w-32">מנות באריזה *</th>
+                  <th className="p-2 text-right min-w-36">הערה</th>
+                  <th className="p-2 text-right w-16"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.map((rule, idx) => (
+                  <tr key={rule.id || idx} className="border-b border-brand-cream-dark/70 align-top">
+                    <td className="p-2">
+                      <select
+                        value={rule.packaging_item_id}
+                        onChange={(e) => chooseItem(idx, e.target.value)}
+                        className={inputCls}
+                      >
+                        <option value="">ללא קישור למלאי</option>
+                        {packagingItems.map((item) => (
+                          <option key={item.id} value={item.id}>{item.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="p-2">
+                      <input
+                        value={rule.packaging_label}
+                        onChange={(e) => updateRule(idx, { packaging_label: e.target.value })}
+                        className={inputCls}
+                        placeholder='קופסה 4 ליטר'
+                      />
+                    </td>
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.0001"
+                        value={rule.portions_per_package}
+                        onChange={(e) => updateRule(idx, { portions_per_package: e.target.value })}
+                        className={inputCls}
+                        dir="ltr"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <input
+                        value={rule.notes}
+                        onChange={(e) => updateRule(idx, { notes: e.target.value })}
+                        className={inputCls}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => removeRule(idx)} />
+                    </td>
+                  </tr>
+                ))}
+                {rules.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-3 text-center text-brand-burgundy/50">
+                      לא הוגדרו אריזות למאכל.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {packagingItems.length === 0 && (
+            <p className="text-xs text-brand-burgundy/50">
+              אין פריטי מלאי המסומנים כ"אריזה". ניתן להוסיף אריזות במסך המלאי (בסימון "אריזה"),
+              או להזין תיאור אריזה ידני ללא קישור למלאי.
+            </p>
+          )}
+          <button type="button" onClick={addRule} className="btn-ghost">+ אריזה</button>
+        </>
+      )}
     </section>
   );
 }
