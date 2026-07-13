@@ -513,6 +513,7 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, onInventoryI
         rules={packingRules}
         onRulesChange={setPackingRules}
         inventoryItems={inventoryItems}
+        onInventoryItemCreated={onInventoryItemCreated}
       />
 
       <div className="flex gap-2">
@@ -799,7 +800,8 @@ function RecipeEditor({ loading, portions, onPortionsChange, lines, onLinesChang
 
 // עורך כללי אריזה למאכל (סעיף 22): לכל שורה — אריזה (מפריטי המלאי המסומנים "אריזה")
 // וכמה מנות נכנסות באריזה אחת. תיק השבת גוזר מזה כמה אריזות צריך לפי מספר המנות.
-function PackingEditor({ loading, rules, onRulesChange, inventoryItems }) {
+function PackingEditor({ loading, rules, onRulesChange, inventoryItems, onInventoryItemCreated }) {
+  const [creatingIdx, setCreatingIdx] = useState(null);
   const packagingItems = useMemo(
     () => (inventoryItems || []).filter((it) => it.is_packaging),
     [inventoryItems],
@@ -827,6 +829,34 @@ function PackingEditor({ loading, rules, onRulesChange, inventoryItems }) {
       packaging_item_id: itemId,
       packaging_label: rules[idx].packaging_label?.trim() ? rules[idx].packaging_label : (item?.name || ''),
     });
+  };
+
+  // יצירה מהירה של פריט אריזה חדש במלאי מתוך שורת האריזה (שם = תיאור האריזה,
+  // מסומן is_packaging), וקישור השורה אליו — בלי לצאת למסך המלאי.
+  const createPackagingItem = async (idx) => {
+    const name = String(rules[idx].packaging_label || '').trim();
+    if (!name) return alert('יש להזין תיאור אריזה לפני יצירת פריט מלאי.');
+
+    // אם כבר קיים פריט מלאי בשם הזה — קושרים אליו במקום ליצור כפילות.
+    const existing = (inventoryItems || []).find((it) => (it.name || '').trim() === name);
+    if (existing) {
+      updateRule(idx, { packaging_item_id: existing.id });
+      return alert(`הפריט "${name}" כבר קיים במלאי — השורה קושרה אליו.`);
+    }
+
+    setCreatingIdx(idx);
+    try {
+      const res = await api.createInvItem({ name, unit: 'יחידה', is_packaging: true });
+      const item = res?.item;
+      if (item) {
+        onInventoryItemCreated?.(item);
+        updateRule(idx, { packaging_item_id: item.id });
+      }
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setCreatingIdx(null);
+    }
   };
 
   return (
