@@ -898,6 +898,16 @@ function PackingEditor({ loading, rules, onRulesChange, inventoryItems, onInvent
                           <option key={item.id} value={item.id}>{item.name}</option>
                         ))}
                       </select>
+                      {!rule.packaging_item_id && rule.packaging_label?.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => createPackagingItem(idx)}
+                          disabled={creatingIdx === idx}
+                          className="text-xs text-brand-burgundy hover:underline mt-1 disabled:opacity-50"
+                        >
+                          {creatingIdx === idx ? 'יוצר...' : '➕ צור פריט אריזה במלאי'}
+                        </button>
+                      )}
                     </td>
                     <td className="p-2">
                       <input
@@ -942,8 +952,8 @@ function PackingEditor({ loading, rules, onRulesChange, inventoryItems, onInvent
           </div>
           {packagingItems.length === 0 && (
             <p className="text-xs text-brand-burgundy/50">
-              אין פריטי מלאי המסומנים כ"אריזה". ניתן להוסיף אריזות במסך המלאי (בסימון "אריזה"),
-              או להזין תיאור אריזה ידני ללא קישור למלאי.
+              אין עדיין פריטי מלאי המסומנים כ"אריזה". הזיני תיאור אריזה בשורה,
+              ולחצי "➕ צור פריט אריזה במלאי" כדי להוסיף אותו למלאי ולקשר — או השאירי ללא קישור למלאי.
             </p>
           )}
           <button type="button" onClick={addRule} className="btn-ghost">+ אריזה</button>
