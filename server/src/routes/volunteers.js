@@ -8,7 +8,29 @@ import { requireRole } from '../lib/auth.js';
 const router = Router();
 
 const AREAS = ['cooking', 'packing', 'transport', 'cleaning', 'general'];
-const VOLUNTEER_SELECT = '*, meals:linked_meal_id (id, name), customers:customer_id (id, full_name, phone, email)';
+const VOLUNTEER_SELECT = '*, meals:linked_meal_id (id, name), customers:customer_id (id, full_name, phone, email), volunteer_task_links (task_id)';
+
+// שיוך מחדש של המשימות הקבועות למתנדב (סעיף 24): מוחקים הכל ומכניסים את הבחירה.
+// task_ids = מערך מזהי משימות (או undefined כדי לא לגעת בשיוך הקיים).
+async function syncVolunteerTasks(volunteerId, taskIds) {
+  if (!Array.isArray(taskIds)) return;
+  const unique = [...new Set(taskIds.filter(Boolean))];
+  const { error: delErr } = await supabase
+    .from('volunteer_task_links').delete().eq('volunteer_id', volunteerId);
+  if (delErr) throw delErr;
+  if (!unique.length) return;
+  const { error: insErr } = await supabase
+    .from('volunteer_task_links')
+    .insert(unique.map((task_id) => ({ volunteer_id: volunteerId, task_id })));
+  if (insErr) throw insErr;
+}
+
+// שיטוח volunteer_task_links למערך task_ids פשוט על אובייקט המתנדב.
+function withTaskIds(volunteer) {
+  if (!volunteer) return volunteer;
+  const { volunteer_task_links, ...rest } = volunteer;
+  return { ...rest, task_ids: (volunteer_task_links || []).map((l) => l.task_id) };
+}
 
 async function auditDelete(req, entityType, entityId) {
   const { error } = await supabase.from('audit_log').insert({
@@ -36,12 +58,12 @@ router.get('/', asyncHandler(async (req, res) => {
 
   const { data, error } = await q;
   if (error) throw error;
-  res.json(data);
+  res.json((data || []).map(withTaskIds));
 }));
 
 // POST /api/admin/volunteers — יצירת מתנדב
 router.post('/', asyncHandler(async (req, res) => {
-  const { full_name, phone, email, customer_id, area, linked_meal_id, has_vehicle, is_regular, notes } = req.body || {};
+  const { full_name, phone, email, customer_id, area, linked_meal_id, has_vehicle, is_regular, notes, task_ids } = req.body || {};
   const linkedCustomerId = customer_id || null;
   if (!linkedCustomerId && !full_name?.trim()) return fail(res, 400, 'חובה להזין שם מלא.');
   if (!AREAS.includes(area)) return fail(res, 400, 'תחום התנדבות לא תקין.');
@@ -61,7 +83,8 @@ router.post('/', asyncHandler(async (req, res) => {
     if (error.code === '23505') return fail(res, 409, 'לקוח זה כבר מקושר למתנדב.');
     throw error;
   }
-  res.json({ ok: true, volunteer: data });
+  await syncVolunteerTasks(data.id, task_ids);
+  res.json({ ok: true, volunteer: withTaskIds({ ...data, volunteer_task_links: (task_ids || []).map((task_id) => ({ task_id })) }) });
 }));
 
 // PATCH /api/admin/volunteers/:id — עדכון מתנדב (כולל השבתה — מחיקה רכה)
@@ -78,16 +101,22 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   if ('phone' in patch) patch.phone = patch.phone ? String(patch.phone).trim() : null;
   if ('email' in patch) patch.email = patch.email ? String(patch.email).trim() : null;
   if ('notes' in patch) patch.notes = patch.notes ? String(patch.notes).trim() : null;
-  if (Object.keys(patch).length === 0) return fail(res, 400, 'אין שדות לעדכון.');
+  const syncTasks = Array.isArray(req.body?.task_ids);
+  if (Object.keys(patch).length === 0 && !syncTasks) return fail(res, 400, 'אין שדות לעדכון.');
 
-  const { data, error } = await supabase.from('volunteers')
-    .update(patch).eq('id', req.params.id).select(VOLUNTEER_SELECT).maybeSingle();
+  // אם אין שדות עמודה לעדכן אבל כן צריך לסנכרן משימות — שולפים את המתנדב בלבד.
+  const query = Object.keys(patch).length
+    ? supabase.from('volunteers').update(patch).eq('id', req.params.id).select(VOLUNTEER_SELECT).maybeSingle()
+    : supabase.from('volunteers').select(VOLUNTEER_SELECT).eq('id', req.params.id).maybeSingle();
+  const { data, error } = await query;
   if (error) {
     if (error.code === '23505') return fail(res, 409, 'לקוח זה כבר מקושר למתנדב.');
     throw error;
   }
   if (!data) return fail(res, 404, 'מתנדב לא נמצא.');
-  res.json({ ok: true, volunteer: data });
+  if (syncTasks) await syncVolunteerTasks(data.id, req.body.task_ids);
+  const links = syncTasks ? req.body.task_ids.map((task_id) => ({ task_id })) : data.volunteer_task_links;
+  res.json({ ok: true, volunteer: withTaskIds({ ...data, volunteer_task_links: links }) });
 }));
 
 router.delete('/:id', requireRole('developer'), asyncHandler(async (req, res) => {

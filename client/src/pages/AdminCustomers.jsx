@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
@@ -209,13 +209,16 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
           </Field>
         </div>
 
-        {editing && <CustomerForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
+        {editing && !editing.id && <CustomerForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
         {importResult && <ImportResult result={importResult} />}
         {detail && (
           <CustomerDetail
             data={detail}
             onClose={() => setDetail(null)}
-            onEdit={(customer) => setEditing(customer)}
+            onEdit={(customer) => {
+              setDetail(null);
+              setEditing(customer);
+            }}
             onSetStatus={setStatus}
             onDelete={canDelete ? deleteCustomer : null}
           />
@@ -240,7 +243,8 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
               ) : customers.length === 0 ? (
                 <tr><td colSpan={7} className="p-6 text-center text-brand-burgundy/50">לא נמצאו לקוחות.</td></tr>
               ) : customers.map((customer) => (
-                <tr key={customer.id} className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${customer.status !== 'active' ? 'opacity-70' : ''}`}>
+                <Fragment key={customer.id}>
+                <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${customer.status !== 'active' ? 'opacity-70' : ''} ${editing?.id === customer.id ? 'bg-brand-cream/40' : ''}`}>
                   <td className="p-3 font-medium">
                     <button onClick={() => openDetail(customer)} className="text-brand-burgundy hover:underline">
                       {customer.full_name}
@@ -255,7 +259,7 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
                   <td className="p-3 text-sm whitespace-nowrap">
                     <div className="flex flex-wrap gap-1">
                     <ActionIconButton icon="view" label="צפייה" onClick={() => openDetail(customer)} />
-                    <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(customer)} />
+                    <ActionIconButton icon={editing?.id === customer.id ? 'cancel' : 'edit'} label={editing?.id === customer.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === customer.id ? null : customer)} />
                     <ActionIconButton
                       icon={customer.status === 'active' ? 'deactivate' : 'activate'}
                       label={customer.status === 'active' ? 'השבתה' : 'הפעלה'}
@@ -268,6 +272,14 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
                     </div>
                   </td>
                 </tr>
+                {editing?.id === customer.id && (
+                  <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
+                    <td colSpan={7} className="p-3 sm:p-4">
+                      <CustomerForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

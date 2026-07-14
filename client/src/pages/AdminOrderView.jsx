@@ -74,6 +74,19 @@ export default function AdminOrderView({ onAuthError, currentAdmin }) {
           </div>
         </div>
 
+        {/* בקשת כמות מנות חריגה — לתשומת לב המנהל לפני אישור (סעיף 12.2) */}
+        {order.portions_exception_requested && (
+          <div className="mb-4 rounded-lg bg-amber-50 border border-amber-300 p-3">
+            <div className="font-bold text-amber-800">בקשת כמות מנות חריגה — נדרש אישור מודע</div>
+            <p className="text-sm text-amber-800 mt-0.5">
+              {order.portions_exception_note || 'אחת הסעודות מחוץ לטווח הרגיל (50–100 מנות).'}
+            </p>
+            {order.order_status === 'pending_approval' && (
+              <p className="text-xs text-amber-700 mt-1">אישור ההזמנה מהווה אישור לכמות החריגה.</p>
+            )}
+          </div>
+        )}
+
         {/* פעולות ניהול */}
         <div className="flex gap-2 flex-wrap mb-4">
           {order.order_status !== 'cancelled' && (

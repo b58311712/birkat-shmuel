@@ -75,7 +75,7 @@ export default function AdminEmail({ onAuthError }) {
   if (loading) return <Page title="מיילים" subtitle="טוען…"><p className="text-brand-burgundy/70">טוען נוסחי מייל…</p></Page>;
 
   return (
-    <Page title="מיילים" subtitle="עריכת נוסחי מייל, שליחת תזכורות תשלום ויומן שליחה (סעיף 18).">
+    <Page title="מיילים" subtitle="עריכת נוסחי מייל, שליחת תזכורות תשלום ויומן שליחה.">
       {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">{error}</div>}
       {msg && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-green-800">{msg}</div>}
 

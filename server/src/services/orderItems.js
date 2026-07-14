@@ -2,32 +2,51 @@
 // כל המחירים מחושבים בשרת מהמחירון הפעיל הנוכחי ונשמרים "קפואים" (סעיף 15.3).
 import { supabase } from '../lib/supabase.js';
 import { calcBase, suggestExtraQuantity, calcFinal, round2 } from './pricing.js';
+import { roundUp } from '../lib/helpers.js';
 
+// טווח המנות הסטנדרטי לסעודה. כמות מחוץ לטווח מותרת רק כ"בקשת חריג" (סעיף 12.2)
+// הדורשת אישור מודע של מנהל. אין תקרה/רצפה קשיחה — כל כמות חיובית שלמה מותרת בחריג.
 const MIN_PORTIONS = 50;
 const MAX_PORTIONS = 100;
+
+// בודק אילו סעודות חורגות מהטווח הסטנדרטי (50–100) ומחזיר תיאור לבקשת חריג.
+// שם הסעודה מגיע מ-slotNameById (מפה slotId->name) כשקיים, אחרת "סעודה".
+function detectPortionsException(slots, slotNameById = {}) {
+  const outOfRange = slots
+    .map((s) => ({ id: s.meal_slot_id, portions: Number(s.portions) }))
+    .filter((s) => s.portions < MIN_PORTIONS || s.portions > MAX_PORTIONS);
+  if (outOfRange.length === 0) return { requested: false, note: null };
+  const note = outOfRange
+    .map((s) => `${slotNameById[s.id] || 'סעודה'}: ${s.portions} מנות (חריג — מחוץ לטווח ${MIN_PORTIONS}–${MAX_PORTIONS})`)
+    .join('; ');
+  return { requested: true, note };
+}
 
 // מקבל את קלט ההזמנה (slots/meals/extras) ומחזיר את שורות המשנה המוכנות + הסכומים.
 // לא נוגע ב-DB של ההזמנה עצמה — רק קורא קטלוג ומחשב. הקורא אחראי על insert/update.
 //   input: { slots:[{meal_slot_id,portions}], meals:[{meal_slot_id,meal_id}], extras:[{extra_id,actual_quantity?}], orderId? }
 // אם מועבר orderId — נקראים סכומי ההנחות והחיובים הידניים הקיימים ומקופלים ל-final_amount,
 // כך שעריכת הזמנה לא מוחקת בטעות הנחות/חיובים שנרשמו בנפרד (סעיף 16).
-// זורק Error עם .userMessage כשיש כשל ולידציה (companion-only).
+// מחזיר גם exception:{ requested, note } — סימון בקשת כמות חריגה (מחוץ ל-50–100).
+// זורק Error עם .userMessage כשיש כשל ולידציה (מנות לא חיוביות / companion-only).
 export async function buildOrderItems(input) {
   const slots = Array.isArray(input.slots) ? input.slots : [];
-  if (input.enforcePortionRange) {
-    const invalidPortions = slots.some((s) => {
-      const portions = Number(s.portions);
-      return !Number.isInteger(portions) || portions < MIN_PORTIONS || portions > MAX_PORTIONS;
-    });
-    if (invalidPortions) {
-      const err = new Error('invalid-portions-range');
-      err.userMessage = `מספר המנות בכל סעודה חייב להיות בין ${MIN_PORTIONS} ל-${MAX_PORTIONS}.`;
-      throw err;
-    }
+
+  // מנות חייבות להיות מספר שלם חיובי בכל מצב (גם בחריג). התקרה/רצפה של 50–100 אינה קשיחה.
+  const nonPositive = slots.some((s) => {
+    const portions = Number(s.portions);
+    return !Number.isInteger(portions) || portions <= 0;
+  });
+  if (nonPositive) {
+    const err = new Error('invalid-portions');
+    err.userMessage = 'מספר המנות בכל סעודה חייב להיות מספר שלם חיובי.';
+    throw err;
   }
 
   // --- כלל "סעודה שלישית לא לבד" (סעיף 12.2) ---
   const { data: allSlots } = await supabase.from('meal_slots').select('*');
+  const slotNameById = Object.fromEntries((allSlots || []).map((s) => [s.id, s.name]));
+  const exception = detectPortionsException(slots, slotNameById);
   const chosenSlotIds = slots.map((s) => s.meal_slot_id);
   const companionOnly = (allSlots || []).filter(
     (s) => s.requires_companion && chosenSlotIds.includes(s.id)
@@ -55,43 +74,66 @@ export async function buildOrderItems(input) {
   }
 
   // --- מאכלים: snapshot של שם + תוספת מחיר אם דורש (סעיף 13.5) ---
-  // בקטגוריות עם חלוקת מנות (requires_portion_split): לכל מאכל כמות מנות משלו,
-  // וסך הכמויות בכל (סעודה × קטגוריה כזו) חייב להשתוות למנות הסעודה (סעיף 13).
+  // בקטגוריות עם חלוקת מנות לכל מאכל כמות מנות משלו (order_meals.portions):
+  //   - equal:    הלקוח מזין כמות לכל מאכל, וסך הכמויות = מנות הסעודה (100 = 60+40).
+  //   - additive: חלוקה אוטומטית — דג מרכזי מקבל primary_percent, דג משני (is_secondary)
+  //               מקבל תוספת של secondary_percent; דג יחיד מקבל 100% (כל מנות הסעודה).
+  //               לא ניתן לבחור שני דגים מרכזיים (סעיף 13).
   const mealsInput = Array.isArray(input.meals) ? input.meals : [];
   let mealExtraCharges = 0;
   const mealRows = [];
   if (mealsInput.length > 0) {
     const mealIds = [...new Set(mealsInput.map((m) => m.meal_id))];
     const { data: mealsData } = await supabase
-      .from('meals').select('id, name, category_id, requires_extra_charge, extra_charge_amount')
+      .from('meals').select('id, name, category_id, requires_extra_charge, extra_charge_amount, is_secondary')
       .in('id', mealIds);
     const byId = Object.fromEntries((mealsData || []).map((m) => [m.id, m]));
 
-    // אילו קטגוריות דורשות חלוקת מנות
+    // מצב החלוקה + האחוזים לכל קטגוריה מעורבת
     const catIds = [...new Set((mealsData || []).map((m) => m.category_id).filter(Boolean))];
-    const splitCategories = new Set();
+    const catById = {}; // catId -> { split_mode, primary_percent, secondary_percent }
     if (catIds.length > 0) {
       const { data: cats } = await supabase
-        .from('categories').select('id, requires_portion_split').in('id', catIds);
-      for (const c of cats || []) if (c.requires_portion_split) splitCategories.add(c.id);
+        .from('categories')
+        .select('id, split_mode, primary_percent, secondary_percent')
+        .in('id', catIds);
+      for (const c of cats || []) catById[c.id] = c;
     }
+    const splitModeOf = (catId) => catById[catId]?.split_mode || 'none';
     const portionsBySlot = Object.fromEntries(slots.map((s) => [s.meal_slot_id, Number(s.portions)]));
 
-    // סך כמויות שהוזנו לכל (סעודה × קטגוריה שדורשת חלוקה) — לאימות מול מנות הסעודה
-    const splitTotals = {}; // `${slotId}:${catId}` -> { sum, count, slotId, catId }
+    // צובר לכל (סעודה × קטגוריה מחלקת): כמה מאכלים, וכמה מהם מרכזיים (לא-משניים).
+    // ב-equal צובר גם את הסכום שהוזן לאימות מול מנות הסעודה.
+    const splitTotals = {}; // `${slotId}:${catId}` -> { mode, count, primaryCount, slotId, catId, declaredSum, allDeclared }
     for (const m of mealsInput) {
       const meal = byId[m.meal_id];
-      if (!meal || !splitCategories.has(meal.category_id)) continue;
+      if (!meal) continue;
+      const mode = splitModeOf(meal.category_id);
+      if (mode === 'none') continue;
       const key = `${m.meal_slot_id}:${meal.category_id}`;
-      const entry = (splitTotals[key] ||= { sum: 0, count: 0, slotId: m.meal_slot_id });
+      const entry = (splitTotals[key] ||= {
+        mode, count: 0, primaryCount: 0, slotId: m.meal_slot_id, catId: meal.category_id,
+      });
       entry.count += 1;
-      // סוג יחיד בקטגוריה → מקבל אוטומטית את כל מנות הסעודה
+      if (!meal.is_secondary) entry.primaryCount += 1;
       const declared = m.portions != null ? Number(m.portions) : null;
       entry.declaredSum = (entry.declaredSum || 0) + (declared != null ? declared : 0);
       entry.allDeclared = (entry.allDeclared ?? true) && declared != null;
     }
-    for (const [, entry] of Object.entries(splitTotals)) {
+
+    // אימות לכל קבוצה לפי המצב
+    for (const entry of Object.values(splitTotals)) {
       const slotPortions = portionsBySlot[entry.slotId] || 0;
+      if (entry.mode === 'additive') {
+        // לכל היותר דג מרכזי אחד; ולפחות דג אחד (מובטח כי הקבוצה קיימת).
+        if (entry.primaryCount > 1) {
+          const err = new Error('too-many-primary-fish');
+          err.userMessage = 'ניתן לבחור רק דג עיקרי אחד בקטגוריה. הדג הנוסף חייב להיות מסומן כדג משני/זול.';
+          throw err;
+        }
+        continue;
+      }
+      // equal — סכום הכמויות = מנות הסעודה (המצב הקודם)
       if (entry.count === 1) continue; // סוג יחיד — יקבל את כל המנות בלולאה למטה
       if (!entry.allDeclared) {
         const err = new Error('portion-split-missing');
@@ -111,14 +153,24 @@ export async function buildOrderItems(input) {
       const charge = meal.requires_extra_charge ? Number(meal.extra_charge_amount || 0) : 0;
       mealExtraCharges += charge;
 
-      // כמות מנות למאכל: רק בקטגוריות שדורשות חלוקה; NULL בשאר (כל מנות הסעודה)
+      // כמות מנות למאכל: רק בקטגוריות מחלקות; NULL בשאר (כל מנות הסעודה)
       let mealPortions = null;
-      if (splitCategories.has(meal.category_id)) {
+      const mode = splitModeOf(meal.category_id);
+      if (mode !== 'none') {
         const key = `${m.meal_slot_id}:${meal.category_id}`;
+        const group = splitTotals[key];
         const slotPortions = portionsBySlot[m.meal_slot_id] || 0;
-        mealPortions = splitTotals[key]?.count === 1
-          ? slotPortions                                   // סוג יחיד → כל המנות
-          : Number(m.portions);                            // חולק — כבר אומת למעלה
+        if (group?.count === 1) {
+          mealPortions = slotPortions;                     // סוג יחיד → כל המנות (100%)
+        } else if (mode === 'additive') {
+          const cat = catById[meal.category_id] || {};
+          const pct = meal.is_secondary
+            ? Number(cat.secondary_percent ?? 50)
+            : Number(cat.primary_percent ?? 80);
+          mealPortions = roundUp(slotPortions * pct / 100); // אוטומטי, עיגול כלפי מעלה
+        } else {
+          mealPortions = Number(m.portions);               // equal — כבר אומת למעלה
+        }
       }
 
       mealRows.push({
@@ -191,6 +243,7 @@ export async function buildOrderItems(input) {
     slotRows,
     mealRows,
     extraRows,
+    exception, // { requested, note } — בקשת כמות מנות חריגה (מחוץ ל-50–100)
     amounts: {
       base_amount: baseAmount,
       extras_amount: round2(extrasAmount),

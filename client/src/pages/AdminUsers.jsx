@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
@@ -115,7 +115,7 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
           </Field>
         </div>
 
-        {editing && <UserForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
+        {editing && !editing.id && <UserForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
         {passwordUser && (
           <PasswordForm user={passwordUser} onSave={resetPassword} onCancel={() => setPasswordUser(null)} />
         )}
@@ -139,7 +139,8 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
               ) : users.length === 0 ? (
                 <tr><td colSpan={7} className="p-6 text-center text-brand-burgundy/50">לא נמצאו משתמשים.</td></tr>
               ) : users.map((user) => (
-                <tr key={user.id} className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!user.is_active ? 'opacity-50' : ''}`}>
+                <Fragment key={user.id}>
+                <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!user.is_active ? 'opacity-50' : ''} ${editing?.id === user.id ? 'bg-brand-cream/40' : ''}`}>
                   <td className="p-3 font-medium">
                     {user.full_name}
                     {user.id === currentAdmin?.id && <span className="text-xs text-brand-burgundy/50 mr-1">(מחובר)</span>}
@@ -152,7 +153,7 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
                   <td className="p-3 text-sm" dir="ltr">{formatDate(user.last_login_at)}</td>
                   <td className="p-3 text-sm whitespace-nowrap">
                     <div className="flex flex-wrap gap-1">
-                    <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(user)} />
+                    <ActionIconButton icon={editing?.id === user.id ? 'cancel' : 'edit'} label={editing?.id === user.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === user.id ? null : user)} />
                     <ActionIconButton icon="password" label="איפוס סיסמה" onClick={() => setPasswordUser(user)} />
                     <ActionIconButton
                       icon={user.is_active ? 'deactivate' : 'activate'}
@@ -166,6 +167,14 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
                     </div>
                   </td>
                 </tr>
+                {editing?.id === user.id && (
+                  <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
+                    <td colSpan={7} className="p-3 sm:p-4">
+                      <UserForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

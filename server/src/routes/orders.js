@@ -51,7 +51,7 @@ router.post('/', asyncHandler(async (req, res) => {
     if (e.userMessage) return fail(res, 400, e.userMessage);
     throw e;
   }
-  const { slotRows: builtSlotRows, mealRows, extraRows, amounts } = built;
+  const { slotRows: builtSlotRows, mealRows, extraRows, amounts, exception } = built;
 
   // --- מספר הזמנה שנתי רץ (סעיף 10.3) ---
   const year = new Date().getFullYear();
@@ -79,6 +79,8 @@ router.post('/', asyncHandler(async (req, res) => {
     manual_charges_amount: 0,
     discount_amount: 0,
     final_amount: amounts.final_amount,
+    portions_exception_requested: exception.requested,
+    portions_exception_note: exception.note,
   }).select('*').single();
   if (ordErr) throw ordErr;
 
@@ -92,15 +94,22 @@ router.post('/', asyncHandler(async (req, res) => {
     await supabase.from('order_extras').insert(extraRows.map((e) => ({ ...e, order_id: order.id })));
 
   await supabase.from('order_history').insert({
-    order_id: order.id, action: 'נוצרה הזמנה חדשה ע"י הלקוח',
+    order_id: order.id,
+    action: exception.requested
+      ? `נוצרה הזמנה חדשה ע"י הלקוח (בקשת חריג במספר מנות — ${exception.note})`
+      : 'נוצרה הזמנה חדשה ע"י הלקוח',
   });
 
   await createAdminNotification({
     notification_type: 'new_order',
     entity_table: 'orders',
     entity_id: order.id,
-    title: 'הזמנה חדשה ממתינה לאישור',
-    body: `הזמנה ${order.order_number}`,
+    title: exception.requested
+      ? 'הזמנה חדשה עם בקשת חריג במנות — ממתינה לאישור'
+      : 'הזמנה חדשה ממתינה לאישור',
+    body: exception.requested
+      ? `הזמנה ${order.order_number} — ${exception.note}`
+      : `הזמנה ${order.order_number}`,
     link_path: `/admin/orders/${order.id}`,
   });
 

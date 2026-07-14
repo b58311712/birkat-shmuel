@@ -3,7 +3,8 @@
 //
 // מקורות אמת:
 //   הכנסות  — orders.final_amount (צפוי) מול customer_payments.amount (שולם).
-//   הוצאות  — supplier_payments.amount_paid + general_expenses.amount.
+//   הוצאות  — supplier_payments.amount_paid + general_expenses.amount
+//             + petty_cash_transactions (kind='expense') — הוצאות הקופה הקטנה.
 // הזמנות מבוטלות אינן נספרות בצפוי (final_amount לא רלוונטי לגבייה).
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
@@ -27,7 +28,7 @@ function yearKey(dateStr) {
 // ---------------------------------------------------------------------------
 router.get('/summary', asyncHandler(async (req, res) => {
   // הזמנות פעילות עם השבת שלהן (לצורך קיבוץ הכנסות לפי שבת/חודש/שנה)
-  const [ordersRes, paymentsRes, supPaymentsRes, expensesRes, refundsRes] = await Promise.all([
+  const [ordersRes, paymentsRes, supPaymentsRes, expensesRes, refundsRes, pettyRes] = await Promise.all([
     supabase.from('orders')
       .select('id, order_number, final_amount, payment_status, order_status, shabbat_id, shabbatot(parasha, gregorian_date)')
       .in('order_status', ACTIVE),
@@ -35,9 +36,10 @@ router.get('/summary', asyncHandler(async (req, res) => {
     supabase.from('supplier_payments').select('supplier_id, amount_paid, invoice_amount, status, paid_at, suppliers(name)'),
     supabase.from('general_expenses').select('supplier_id, amount, expense_date, payment_status, suppliers(name)'),
     supabase.from('order_refunds').select('id, amount_to_refund, amount_refunded, status'),
+    supabase.from('petty_cash_transactions').select('kind, amount, tx_date, supplier_id, suppliers(name)'),
   ]);
 
-  for (const r of [ordersRes, paymentsRes, supPaymentsRes, expensesRes, refundsRes]) {
+  for (const r of [ordersRes, paymentsRes, supPaymentsRes, expensesRes, refundsRes, pettyRes]) {
     if (r.error) throw r.error;
   }
 
@@ -46,6 +48,8 @@ router.get('/summary', asyncHandler(async (req, res) => {
   const supPayments = supPaymentsRes.data || [];
   const expenses = expensesRes.data || [];
   const refunds = refundsRes.data || [];
+  // רק הוצאות הקופה הקטנה נספרות כהוצאה (הפקדות הן מימון פנימי, לא הוצאה כספית).
+  const pettyExpenses = (pettyRes.data || []).filter((t) => t.kind === 'expense');
 
   // --- הכנסות (29.1) ---
   const expectedTotal = round2(orders.reduce((s, o) => s + Number(o.final_amount || 0), 0));
@@ -118,7 +122,11 @@ router.get('/summary', asyncHandler(async (req, res) => {
   const generalExpensesTotal = round2(
     expenses.reduce((s, e) => s + Number(e.amount || 0), 0),
   );
-  const expensesTotal = round2(supplierPaidTotal + generalExpensesTotal);
+  // הוצאות הקופה הקטנה (סעיף קופה קטנה) — נספרות בסך ההוצאות.
+  const pettyCashTotal = round2(
+    pettyExpenses.reduce((s, t) => s + Number(t.amount || 0), 0),
+  );
+  const expensesTotal = round2(supplierPaidTotal + generalExpensesTotal + pettyCashTotal);
 
   // חשבוניות פתוחות = תשלומי ספק/הוצאות שטרם שולמו במלואם
   const openSupplierInvoices = supPayments.filter(
@@ -142,6 +150,12 @@ router.get('/summary', asyncHandler(async (req, res) => {
     cur.amount = round2(cur.amount + Number(e.amount || 0));
     bySupplier.set(e.supplier_id, cur);
   }
+  for (const t of pettyExpenses) {
+    if (!t.supplier_id) continue;
+    const cur = bySupplier.get(t.supplier_id) || { supplier_id: t.supplier_id, name: t.suppliers?.name || '—', amount: 0 };
+    cur.amount = round2(cur.amount + Number(t.amount || 0));
+    bySupplier.set(t.supplier_id, cur);
+  }
   const expensesBySupplier = [...bySupplier.values()].sort((a, b) => b.amount - a.amount);
 
   // הוצאות לפי חודש (לפי תאריך תשלום/הוצאה)
@@ -158,6 +172,13 @@ router.get('/summary', asyncHandler(async (req, res) => {
     if (!mKey) continue;
     const cur = expByMonth.get(mKey) || { month: mKey, amount: 0 };
     cur.amount = round2(cur.amount + Number(e.amount || 0));
+    expByMonth.set(mKey, cur);
+  }
+  for (const t of pettyExpenses) {
+    const mKey = monthKey(t.tx_date);
+    if (!mKey) continue;
+    const cur = expByMonth.get(mKey) || { month: mKey, amount: 0 };
+    cur.amount = round2(cur.amount + Number(t.amount || 0));
     expByMonth.set(mKey, cur);
   }
   const expensesByMonth = [...expByMonth.values()].sort((a, b) => b.month.localeCompare(a.month));
@@ -206,6 +227,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
       total: expensesTotal,
       supplier_paid: supplierPaidTotal,
       general_expenses: generalExpensesTotal,
+      petty_cash: pettyCashTotal,
       open_supplier_invoices: openSupplierInvoices,
       open_general_expenses: openGeneralExpenses,
       by_supplier: expensesBySupplier,

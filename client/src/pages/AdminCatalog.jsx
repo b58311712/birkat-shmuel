@@ -3,6 +3,7 @@ import { api } from '../lib/api.js';
 import { parseRecipe } from '../lib/recipeParser.js';
 import { Page } from '../components/Layout.jsx';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
+import { DragHandle } from '../components/DragHandle.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 const inputCls = 'w-full border border-brand-cream-dark rounded-lg p-2 focus:border-brand-gold outline-none';
@@ -281,8 +282,7 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
                   className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${canReorder ? 'cursor-grab active:cursor-grabbing' : ''} ${draggedMealId === meal.id ? 'opacity-40' : ''} ${!meal.is_active ? 'opacity-50' : ''} ${editing?.id === meal.id ? 'bg-brand-cream/40' : ''}`}
                 >
                   <td className="p-3 text-brand-burgundy/45" title="גרירה לשינוי סדר">
-                    <span aria-hidden="true" className="text-xl leading-none">⠿</span>
-                    <span className="sr-only">גרירת {meal.name}</span>
+                    <DragHandle label={`גרירת ${meal.name}`} />
                   </td>
                   <td className="p-3">
                     <div className="font-medium">{meal.name}</div>
@@ -352,6 +352,7 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, onInventoryI
     name: initial.name || '',
     category_id: initial.category_id || '',
     included_in_base: initial.included_in_base ?? true,
+    is_secondary: initial.is_secondary || false,
     requires_extra_charge: initial.requires_extra_charge || false,
     extra_charge_amount: initial.extra_charge_amount ?? '',
     kitchen_prep_notes: initial.kitchen_prep_notes || '',
@@ -372,6 +373,10 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, onInventoryI
       ? f.available_slot_ids.filter((x) => x !== id)
       : [...f.available_slot_ids, id]);
   };
+  // דגל דג משני רלוונטי רק כשקטגוריית המאכל במצב חלוקה אוטומטית (additive).
+  const selectedCategory = categories.find((c) => c.id === f.category_id);
+  const selectedCategoryIsAdditive = (selectedCategory?.split_mode
+    || (selectedCategory?.requires_portion_split ? 'equal' : 'none')) === 'additive';
 
   useEffect(() => {
     let alive = true;
@@ -474,6 +479,20 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, onInventoryI
               className={inputCls}
               dir="ltr"
             />
+          </Field>
+        )}
+        {selectedCategoryIsAdditive && (
+          <Field label="סוג הדג בחלוקה האוטומטית">
+            <label className="flex items-start gap-2 text-sm p-2 border border-brand-cream-dark rounded-lg">
+              <input type="checkbox" checked={f.is_secondary}
+                onChange={(e) => set('is_secondary', e.target.checked)} className="mt-0.5" />
+              <span>
+                <span className="font-medium text-brand-burgundy">דג משני / זול</span>
+                <span className="block text-xs text-brand-burgundy/60">
+                  מסומן = דג נוסף זול (מקבל את אחוז התוספת). לא מסומן = דג עיקרי/יקר (מקבל את האחוז העיקרי).
+                </span>
+              </span>
+            </label>
           </Field>
         )}
       </div>
@@ -1073,7 +1092,7 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
         </span>
       </div>
 
-      {editing && (
+      {editing && !editing.id && (
         <CategoryForm
           initial={editing}
           mealSlots={mealSlots}
@@ -1096,8 +1115,8 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
           </thead>
           <tbody>
             {list.map((category) => (
+              <Fragment key={category.id}>
               <tr
-                key={category.id}
                 draggable={canReorder && !savingOrder && editing?.id !== category.id}
                 onDragStart={(e) => {
                   setDraggedCategoryId(category.id);
@@ -1118,8 +1137,7 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
                 className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${canReorder ? 'cursor-grab active:cursor-grabbing' : ''} ${draggedCategoryId === category.id ? 'opacity-40' : ''} ${!category.is_active ? 'opacity-50' : ''}`}
               >
                 <td className="p-3 text-brand-burgundy/45" title="גרירה לשינוי סדר">
-                  <span aria-hidden="true" className="text-xl leading-none">⠿</span>
-                  <span className="sr-only">גרירת {category.name}</span>
+                  <DragHandle label={`גרירת ${category.name}`} />
                 </td>
                 <td className="p-3">
                   <div className="font-medium">{category.name}</div>
@@ -1136,7 +1154,7 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
                 <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={category.is_active ? 'active_female' : 'inactive_female'} /></td>
                 <td className="p-3 text-sm whitespace-nowrap">
                   <div className="flex flex-wrap gap-1">
-                  <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(category)} />
+                  <ActionIconButton icon={editing?.id === category.id ? 'cancel' : 'edit'} label={editing?.id === category.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === category.id ? null : category)} />
                   <ActionIconButton
                     icon={category.is_active ? 'deactivate' : 'activate'}
                     label={category.is_active ? 'השבתה' : 'הפעלה'}
@@ -1149,6 +1167,14 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
                   </div>
                 </td>
               </tr>
+              {editing?.id === category.id && (
+                <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
+                  <td colSpan={6} className="p-3 sm:p-4">
+                    <CategoryForm initial={editing} mealSlots={mealSlots} onSave={save} onCancel={() => setEditing(null)} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
             {list.length === 0 && (
               <tr><td colSpan={6} className="p-6 text-center text-brand-burgundy/50">אין קטגוריות להצגה.</td></tr>
@@ -1168,7 +1194,10 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
     display_order: initial.display_order ?? 0,
     recommended_min: initial.recommended_min ?? '',
     max_allowed: initial.max_allowed ?? '',
-    requires_portion_split: initial.requires_portion_split || false,
+    // תאימות-לאחור: קטגוריה ישנה עם requires_portion_split בלבד נחשבת 'equal'.
+    split_mode: initial.split_mode || (initial.requires_portion_split ? 'equal' : 'none'),
+    primary_percent: initial.primary_percent ?? 80,
+    secondary_percent: initial.secondary_percent ?? 50,
     meal_slot_ids: initial.meal_slot_ids || [],
   });
 
@@ -1182,13 +1211,20 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
   function submit(e) {
     e.preventDefault();
     if (!f.name.trim()) return alert('חובה להזין שם קטגוריה.');
+    if (f.split_mode === 'additive') {
+      for (const [v, label] of [[f.primary_percent, 'אחוז הדג העיקרי'], [f.secondary_percent, 'אחוז הדג המשני']]) {
+        if (v === '' || Number(v) < 1 || Number(v) > 100) return alert(`${label} חייב להיות בין 1 ל-100.`);
+      }
+    }
     onSave({
       ...f,
       name: f.name.trim(),
       display_order: Number(f.display_order) || 0,
       recommended_min: f.recommended_min === '' ? null : Number(f.recommended_min),
       max_allowed: f.max_allowed === '' ? null : Number(f.max_allowed),
-      requires_portion_split: Boolean(f.requires_portion_split),
+      split_mode: f.split_mode,
+      primary_percent: Number(f.primary_percent) || 80,
+      secondary_percent: Number(f.secondary_percent) || 50,
     });
   }
 
@@ -1209,20 +1245,29 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
       <Field label="תיאור פנימי">
         <textarea value={f.internal_description} onChange={(e) => set('internal_description', e.target.value)} className={inputCls} rows={2} />
       </Field>
-      <label className="flex items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={f.requires_portion_split}
-          onChange={(e) => set('requires_portion_split', e.target.checked)}
-          className="mt-0.5"
-        />
-        <span>
-          <span className="font-medium text-brand-burgundy">חלוקת מנות בין המאכלים</span>
-          <span className="block text-xs text-brand-burgundy/60">
-            הלקוח יזין כמה מנות מכל מאכל שנבחר בקטגוריה, וסך הכמויות יהיה שווה למספר מנות הסעודה (למשל דגים, מנה עיקרית).
-          </span>
-        </span>
-      </label>
+      <Field label="חלוקת מנות בין המאכלים">
+        <select value={f.split_mode} onChange={(e) => set('split_mode', e.target.value)} className={inputCls}>
+          <option value="none">ללא — כל מאכל שנבחר מקבל את כל מנות הסעודה</option>
+          <option value="equal">חלוקה ידנית — הלקוח מזין כמות לכל מאכל, סך = מנות הסעודה (למשל מנה עיקרית)</option>
+          <option value="additive">חלוקה אוטומטית — דג עיקרי + תוספת דג משני זול (דגים)</option>
+        </select>
+        {f.split_mode === 'additive' && (
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <Field label="אחוז לדג העיקרי (יקר)">
+              <input type="number" min="1" max="100" value={f.primary_percent}
+                onChange={(e) => set('primary_percent', e.target.value)} className={inputCls} dir="ltr" />
+            </Field>
+            <Field label="אחוז (תוספת) לדג המשני (זול)">
+              <input type="number" min="1" max="100" value={f.secondary_percent}
+                onChange={(e) => set('secondary_percent', e.target.value)} className={inputCls} dir="ltr" />
+            </Field>
+            <p className="col-span-2 text-xs text-brand-burgundy/60">
+              דג יחיד מקבל 100% מהמנות. משנבחר גם דג משני — היקר מקבל את אחוז הדג העיקרי והזול תוספת של אחוז הדג המשני
+              (למשל 100 מנות ← 80 + 50 = 130). לא ניתן לבחור שני דגים עיקריים.
+            </p>
+          </div>
+        )}
+      </Field>
       <Field label="קטגוריה רלוונטית לסעודות">
         <CheckboxGrid
           options={mealSlots}
@@ -1242,6 +1287,8 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
 function ExtrasManager({ onErr, canDelete }) {
   const [list, setList] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [draggedExtraId, setDraggedExtraId] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [filter, setFilter] = useState({ active: 'true', search: '' });
 
   const load = useCallback(() => {
@@ -1257,7 +1304,10 @@ function ExtrasManager({ onErr, canDelete }) {
   async function save(form) {
     try {
       if (form.id) await api.updateCatalogExtra(form.id, form);
-      else await api.createCatalogExtra(form);
+      else {
+        const lastOrder = Math.max(0, ...(list || []).map((extra) => Number(extra.display_order) || 0));
+        await api.createCatalogExtra({ ...form, display_order: lastOrder + 1 });
+      }
       setEditing(null);
       load();
     } catch (e) { onErr(e); }
@@ -1278,13 +1328,41 @@ function ExtrasManager({ onErr, canDelete }) {
     } catch (e) { onErr(e); }
   }
 
+  const canReorder = filter.active === 'true' && !filter.search.trim();
+
+  async function moveExtra(targetExtraId) {
+    if (!canReorder || savingOrder || !draggedExtraId || draggedExtraId === targetExtraId) return;
+    const previous = list;
+    const fromIndex = previous.findIndex((extra) => extra.id === draggedExtraId);
+    const toIndex = previous.findIndex((extra) => extra.id === targetExtraId);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const reordered = [...previous];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    const normalized = reordered.map((extra, index) => ({ ...extra, display_order: index + 1 }));
+
+    setList(normalized);
+    setDraggedExtraId(null);
+    setSavingOrder(true);
+    try {
+      await Promise.all(normalized.map((extra) =>
+        api.updateCatalogExtra(extra.id, { display_order: extra.display_order })));
+    } catch (e) {
+      setList(previous);
+      onErr(e);
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
   if (!list) return <p>טוען...</p>;
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-brand-burgundy/60">
         תוספות שהלקוח יכול לבחור מעבר למחיר המנה (שתייה, חלות, מיץ ענבים וכו׳). לכל תוספת מחיר ליחידה, יחידת חיוב
-        ונוסחת כמות מוצעת שתוצג ללקוח בהזמנה (סעיף 14).
+        ונוסחת כמות מוצעת שתוצג ללקוח בהזמנה.
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <button onClick={() => setEditing({})} className="btn-primary">+ תוספת חדשה</button>
@@ -1307,6 +1385,13 @@ function ExtrasManager({ onErr, canDelete }) {
             <option value="">הכל</option>
           </select>
         </Field>
+        <span className="pb-2 text-xs text-brand-burgundy/55">
+          {savingOrder
+            ? 'שומר את סדר התוספות...'
+            : canReorder
+              ? 'אפשר לגרור שורות כדי לקבוע את סדר התוספות'
+              : 'כדי לשנות סדר יש לנקות את החיפוש ולהציג תוספות פעילות'}
+        </span>
       </div>
 
       {editing && !editing.id && (
@@ -1329,8 +1414,24 @@ function ExtrasManager({ onErr, canDelete }) {
           <tbody>
             {list.map((extra) => (
               <Fragment key={extra.id}>
-                <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!extra.is_active ? 'opacity-50' : ''} ${editing?.id === extra.id ? 'bg-brand-cream/40' : ''}`}>
-                  <td className="p-3 text-sm text-brand-burgundy/50">{extra.display_order}</td>
+                <tr
+                  draggable={canReorder && !savingOrder && editing?.id !== extra.id}
+                  onDragStart={(e) => {
+                    setDraggedExtraId(extra.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', extra.id);
+                  }}
+                  onDragOver={(e) => {
+                    if (canReorder && draggedExtraId && draggedExtraId !== extra.id) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                    }
+                  }}
+                  onDrop={(e) => { e.preventDefault(); moveExtra(extra.id); }}
+                  onDragEnd={() => setDraggedExtraId(null)}
+                  className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${canReorder ? 'cursor-grab active:cursor-grabbing' : ''} ${draggedExtraId === extra.id ? 'opacity-40' : ''} ${!extra.is_active ? 'opacity-50' : ''} ${editing?.id === extra.id ? 'bg-brand-cream/40' : ''}`}
+                >
+                  <td className="p-3"><DragHandle label={`גרירת ${extra.name}`} /></td>
                   <td className="p-3">
                     <div className="font-medium">{extra.name}</div>
                     {extra.customer_note && (
@@ -1424,9 +1525,6 @@ function ExtraForm({ initial, onSave, onCancel }) {
         <Field label="שם תוספת *">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} placeholder="שתייה, חלות, מיץ ענבים..." />
         </Field>
-        <Field label="סדר תצוגה">
-          <input type="number" value={f.display_order} onChange={(e) => set('display_order', e.target.value)} className={inputCls} dir="ltr" />
-        </Field>
         <Field label="מחיר ליחידה (₪) *">
           <input type="number" step="0.01" min="0" value={f.unit_price} onChange={(e) => set('unit_price', e.target.value)} className={inputCls} dir="ltr" />
         </Field>
@@ -1510,7 +1608,7 @@ function PriceTracksManager({ mealSlots, onErr, canDelete }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-brand-burgundy/60">
-        מחיר הבסיס נקבע לפי <b>צירוף הסעודות המדויק</b> שהלקוח בוחר (סעיף 15). כל מסלול משויך לקבוצת סעודות
+        מחיר הבסיס נקבע לפי <b>צירוף הסעודות המדויק</b> שהלקוח בוחר. כל מסלול משויך לקבוצת סעודות
         ולו מחיר <b>למנה אחת</b>, והמערכת מכפילה אותו בסך המנות. הזמנה שצירוף הסעודות שלה זהה בדיוק למסלול —
         תתומחר לפיו. אין להגדיר שני מסלולים לאותו צירוף, וצירוף ללא מסלול ייחסם בהזמנה.
       </p>

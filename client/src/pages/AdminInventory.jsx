@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { Fragment, useEffect, useRef, useState, useCallback } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
+import { DragHandle } from '../components/DragHandle.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 // ניהול מלאי CRUD (סעיף 25). מסך ניהול גלובלי: פריטי מלאי, קטגוריות, שינוי ידני.
@@ -34,7 +35,7 @@ export default function AdminInventory({ onAuthError, currentAdmin }) {
   }, [onAuthError]);
 
   return (
-    <Page title="ניהול מלאי" subtitle="פריטי מלאי, קטגוריות ושינוי ידני (סעיף 25)">
+    <Page title="ניהול מלאי" subtitle="פריטי מלאי, קטגוריות ושינוי ידני">
       <div className="flex gap-1 mb-5 border-b border-brand-cream-dark">
         {[['items', 'פריטי מלאי'], ['categories', 'קטגוריות']].map(([k, label]) => (
           <button key={k} onClick={() => setView(k)}
@@ -87,7 +88,22 @@ function ItemsManager({ onErr, canDelete }) {
       else await api.createInvItem(form);
       setEditing(null);
       load();
-    } catch (e) { onErr(e); }
+      return true;
+    } catch (e) {
+      onErr(e);
+      return false;
+    }
+  }
+
+  async function saveInline(itemId, patch) {
+    try {
+      await api.updateInvItem(itemId, patch);
+      load();
+      return true;
+    } catch (e) {
+      onErr(e);
+      return false;
+    }
   }
 
   async function toggleActive(it) {
@@ -139,9 +155,10 @@ function ItemsManager({ onErr, canDelete }) {
           <input type="checkbox" checked={filter.low_stock} onChange={(e) => setFilter((f) => ({ ...f, low_stock: e.target.checked }))} />
           מתחת למינימום בלבד
         </label>
+        <span className="pb-2 text-xs text-brand-burgundy/55">לחיצה על תא מאפשרת לערוך אותו במקום</span>
       </div>
 
-      {editing && (
+      {editing && !editing.id && (
         <ItemForm categories={categories} suppliers={suppliers} initial={editing}
           onSave={save} onCancel={() => setEditing(null)} onSuppliersChanged={loadRefs} onErr={onErr} />
       )}
@@ -170,23 +187,78 @@ function ItemsManager({ onErr, canDelete }) {
             {list.map((it) => {
               const low = it.min_alert_quantity != null && Number(it.quantity_on_hand) < Number(it.min_alert_quantity);
               return (
-                <tr key={it.id} className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!it.is_active ? 'opacity-50' : ''}`}>
-                  <td className="p-3 font-medium">
+                <Fragment key={it.id}>
+                <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!it.is_active ? 'opacity-50' : ''} ${editing?.id === it.id ? 'bg-brand-cream/40' : ''}`}>
+                  <QuickEditCell
+                    value={it.name}
+                    ariaLabel="שם מוצר"
+                    className="font-medium"
+                    onSave={(value) => {
+                      const name = value.trim();
+                      if (!name) { alert('חובה להזין שם מוצר.'); return false; }
+                      return saveInline(it.id, { name });
+                    }}
+                  >
                     {it.name}
                     {it.is_packaging && <span className="text-xs text-brand-burgundy/50 mr-1">(אריזה)</span>}
+                  </QuickEditCell>
+                  <QuickEditCell
+                    value={it.category_id || ''}
+                    ariaLabel="קטגוריה"
+                    type="select"
+                    options={[{ value: '', label: '— ללא —' }, ...categories.map((category) => ({ value: category.id, label: category.name }))]}
+                    onSave={(value) => saveInline(it.id, { category_id: value || null })}
+                  >
+                    {it.category?.name || '—'}
+                  </QuickEditCell>
+                  <QuickEditCell
+                    value={it.unit}
+                    ariaLabel="יחידת מידה"
+                    onSave={(value) => {
+                      const unit = value.trim();
+                      if (!unit) { alert('חובה להזין יחידת מידה.'); return false; }
+                      return saveInline(it.id, { unit });
+                    }}
+                  >
+                    {it.unit}
+                  </QuickEditCell>
+                  <td className={`p-0 text-sm font-medium ${low ? 'text-red-600' : ''}`}>
+                    <button type="button" onClick={() => setAdjusting(it)} className="w-full p-3 text-right hover:bg-brand-gold/10" title="לחיצה לשינוי כמות">
+                      {fmt(it.quantity_on_hand)}{low && ' ⚠'}
+                    </button>
                   </td>
-                  <td className="p-3 text-sm">{it.category?.name || '—'}</td>
-                  <td className="p-3 text-sm">{it.unit}</td>
-                  <td className={`p-3 text-sm font-medium ${low ? 'text-red-600' : ''}`}>
-                    {fmt(it.quantity_on_hand)}{low && ' ⚠'}
-                  </td>
-                  <td className="p-3 text-sm text-brand-burgundy/60">{it.min_alert_quantity != null ? fmt(it.min_alert_quantity) : '—'}</td>
-                  <td className="p-3 text-sm text-brand-burgundy/60">{it.default_supplier?.name || '—'}</td>
-                  <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={it.is_active ? 'active' : 'inactive'} /></td>
+                  <QuickEditCell
+                    value={it.min_alert_quantity ?? ''}
+                    ariaLabel="כמות מינימום"
+                    type="number"
+                    className="text-brand-burgundy/60"
+                    onSave={(value) => saveInline(it.id, { min_alert_quantity: value === '' ? null : Number(value) })}
+                  >
+                    {it.min_alert_quantity != null ? fmt(it.min_alert_quantity) : '—'}
+                  </QuickEditCell>
+                  <QuickEditCell
+                    value={it.default_supplier_id || ''}
+                    ariaLabel="ספק ברירת מחדל"
+                    type="select"
+                    className="text-brand-burgundy/60"
+                    options={[{ value: '', label: '— ללא —' }, ...suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))]}
+                    onSave={(value) => saveInline(it.id, { default_supplier_id: value || null })}
+                  >
+                    {it.default_supplier?.name || '—'}
+                  </QuickEditCell>
+                  <QuickEditCell
+                    value={it.is_active ? 'true' : 'false'}
+                    ariaLabel="סטטוס"
+                    type="select"
+                    options={[{ value: 'true', label: 'פעיל' }, { value: 'false', label: 'לא פעיל' }]}
+                    onSave={(value) => saveInline(it.id, { is_active: value === 'true' })}
+                  >
+                    <Badge map={ACTIVE_STATUS} value={it.is_active ? 'active' : 'inactive'} />
+                  </QuickEditCell>
                   <td className="p-3 text-sm whitespace-nowrap">
                     <div className="flex flex-wrap gap-1">
                     <ActionIconButton icon="adjust" label="שינוי כמות" onClick={() => setAdjusting(it)} />
-                    <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(it)} />
+                    <ActionIconButton icon={editing?.id === it.id ? 'cancel' : 'open'} label={editing?.id === it.id ? 'סגירת פרטי הרשומה' : 'פתיחת כל פרטי הרשומה'} onClick={() => setEditing(editing?.id === it.id ? null : it)} />
                     <ActionIconButton icon="history" label="תנועות" tone="muted" onClick={() => openHistory(it)} />
                     <ActionIconButton
                       icon={it.is_active ? 'deactivate' : 'activate'}
@@ -200,6 +272,15 @@ function ItemsManager({ onErr, canDelete }) {
                     </div>
                   </td>
                 </tr>
+                {editing?.id === it.id && (
+                  <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
+                    <td colSpan={8} className="p-3 sm:p-4">
+                      <ItemForm categories={categories} suppliers={suppliers} initial={editing}
+                        onSave={save} onCancel={() => setEditing(null)} onSuppliersChanged={loadRefs} onErr={onErr} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
             {list.length === 0 && (
@@ -209,6 +290,93 @@ function ItemsManager({ onErr, canDelete }) {
         </table>
       </div>
     </div>
+  );
+}
+
+function QuickEditCell({ value, children, onSave, ariaLabel, type = 'text', options = [], className = '' }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value == null ? '' : String(value));
+  const [saving, setSaving] = useState(false);
+  const skipBlur = useRef(false);
+
+  useEffect(() => {
+    if (!editing) setDraft(value == null ? '' : String(value));
+  }, [value, editing]);
+
+  async function commit(nextValue = draft) {
+    if (saving || String(nextValue) === String(value ?? '')) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    const saved = await onSave(String(nextValue));
+    setSaving(false);
+    if (saved !== false) setEditing(false);
+  }
+
+  function cancel() {
+    skipBlur.current = true;
+    setDraft(value == null ? '' : String(value));
+    setEditing(false);
+  }
+
+  function keyDown(event) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      cancel();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      commit();
+    }
+  }
+
+  if (!editing) {
+    return (
+      <td
+        className={`group cursor-pointer p-3 text-sm hover:bg-brand-gold/10 ${className}`}
+        onClick={() => { skipBlur.current = false; setEditing(true); }}
+        title={`לחיצה לעריכת ${ariaLabel}`}
+      >
+        <div className="flex min-h-5 items-center gap-1.5">
+          <span className="min-w-0">{children}</span>
+          <span aria-hidden="true" className="text-xs text-brand-burgundy/0 transition-colors group-hover:text-brand-burgundy/35">✎</span>
+        </div>
+      </td>
+    );
+  }
+
+  const controlClass = `${inputCls} min-w-[7rem] bg-white py-1.5 text-sm disabled:opacity-60`;
+  return (
+    <td className={`p-2 text-sm ${className}`}>
+      {type === 'select' ? (
+        <select
+          value={draft}
+          onChange={(event) => { const next = event.target.value; setDraft(next); commit(next); }}
+          onBlur={() => { if (!skipBlur.current) commit(); }}
+          onKeyDown={keyDown}
+          className={controlClass}
+          aria-label={ariaLabel}
+          disabled={saving}
+          autoFocus
+        >
+          {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      ) : (
+        <input
+          type={type}
+          step={type === 'number' ? 'any' : undefined}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => { if (!skipBlur.current) commit(); }}
+          onKeyDown={keyDown}
+          className={controlClass}
+          aria-label={ariaLabel}
+          disabled={saving}
+          dir={type === 'number' ? 'ltr' : undefined}
+          autoFocus
+        />
+      )}
+    </td>
   );
 }
 
@@ -305,7 +473,7 @@ function ItemForm({ categories, suppliers, initial, onSave, onCancel, onSupplier
       </Field>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={f.is_packaging} onChange={(e) => set('is_packaging', e.target.checked)} />
-        פריט אריזה (קופסה, תבנית, שקית) — סעיף 22.4
+        פריט אריזה (קופסה, תבנית, שקית)
       </label>
       <div className="flex gap-2">
         <button type="submit" className="btn-primary">שמירה</button>
@@ -419,6 +587,8 @@ function HistoryPanel({ item, movements, onClose }) {
 function CategoriesManager({ onErr, canDelete }) {
   const [list, setList] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [draggedCategoryId, setDraggedCategoryId] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
 
   const load = useCallback(() => {
     api.invCategories().then(setList).catch(onErr);
@@ -428,10 +598,39 @@ function CategoriesManager({ onErr, canDelete }) {
   async function save(form) {
     try {
       if (form.id) await api.updateInvCategory(form.id, form);
-      else await api.createInvCategory(form);
+      else {
+        const lastOrder = Math.max(0, ...(list || []).map((category) => Number(category.display_order) || 0));
+        await api.createInvCategory({ ...form, display_order: lastOrder + 1 });
+      }
       setEditing(null);
       load();
     } catch (e) { onErr(e); }
+  }
+
+  async function moveCategory(targetCategoryId) {
+    if (savingOrder || !draggedCategoryId || draggedCategoryId === targetCategoryId) return;
+    const previous = list;
+    const fromIndex = previous.findIndex((category) => category.id === draggedCategoryId);
+    const toIndex = previous.findIndex((category) => category.id === targetCategoryId);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const reordered = [...previous];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    const normalized = reordered.map((category, index) => ({ ...category, display_order: index + 1 }));
+
+    setList(normalized);
+    setDraggedCategoryId(null);
+    setSavingOrder(true);
+    try {
+      await Promise.all(normalized.map((category) =>
+        api.updateInvCategory(category.id, { display_order: category.display_order })));
+    } catch (e) {
+      setList(previous);
+      onErr(e);
+    } finally {
+      setSavingOrder(false);
+    }
   }
 
   async function toggleActive(c) {
@@ -449,8 +648,13 @@ function CategoriesManager({ onErr, canDelete }) {
 
   return (
     <div className="space-y-4">
-      <button onClick={() => setEditing({})} className="btn-primary">+ קטגוריה חדשה</button>
-      {editing && <CategoryForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={() => setEditing({})} className="btn-primary">+ קטגוריה חדשה</button>
+        <span className="text-xs text-brand-burgundy/55">
+          {savingOrder ? 'שומר את סדר הקטגוריות...' : 'אפשר לגרור שורות כדי לקבוע את סדר הקטגוריות'}
+        </span>
+      </div>
+      {editing && !editing.id && <CategoryForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
 
       <div className="overflow-x-auto">
         <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
@@ -464,13 +668,30 @@ function CategoriesManager({ onErr, canDelete }) {
           </thead>
           <tbody>
             {list.map((c) => (
-              <tr key={c.id} className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!c.is_active ? 'opacity-50' : ''}`}>
-                <td className="p-3 text-sm text-brand-burgundy/50">{c.display_order}</td>
+              <Fragment key={c.id}>
+              <tr
+                draggable={!savingOrder && editing?.id !== c.id}
+                onDragStart={(e) => {
+                  setDraggedCategoryId(c.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', c.id);
+                }}
+                onDragOver={(e) => {
+                  if (draggedCategoryId && draggedCategoryId !== c.id) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                  }
+                }}
+                onDrop={(e) => { e.preventDefault(); moveCategory(c.id); }}
+                onDragEnd={() => setDraggedCategoryId(null)}
+                className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 cursor-grab active:cursor-grabbing ${draggedCategoryId === c.id ? 'opacity-40' : ''} ${!c.is_active ? 'opacity-50' : ''}`}
+              >
+                <td className="p-3"><DragHandle label={`גרירת ${c.name}`} /></td>
                 <td className="p-3 font-medium">{c.name}</td>
                 <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={c.is_active ? 'active' : 'inactive'} /></td>
                 <td className="p-3 text-sm whitespace-nowrap">
                   <div className="flex flex-wrap gap-1">
-                  <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(c)} />
+                  <ActionIconButton icon={editing?.id === c.id ? 'cancel' : 'edit'} label={editing?.id === c.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === c.id ? null : c)} />
                   <ActionIconButton
                     icon={c.is_active ? 'deactivate' : 'activate'}
                     label={c.is_active ? 'השבתה' : 'הפעלה'}
@@ -483,6 +704,14 @@ function CategoriesManager({ onErr, canDelete }) {
                   </div>
                 </td>
               </tr>
+              {editing?.id === c.id && (
+                <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
+                  <td colSpan={4} className="p-3 sm:p-4">
+                    <CategoryForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
             {list.length === 0 && (
               <tr><td colSpan={4} className="p-6 text-center text-brand-burgundy/50">אין קטגוריות עדיין.</td></tr>
@@ -514,9 +743,6 @@ function CategoryForm({ initial, onSave, onCancel }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם קטגוריה *">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />
-        </Field>
-        <Field label="סדר תצוגה">
-          <input type="number" value={f.display_order} onChange={(e) => set('display_order', e.target.value)} className={inputCls} dir="ltr" />
         </Field>
       </div>
       <div className="flex gap-2">

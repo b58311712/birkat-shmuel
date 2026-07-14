@@ -53,12 +53,13 @@ export default function AdminFinance({ onAuthError }) {
         <div>
           <p className="text-xs font-bold text-brand-gold-dark">מקור הנתונים</p>
           <h2 id="expense-sources-title" className="mt-0.5 text-lg font-extrabold text-[#2b2024]">ממה מורכבות ההוצאות?</h2>
-          <p className="mt-1 text-sm text-[#7c7175]">הסכום הכולל מחבר תשלומים שבוצעו לספקים והוצאות כלליות שנרשמו במערכת.</p>
+          <p className="mt-1 text-sm text-[#7c7175]">הסכום הכולל מחבר תשלומים לספקים, הוצאות כלליות והוצאות מהקופה הקטנה.</p>
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ExpenseSource label="תשלומים לספקים" value={expenses.supplier_paid} detail="לפי הסכום ששולם בפועל" />
           <ExpenseSource label="הוצאות כלליות" value={expenses.general_expenses} detail="לפי ההוצאות שנרשמו במערכת" />
-          <ExpenseSource label="סה״כ הוצאות" value={expenses.total} detail="חיבור שני מקורות ההוצאה" total />
+          <ExpenseSource label="קופה קטנה" value={expenses.petty_cash} detail="הוצאות מזומן שוטפות" link="/admin/petty-cash" />
+          <ExpenseSource label="סה״כ הוצאות" value={expenses.total} detail="חיבור שלושת מקורות ההוצאה" total />
         </div>
       </section>
 
@@ -146,14 +147,16 @@ export default function AdminFinance({ onAuthError }) {
 const round2 = (number) => Math.round((Number(number) + Number.EPSILON) * 100) / 100;
 const nis = (number) => `${Number(number || 0).toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`;
 
-function ExpenseSource({ label, value, detail, total = false }) {
-  return (
-    <div className={`rounded-2xl border p-4 ${total ? 'border-brand-gold/30 bg-brand-gold/[0.08]' : 'border-black/[0.06] bg-white'}`}>
-      <p className="text-sm font-bold text-[#655b5f]">{label}</p>
+function ExpenseSource({ label, value, detail, total = false, link }) {
+  const body = (
+    <>
+      <p className="text-sm font-bold text-[#655b5f]">{label}{link && <span className="mr-1 text-[#b4abad]">←</span>}</p>
       <p className="mt-1 text-xl font-extrabold text-[#2b2024]" dir="ltr">{nis(value)}</p>
       <p className="mt-1 text-xs font-medium text-[#91878a]">{detail}</p>
-    </div>
+    </>
   );
+  const cls = `block rounded-2xl border p-4 ${total ? 'border-brand-gold/30 bg-brand-gold/[0.08]' : 'border-black/[0.06] bg-white'} ${link ? 'transition hover:border-brand-gold/35 hover:-translate-y-0.5' : ''}`;
+  return link ? <Link to={link} className={cls}>{body}</Link> : <div className={cls}>{body}</div>;
 }
 
 function MonthlyChart({ income, expenses }) {

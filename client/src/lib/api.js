@@ -65,6 +65,20 @@ export const api = {
   updateOrderCustomer: (id, payload) => request(`/admin/orders/${id}/customer`, { method: 'PATCH', body: JSON.stringify(payload) }),
   adminDashboard: () => request('/admin/dashboard'),
   financeSummary: () => request('/admin/finance/summary'),
+
+  // קופה קטנה
+  pettyCash: () => request('/admin/petty-cash'),
+  addPettyCashTx: (payload) => request('/admin/petty-cash', { method: 'POST', body: JSON.stringify(payload) }),
+  deletePettyCashTx: (id) => request(`/admin/petty-cash/${id}`, { method: 'DELETE' }),
+
+  // הוצאות קבועות חודשיות (תבניות תקורה חוזרת + הפקה חודשית)
+  recurringExpenses: () => request('/admin/recurring-expenses'),
+  createRecurringExpense: (payload) => request('/admin/recurring-expenses', { method: 'POST', body: JSON.stringify(payload) }),
+  updateRecurringExpense: (id, payload) => request(`/admin/recurring-expenses/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteRecurringExpense: (id) => request(`/admin/recurring-expenses/${id}`, { method: 'DELETE' }),
+  recurringGenerationStatus: (month) => request(`/admin/recurring-expenses/generation-status?month=${month}`),
+  generateRecurringExpenses: (month) => request('/admin/recurring-expenses/generate', { method: 'POST', body: JSON.stringify({ month }) }),
+  generatedRecurringExpenses: (month) => request(`/admin/recurring-expenses/generated${month ? `?month=${month}` : ''}`),
   approveOrder: (id) => request(`/admin/orders/${id}/approve`, { method: 'POST' }),
   cancelOrder: (id, reason) => request(`/admin/orders/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   updatePayment: (id, payload) => request(`/admin/orders/${id}/payment`, { method: 'POST', body: JSON.stringify(payload) }),

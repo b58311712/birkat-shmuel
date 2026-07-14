@@ -524,13 +524,12 @@ router.put('/orders/:id', asyncHandler(async (req, res) => {
       meals: b.meals,
       extras: b.extras,
       orderId: order.id,
-      enforcePortionRange: true,
     });
   } catch (e) {
     if (e.userMessage) return fail(res, 400, e.userMessage);
     throw e;
   }
-  const { slotRows, mealRows, extraRows, amounts } = built;
+  const { slotRows, mealRows, extraRows, amounts, exception } = built;
 
   // --- מוודאים שתיק שבת קיים אם השבת שונתה ---
   if (shabbatId !== order.shabbat_id) {
@@ -553,6 +552,8 @@ router.put('/orders/:id', asyncHandler(async (req, res) => {
     manual_charges_amount: amounts.manual_charges_amount,
     discount_amount: amounts.discount_amount,
     final_amount: amounts.final_amount,
+    portions_exception_requested: exception.requested,
+    portions_exception_note: exception.note,
   };
   const { error: updErr } = await supabase.from('orders').update(update).eq('id', order.id);
   if (updErr) throw updErr;
@@ -571,7 +572,9 @@ router.put('/orders/:id', asyncHandler(async (req, res) => {
 
   await supabase.from('order_history').insert({
     order_id: order.id, changed_by: req.appUser?.sub || null,
-    action: 'ההזמנה נערכה ע"י מנהל',
+    action: exception.requested
+      ? `ההזמנה נערכה ע"י מנהל (כמות מנות חריגה — ${exception.note})`
+      : 'ההזמנה נערכה ע"י מנהל',
   });
 
   const { data: updated } = await supabase.from('orders').select('*').eq('id', order.id).single();

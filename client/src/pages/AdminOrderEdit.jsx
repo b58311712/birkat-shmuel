@@ -76,6 +76,12 @@ export default function AdminOrderEdit({ onAuthError }) {
     [slots]
   );
 
+  // סעודות בכמות חריגה (מחוץ ל-50–100) — מותרות למנהל אך יסומנו כחריג לתיעוד.
+  const exceptionSlots = useMemo(
+    () => selectedSlots.filter((s) => s.portions < MIN_PORTIONS || s.portions > MAX_PORTIONS),
+    [selectedSlots]
+  );
+
   // אומדן מחיר בצד לקוח (השרת סמכותי) — בחירת מסלול לפי צירוף הסעודות המדויק (סעיף 15)
   const priceEstimate = useMemo(() => {
     if (!catalog) return { base: 0, extras: 0, total: 0, noMatch: false };
@@ -93,24 +99,28 @@ export default function AdminOrderEdit({ onAuthError }) {
     return { base, extras: ex, total: base + ex, noMatch };
   }, [catalog, selectedSlots, extras]);
 
-  const splitCategoryIds = useMemo(() => {
-    const s = new Set();
-    for (const c of catalog?.categories || []) if (c.requires_portion_split) s.add(c.id);
-    return s;
+  // מפה: category_id -> מצב חלוקה ('equal' | 'additive'). תאימות-לאחור לדגל הישן.
+  const splitModeByCategory = useMemo(() => {
+    const map = {};
+    for (const c of catalog?.categories || []) {
+      const mode = c.split_mode || (c.requires_portion_split ? 'equal' : 'none');
+      if (mode !== 'none') map[c.id] = mode;
+    }
+    return map;
   }, [catalog]);
 
-  function isSplitMeal(mealId) {
+  function splitModeOfMeal(mealId) {
     const meal = catalog?.meals.find((m) => m.id === mealId);
-    return meal ? splitCategoryIds.has(meal.category_id) : false;
+    return meal ? splitModeByCategory[meal.category_id] : undefined;
   }
 
   function toggleMeal(slotId, mealId) {
     const key = `${slotId}:${mealId}`;
     setMeals((m) => {
       const next = { ...m };
-      // "נבחר" = המפתח קיים (הערך יכול להיות 0 בקטגוריה שמחלקת מנות).
+      // "נבחר" = המפתח קיים. equal: מספר (0 עד שתוזן כמות). additive/רגיל: true.
       if (Object.prototype.hasOwnProperty.call(next, key)) delete next[key];
-      else next[key] = isSplitMeal(mealId) ? 0 : true;
+      else next[key] = splitModeOfMeal(mealId) === 'equal' ? 0 : true;
       return next;
     });
   }
@@ -120,32 +130,45 @@ export default function AdminOrderEdit({ onAuthError }) {
     setMeals((m) => ({ ...m, [key]: portions }));
   }
 
-  // ולידציה: בכל (סעודה × קטגוריה שמחלקת מנות) עם 2+ מאכלים — הסכום = מנות הסעודה.
+  // ולידציה לקטגוריות מחלקות:
+  //   equal    — בכל קבוצה עם 2+ מאכלים, סך הכמויות = מנות הסעודה.
+  //   additive — לכל היותר דג עיקרי אחד (לא-משני) בקבוצה.
   const splitErrors = useMemo(() => {
     if (!catalog) return [];
     const portionsBySlot = Object.fromEntries(selectedSlots.map((s) => [s.meal_slot_id, s.portions]));
     const groups = {};
-    // כל מפתח שקיים במפה הוא מאכל שנבחר (הערך יכול להיות 0 עד שתוזן כמות).
     for (const [key, value] of Object.entries(meals)) {
       const [slotId, mealId] = key.split(':');
       const meal = catalog.meals.find((mm) => mm.id === mealId);
-      if (!meal || !splitCategoryIds.has(meal.category_id)) continue;
-      const g = (groups[`${slotId}:${meal.category_id}`] ||= { slotId, catId: meal.category_id, sum: 0, count: 0 });
+      if (!meal) continue;
+      const mode = splitModeByCategory[meal.category_id];
+      if (!mode) continue;
+      const g = (groups[`${slotId}:${meal.category_id}`] ||= {
+        slotId, catId: meal.category_id, mode, sum: 0, count: 0, primaryCount: 0,
+      });
       g.count += 1;
       g.sum += typeof value === 'number' ? value : 0;
+      if (!meal.is_secondary) g.primaryCount += 1;
     }
     const errs = [];
     for (const g of Object.values(groups)) {
+      const cat = catalog.categories.find((c) => c.id === g.catId);
+      const slot = catalog.meal_slots.find((s) => s.id === g.slotId);
+      const label = `${slot?.name || 'סעודה'} · ${cat?.name || 'קטגוריה'}`;
+      if (g.mode === 'additive') {
+        if (g.primaryCount > 1) {
+          errs.push(`${label}: ניתן לבחור רק דג עיקרי אחד (הדג הנוסף חייב להיות מסומן כדג משני/זול).`);
+        }
+        continue;
+      }
       if (g.count < 2) continue;
       const target = portionsBySlot[g.slotId] || 0;
       if (g.sum !== target) {
-        const cat = catalog.categories.find((c) => c.id === g.catId);
-        const slot = catalog.meal_slots.find((s) => s.id === g.slotId);
-        errs.push(`${slot?.name || 'סעודה'} · ${cat?.name || 'קטגוריה'}: סך המנות ${g.sum} מתוך ${target} הנדרשות.`);
+        errs.push(`${label}: סך המנות ${g.sum} מתוך ${target} הנדרשות.`);
       }
     }
     return errs;
-  }, [catalog, meals, selectedSlots, splitCategoryIds]);
+  }, [catalog, meals, selectedSlots, splitModeByCategory]);
 
   const customerChanged = order && (
     custName !== (order.customers?.full_name || '') ||
@@ -158,8 +181,8 @@ export default function AdminOrderEdit({ onAuthError }) {
     setError('');
     if (!shabbatId) return setError('נא לבחור שבת.');
     if (selectedSlots.length === 0) return setError('נא לבחור לפחות סעודה אחת עם מספר מנות.');
-    if (selectedSlots.some((slot) => slot.portions < MIN_PORTIONS || slot.portions > MAX_PORTIONS)) {
-      return setError(`מספר המנות בכל סעודה חייב להיות בין ${MIN_PORTIONS} ל-${MAX_PORTIONS}.`);
+    if (selectedSlots.some((slot) => !Number.isInteger(slot.portions) || slot.portions <= 0)) {
+      return setError('מספר המנות בכל סעודה חייב להיות מספר שלם וחיובי.');
     }
     if (splitErrors.length > 0) {
       return setError(`יש להתאים את כמויות המנות בקטגוריות המחלקות מנות:\n${splitErrors.join('\n')}`);
@@ -275,18 +298,28 @@ export default function AdminOrderEdit({ onAuthError }) {
       <section className="card mb-5">
         <h2 className="font-bold text-brand-burgundy mb-3">סעודות ומספר מנות</h2>
         <div className="space-y-2">
-          {catalog.meal_slots.map((slot) => (
-            <div key={slot.id} className="flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-brand-cream/40">
-              <span className="font-medium">{slot.name}{slot.requires_companion && <span className="text-xs text-brand-gold-dark mr-1"> (דורש עוד סעודה)</span>}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-brand-burgundy/60">מנות:</span>
-                <input type="number" min={MIN_PORTIONS} max={MAX_PORTIONS} className="input w-24 py-1 text-center"
-                  value={slots[slot.id] || ''} placeholder="0"
-                  onChange={(e) => setSlots({ ...slots, [slot.id]: e.target.value })} />
+          {catalog.meal_slots.map((slot) => {
+            const num = Number(slots[slot.id]);
+            const isException = Number.isInteger(num) && num > 0 && (num < MIN_PORTIONS || num > MAX_PORTIONS);
+            return (
+              <div key={slot.id} className="flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-brand-cream/40">
+                <span className="font-medium">{slot.name}{slot.requires_companion && <span className="text-xs text-brand-gold-dark mr-1"> (דורש עוד סעודה)</span>}</span>
+                <div className="flex items-center gap-2">
+                  {isException && <span className="text-xs font-medium text-amber-700">חריג</span>}
+                  <span className="text-sm text-brand-burgundy/60">מנות:</span>
+                  <input type="number" min="1" className="input w-24 py-1 text-center"
+                    value={slots[slot.id] || ''} placeholder="0"
+                    onChange={(e) => setSlots({ ...slots, [slot.id]: e.target.value })} />
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
+        {exceptionSlots.length > 0 && (
+          <div className="mt-3 rounded-lg bg-amber-50 border border-amber-300 p-2.5 text-sm text-amber-800">
+            כמות מנות חריגה (מחוץ לטווח {MIN_PORTIONS}–{MAX_PORTIONS}) — תישמר ותסומן כחריג בהזמנה.
+          </div>
+        )}
       </section>
 
       {/* מאכלים לפי סעודה */}
@@ -305,6 +338,7 @@ export default function AdminOrderEdit({ onAuthError }) {
                   selectedMeals={meals}
                   onToggleMeal={toggleMeal}
                   onSetMealPortions={setMealPortions}
+                  allowOverMax
                 />
               </div>
             );

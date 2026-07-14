@@ -25,6 +25,8 @@ import AdminUsers from './pages/AdminUsers.jsx';
 import AdminCatalog from './pages/AdminCatalog.jsx';
 import AdminPrintForm from './pages/AdminPrintForm.jsx';
 import AdminFinance from './pages/AdminFinance.jsx';
+import AdminPettyCash from './pages/AdminPettyCash.jsx';
+import AdminRecurringExpenses from './pages/AdminRecurringExpenses.jsx';
 import AdminEmail from './pages/AdminEmail.jsx';
 
 const STORAGE_KEY = 'matbach_customer';
@@ -156,6 +158,16 @@ export default function App() {
           <Route path="/admin/finance" element={
             <AdminShell admin={admin} onAdminLogout={adminLogout}>
               <AdminFinance onAuthError={adminLogout} />
+            </AdminShell>
+          } />
+          <Route path="/admin/petty-cash" element={
+            <AdminShell admin={admin} onAdminLogout={adminLogout}>
+              <AdminPettyCash onAuthError={adminLogout} />
+            </AdminShell>
+          } />
+          <Route path="/admin/recurring-expenses" element={
+            <AdminShell admin={admin} onAdminLogout={adminLogout}>
+              <AdminRecurringExpenses onAuthError={adminLogout} />
             </AdminShell>
           } />
           <Route path="/admin/email" element={

@@ -56,7 +56,7 @@ export default function AdminPurchaseOrders({ onAuthError, currentAdmin }) {
   if (!list) return <Page title="הזמנות רכש"><p>טוען...</p></Page>;
 
   return (
-    <Page title="הזמנות רכש" subtitle="יצירת הזמנות לספקים, קבלת סחורה למלאי ותשלום (סעיף 27-28)">
+    <Page title="הזמנות רכש" subtitle="יצירת הזמנות לספקים, קבלת סחורה למלאי ותשלום">
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <button onClick={() => setCreating(true)} className="btn-primary">+ הזמנת רכש חדשה</button>
         <Field label="ספק">

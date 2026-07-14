@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { Fragment, useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
@@ -66,7 +66,7 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
   if (!list) return <Page title="ניהול ספקים"><p>טוען...</p></Page>;
 
   return (
-    <Page title="ניהול ספקים" subtitle="כרטיס ספק, פרטי קשר ומוצרים שהספק מספק (סעיף 27)">
+    <Page title="ניהול ספקים" subtitle="כרטיס ספק, פרטי קשר ומוצרים שהספק מספק">
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <button onClick={() => setEditing({})} className="btn-primary">+ ספק חדש</button>
         <Field label="סטטוס">
@@ -79,7 +79,7 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
         <Link to="/admin/purchase-orders" className="btn-ghost pb-2">הזמנות רכש ←</Link>
       </div>
 
-      {editing && (
+      {editing && !editing.id && (
         <SupplierForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />
       )}
       {detail && (
@@ -100,7 +100,8 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
           </thead>
           <tbody>
             {list.map((s) => (
-              <tr key={s.id} className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!s.is_active ? 'opacity-50' : ''}`}>
+              <Fragment key={s.id}>
+              <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!s.is_active ? 'opacity-50' : ''} ${editing?.id === s.id ? 'bg-brand-cream/40' : ''}`}>
                 <td className="p-3 font-medium">
                   <button onClick={() => openDetail(s)} className="text-brand-burgundy hover:underline">{s.name}</button>
                 </td>
@@ -111,7 +112,7 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
                 <td className="p-3 text-sm whitespace-nowrap">
                   <div className="flex flex-wrap gap-1">
                   <ActionIconButton icon="view" label="פירוט" onClick={() => openDetail(s)} />
-                  <ActionIconButton icon="edit" label="עריכה" onClick={() => setEditing(s)} />
+                  <ActionIconButton icon={editing?.id === s.id ? 'cancel' : 'edit'} label={editing?.id === s.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === s.id ? null : s)} />
                   <ActionIconButton
                     icon={s.is_active ? 'deactivate' : 'activate'}
                     label={s.is_active ? 'השבתה' : 'הפעלה'}
@@ -124,6 +125,14 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
                   </div>
                 </td>
               </tr>
+              {editing?.id === s.id && (
+                <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
+                  <td colSpan={6} className="p-3 sm:p-4">
+                    <SupplierForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
             {list.length === 0 && (
               <tr><td colSpan={6} className="p-6 text-center text-brand-burgundy/50">אין ספקים עדיין.</td></tr>
@@ -244,7 +253,7 @@ function SupplierDetail({ data, onClose, onErr, onChanged }) {
       {/* מוצרים שהספק מספק */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h4 className="font-semibold text-brand-burgundy">מוצרים שהספק מספק (סעיף 25.3)</h4>
+          <h4 className="font-semibold text-brand-burgundy">מוצרים שהספק מספק</h4>
           {!editingItems && <button onClick={startEdit} className="text-brand-burgundy hover:underline text-sm">עריכת מוצרים</button>}
         </div>
 

@@ -134,6 +134,31 @@
   background: #fbfaf8;
 }
 
+/* Keep entity-table headings visible while their rows scroll. Limiting only
+   direct table scrollers preserves horizontal scrolling on narrow screens and
+   gives sticky cells a reliable vertical scroll container. */
+@media screen {
+  .admin-pilot .overflow-x-auto:has(> table) {
+    max-height: calc(100dvh - 7rem);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .admin-pilot .overflow-x-auto:has(> table) > table > thead {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+
+  .admin-pilot .overflow-x-auto:has(> table) > table > thead > tr > th {
+    position: sticky;
+    top: 0;
+    z-index: 21;
+    background-color: #f7f7f7;
+    box-shadow: inset 0 -1px 0 rgba(42, 31, 36, 0.055);
+  }
+}
+
 /* Shared admin surface: carries the pilot language through legacy admin screens. */
 @media screen {
   .admin-pilot main {

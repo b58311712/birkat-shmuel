@@ -6,8 +6,10 @@ import { requireRole } from '../lib/auth.js';
 
 const router = Router();
 
-const CATEGORY_SELECT = 'id, name, internal_description, display_order, recommended_min, max_allowed, requires_portion_split, is_active, created_at, updated_at';
-const MEAL_SELECT = 'id, name, category_id, included_in_base, requires_extra_charge, extra_charge_amount, kitchen_prep_notes, kitchen_report_notes, preparation_instructions, display_order, is_active, created_at, updated_at, category:category_id (id, name)';
+const CATEGORY_SELECT = 'id, name, internal_description, display_order, recommended_min, max_allowed, requires_portion_split, split_mode, primary_percent, secondary_percent, is_active, created_at, updated_at';
+const MEAL_SELECT = 'id, name, category_id, included_in_base, requires_extra_charge, extra_charge_amount, is_secondary, kitchen_prep_notes, kitchen_report_notes, preparation_instructions, display_order, is_active, created_at, updated_at, category:category_id (id, name)';
+
+const SPLIT_MODES = ['none', 'equal', 'additive'];
 const EXTRA_SELECT = 'id, name, unit_price, billing_unit, suggestion_ratio, suggestion_basis, customer_note, display_order, is_active, created_at, updated_at';
 const PRICE_TRACK_SELECT = 'id, name, condition_note, meals_count, price_per_portion, effective_from, is_active, created_at, updated_at';
 const SUGGESTION_BASES = ['per_portion', 'per_portion_per_slot', 'fixed_per_order'];
@@ -53,13 +55,32 @@ function normalizeCategory(body, { partial = false } = {}) {
   if (!partial || body.display_order !== undefined) patch.display_order = intOrNull(body.display_order) ?? 0;
   if (!partial || body.recommended_min !== undefined) patch.recommended_min = intOrNull(body.recommended_min);
   if (!partial || body.max_allowed !== undefined) patch.max_allowed = intOrNull(body.max_allowed);
-  if (!partial || body.requires_portion_split !== undefined) patch.requires_portion_split = Boolean(body.requires_portion_split);
+
+  // מצב חלוקת מנות: none / equal / additive. שומר את הדגל הישן requires_portion_split
+  // מסונכרן (true כשיש חלוקה כלשהי) לתאימות-לאחור.
+  if (!partial || body.split_mode !== undefined) {
+    const mode = body.split_mode ? String(body.split_mode).trim() : 'none';
+    if (!SPLIT_MODES.includes(mode)) return { error: 'מצב חלוקת מנות לא תקין.' };
+    patch.split_mode = mode;
+    patch.requires_portion_split = mode !== 'none';
+  } else if (body.requires_portion_split !== undefined) {
+    // תאימות-לאחור: אם נשלח רק הדגל הישן — equal כשדולק, none כשכבוי.
+    patch.requires_portion_split = Boolean(body.requires_portion_split);
+    patch.split_mode = patch.requires_portion_split ? 'equal' : 'none';
+  }
+  if (!partial || body.primary_percent !== undefined) patch.primary_percent = intOrNull(body.primary_percent) ?? 80;
+  if (!partial || body.secondary_percent !== undefined) patch.secondary_percent = intOrNull(body.secondary_percent) ?? 50;
   if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
 
   if (patch.recommended_min != null && patch.recommended_min < 0) return { error: 'מינימום מומלץ לא יכול להיות שלילי.' };
   if (patch.max_allowed != null && patch.max_allowed < 0) return { error: 'מקסימום מותר לא יכול להיות שלילי.' };
   if (patch.recommended_min != null && patch.max_allowed != null && patch.recommended_min > patch.max_allowed) {
     return { error: 'המינימום המומלץ לא יכול להיות גדול מהמקסימום המותר.' };
+  }
+  for (const [field, label] of [['primary_percent', 'אחוז הדג העיקרי'], ['secondary_percent', 'אחוז הדג המשני']]) {
+    if (patch[field] != null && (patch[field] < 1 || patch[field] > 100)) {
+      return { error: `${label} חייב להיות בין 1 ל-100.` };
+    }
   }
 
   return { patch };
@@ -78,6 +99,7 @@ function normalizeMeal(body, { partial = false } = {}) {
     patch.category_id = body.category_id;
   }
   if (!partial || body.included_in_base !== undefined) patch.included_in_base = body.included_in_base !== false;
+  if (!partial || body.is_secondary !== undefined) patch.is_secondary = Boolean(body.is_secondary);
   if (!partial || body.requires_extra_charge !== undefined) patch.requires_extra_charge = Boolean(body.requires_extra_charge);
   if (!partial || body.extra_charge_amount !== undefined) patch.extra_charge_amount = num(body.extra_charge_amount);
   if (!partial || body.kitchen_prep_notes !== undefined) {

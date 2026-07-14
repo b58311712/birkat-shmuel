@@ -474,7 +474,7 @@ function DeductionPanel({ id, onClose, onDone, onErr }) {
         <button onClick={onClose} className="text-brand-burgundy/60 hover:underline text-sm">סגירה</button>
       </div>
       <p className="text-xs text-brand-burgundy/50">
-        לאחר סיום ההכנות — אשר הפחתה מהמלאי לפי הצורך שחושב. ניתן לתקן כמויות ידנית לפני האישור (סעיף 25.4).
+        לאחר סיום ההכנות — אשר הפחתה מהמלאי לפי הצורך שחושב. ניתן לתקן כמויות ידנית לפני האישור.
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -753,7 +753,7 @@ function VolunteersTab({ id, onAuthError }) {
       ))}
 
       <div className="text-xs text-brand-burgundy/40">
-        שיבוץ בישול נעשה אוטומטית לפי קישור המתנדב למאכל. שיבוץ שינוע ושאר התחומים — ידני (סעיף 24.2).
+        שיבוץ בישול נעשה אוטומטית לפי קישור המתנדב למאכל. שיבוץ שינוע ושאר התחומים — ידני.
       </div>
     </div>
   );

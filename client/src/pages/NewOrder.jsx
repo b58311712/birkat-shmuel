@@ -6,6 +6,10 @@ import { MealCategoryPicker } from '../components/MealCategoryPicker.jsx';
 import { formatGregorianDate, formatShabbatHebrewDate, formatShabbatTitle } from '../lib/dates.js';
 import { slotComboKey } from '../lib/pricing.js';
 
+// טווח מנות סטנדרטי. כמות מחוץ לטווח מותרת כ"בקשת חריג" הממתינה לאישור מנהל (סעיף 12.2).
+const MIN_PORTIONS = 50;
+const MAX_PORTIONS = 100;
+
 export default function NewOrder({ customer }) {
   const nav = useNavigate();
   const [catalog, setCatalog] = useState(null);
@@ -30,18 +34,26 @@ export default function NewOrder({ customer }) {
       .finally(() => setLoading(false));
   }, []);
 
+  // סעודה "נבחרה" אם הוזן בה מספר מנות שלם וחיובי (כולל חריגה מחוץ ל-50–100).
   const selectedSlots = useMemo(
     () => Object.entries(slots)
-      .filter(([, p]) => Number(p) >= 50 && Number(p) <= 100)
+      .filter(([, p]) => Number.isInteger(Number(p)) && Number(p) > 0)
       .map(([id, p]) => ({ meal_slot_id: id, portions: Number(p) })),
     [slots]
   );
 
+  // כמות לא-תקינה חוסמת שליחה (ריק / לא-שלם / אפס-שלילי). חריגה 50–100 אינה חוסמת.
   const invalidSlotIds = useMemo(
     () => Object.entries(slots)
-      .filter(([, portions]) => portions !== '' && (Number(portions) < 50 || Number(portions) > 100))
+      .filter(([, p]) => p !== '' && (!Number.isInteger(Number(p)) || Number(p) <= 0))
       .map(([id]) => id),
     [slots]
+  );
+
+  // סעודות בכמות חריגה (מחוץ ל-50–100) — מותרות אך יסומנו כבקשת חריג לאישור מנהל.
+  const exceptionSlots = useMemo(
+    () => selectedSlots.filter((s) => s.portions < MIN_PORTIONS || s.portions > MAX_PORTIONS),
+    [selectedSlots]
   );
 
   const selectedShabbat = useMemo(
@@ -67,20 +79,48 @@ export default function NewOrder({ customer }) {
     return { base, extras: ex, total: base + ex, noMatch };
   }, [catalog, selectedSlots, extras]);
 
+  // מפה: category_id -> מצב חלוקה ('equal' | 'additive'). תאימות-לאחור לדגל הישן.
+  const splitModeByCategory = useMemo(() => {
+    const map = {};
+    for (const c of catalog?.categories || []) {
+      const mode = c.split_mode || (c.requires_portion_split ? 'equal' : 'none');
+      if (mode !== 'none') map[c.id] = mode;
+    }
+    return map;
+  }, [catalog]);
+
   const orderPreview = useMemo(() => {
     if (!catalog) return { slots: [], extras: [] };
 
     return {
       slots: selectedSlots.map(({ meal_slot_id, portions }) => {
         const slot = catalog.meal_slots.find((s) => s.id === meal_slot_id);
+        // כמה מאכלים נבחרו בכל קטגוריה בסעודה זו — לחישוב "דג יחיד → 100%" ב-additive.
+        const countByCategory = {};
+        for (const key of Object.keys(meals)) {
+          if (!key.startsWith(`${meal_slot_id}:`)) continue;
+          const meal = catalog.meals.find((m) => m.id === key.split(':')[1]);
+          if (meal) countByCategory[meal.category_id] = (countByCategory[meal.category_id] || 0) + 1;
+        }
         const selectedMeals = Object.entries(meals)
           .filter(([key]) => key.startsWith(`${meal_slot_id}:`))
           .map(([key, value]) => {
             const mealId = key.split(':')[1];
             const meal = catalog.meals.find((m) => m.id === mealId);
             const category = catalog.categories.find((c) => c.id === meal?.category_id);
-            // כמות מנות מוצגת רק בקטגוריה שמחלקת מנות (ערך מספרי)
-            const mealPortions = typeof value === 'number' ? value : null;
+            const mode = meal ? splitModeByCategory[meal.category_id] : undefined;
+            // equal: הכמות שהוזנה. additive: מחושבת מקומית (זהה לשרת, עיגול כלפי מעלה).
+            let mealPortions = typeof value === 'number' ? value : null;
+            if (mode === 'additive' && meal) {
+              if ((countByCategory[meal.category_id] || 0) < 2) {
+                mealPortions = portions;                               // דג יחיד → 100%
+              } else {
+                const pct = meal.is_secondary
+                  ? Number(category?.secondary_percent ?? 50)
+                  : Number(category?.primary_percent ?? 80);
+                mealPortions = Math.ceil((portions * pct) / 100);
+              }
+            }
             return meal ? { ...meal, category_name: category?.name || 'ללא קטגוריה', meal_portions: mealPortions } : null;
           })
           .filter(Boolean);
@@ -100,30 +140,28 @@ export default function NewOrder({ customer }) {
         })
         .filter(Boolean),
     };
-  }, [catalog, selectedSlots, meals, extras]);
+  }, [catalog, selectedSlots, meals, extras, splitModeByCategory]);
 
-  // מפה: category_id -> requires_portion_split
-  const splitCategoryIds = useMemo(() => {
-    const s = new Set();
-    for (const c of catalog?.categories || []) if (c.requires_portion_split) s.add(c.id);
-    return s;
-  }, [catalog]);
-
-  function isSplitMeal(mealId) {
+  function categoryOfMeal(mealId) {
     const meal = catalog?.meals.find((m) => m.id === mealId);
-    return meal ? splitCategoryIds.has(meal.category_id) : false;
+    return meal?.category_id || null;
+  }
+  // מצב חלוקה של המאכל: 'equal' | 'additive' | undefined (רגיל).
+  function splitModeOfMeal(mealId) {
+    const catId = categoryOfMeal(mealId);
+    return catId ? splitModeByCategory[catId] : undefined;
   }
 
   function toggleMeal(slotId, mealId) {
     const key = `${slotId}:${mealId}`;
     setMeals((m) => {
       const next = { ...m };
-      // "נבחר" = המפתח קיים (הערך יכול להיות 0 בקטגוריה שמחלקת מנות).
+      // "נבחר" = המפתח קיים (הערך יכול להיות 0 בקטגוריה במצב equal).
       if (Object.prototype.hasOwnProperty.call(next, key)) {
         delete next[key];
       } else {
-        // בקטגוריה שמחלקת מנות שומרים מספר (0 עד שהלקוח יזין); אחרת true.
-        next[key] = isSplitMeal(mealId) ? 0 : true;
+        // equal: שומרים מספר (0 עד שהלקוח יזין). additive/רגיל: true (השרת מחשב).
+        next[key] = splitModeOfMeal(mealId) === 'equal' ? 0 : true;
       }
       return next;
     });
@@ -134,32 +172,46 @@ export default function NewOrder({ customer }) {
     setMeals((m) => ({ ...m, [key]: portions }));
   }
 
-  // ולידציה: בכל (סעודה × קטגוריה שמחלקת מנות) עם 2+ מאכלים — הסכום = מנות הסעודה.
+  // ולידציה לקטגוריות מחלקות:
+  //   equal    — בכל קבוצה עם 2+ מאכלים, סך הכמויות = מנות הסעודה.
+  //   additive — לכל היותר דג עיקרי אחד (לא-משני) בקבוצה.
   const splitErrors = useMemo(() => {
     if (!catalog) return [];
     const portionsBySlot = Object.fromEntries(selectedSlots.map((s) => [s.meal_slot_id, s.portions]));
-    const groups = {}; // `${slotId}:${catId}` -> { slotId, catId, sum, count }
-    // כל מפתח שקיים במפה הוא מאכל שנבחר (הערך יכול להיות 0 עד שתוזן כמות).
+    const groups = {}; // `${slotId}:${catId}` -> { slotId, catId, mode, sum, count, primaryCount }
     for (const [key, value] of Object.entries(meals)) {
       const [slotId, mealId] = key.split(':');
       const meal = catalog.meals.find((mm) => mm.id === mealId);
-      if (!meal || !splitCategoryIds.has(meal.category_id)) continue;
-      const g = (groups[`${slotId}:${meal.category_id}`] ||= { slotId, catId: meal.category_id, sum: 0, count: 0 });
+      if (!meal) continue;
+      const mode = splitModeByCategory[meal.category_id];
+      if (!mode) continue;
+      const g = (groups[`${slotId}:${meal.category_id}`] ||= {
+        slotId, catId: meal.category_id, mode, sum: 0, count: 0, primaryCount: 0,
+      });
       g.count += 1;
       g.sum += typeof value === 'number' ? value : 0;
+      if (!meal.is_secondary) g.primaryCount += 1;
     }
     const errs = [];
     for (const g of Object.values(groups)) {
+      const cat = catalog.categories.find((c) => c.id === g.catId);
+      const slot = catalog.meal_slots.find((s) => s.id === g.slotId);
+      const label = `${slot?.name || 'סעודה'} · ${cat?.name || 'קטגוריה'}`;
+      if (g.mode === 'additive') {
+        if (g.primaryCount > 1) {
+          errs.push(`${label}: ניתן לבחור רק דג עיקרי אחד (הדג הנוסף חייב להיות מסומן כדג משני/זול).`);
+        }
+        continue;
+      }
+      // equal
       if (g.count < 2) continue; // סוג יחיד → השרת ישייך את כל המנות
       const target = portionsBySlot[g.slotId] || 0;
       if (g.sum !== target) {
-        const cat = catalog.categories.find((c) => c.id === g.catId);
-        const slot = catalog.meal_slots.find((s) => s.id === g.slotId);
-        errs.push(`${slot?.name || 'סעודה'} · ${cat?.name || 'קטגוריה'}: סך המנות ${g.sum} מתוך ${target} הנדרשות.`);
+        errs.push(`${label}: סך המנות ${g.sum} מתוך ${target} הנדרשות.`);
       }
     }
     return errs;
-  }, [catalog, meals, selectedSlots, splitCategoryIds]);
+  }, [catalog, meals, selectedSlots, splitModeByCategory]);
 
   function validateOrder() {
     setError('');
@@ -168,11 +220,11 @@ export default function NewOrder({ customer }) {
       return false;
     }
     if (invalidSlotIds.length > 0) {
-      setError('מספר המנות בכל סעודה שנבחרה חייב להיות בין 50 ל־100.');
+      setError('מספר המנות בכל סעודה שנבחרה חייב להיות מספר שלם וחיובי.');
       return false;
     }
     if (selectedSlots.length === 0) {
-      setError('נא לבחור לפחות סעודה אחת עם 50 עד 100 מנות.');
+      setError('נא לבחור לפחות סעודה אחת עם מספר מנות.');
       return false;
     }
     if (splitErrors.length > 0) {
@@ -252,14 +304,19 @@ export default function NewOrder({ customer }) {
         <h2 className="font-bold text-brand-burgundy mb-3">2. סעודות ומספר מנות</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {catalog.meal_slots.map((slot) => {
-            const hasPortions = Number(slots[slot.id]) >= 50 && Number(slots[slot.id]) <= 100;
+            const raw = slots[slot.id];
+            const num = Number(raw);
+            const isSelected = Number.isInteger(num) && num > 0;
             const invalidPortions = invalidSlotIds.includes(slot.id);
+            const isException = isSelected && (num < MIN_PORTIONS || num > MAX_PORTIONS);
 
             return (
               <div
                 key={slot.id}
                 className={`flex items-center justify-between gap-2 rounded-lg border p-2 transition-colors ${
-                  hasPortions
+                  isException
+                    ? 'border-amber-400 bg-amber-50 shadow-card'
+                    : isSelected
                     ? 'border-brand-gold-dark bg-brand-gold/25 shadow-card'
                     : 'border-brand-cream-dark bg-white hover:border-brand-gold hover:bg-brand-cream/25'
                 }`}
@@ -274,22 +331,32 @@ export default function NewOrder({ customer }) {
                   <span className="text-xs text-brand-burgundy/60">מנות</span>
                   <input
                     type="number"
-                    min="50"
-                    max="100"
+                    min="1"
                     aria-invalid={invalidPortions}
                     className={`input w-20 px-2 py-1 text-center text-base ${invalidPortions ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''}`}
-                    value={slots[slot.id] || ''}
+                    value={raw || ''}
                     placeholder="50–100"
                     onChange={(e) => setSlots({ ...slots, [slot.id]: e.target.value })}
                   />
                 </label>
                 {invalidPortions && (
-                  <span className="text-xs font-medium text-red-600">יש להזין 50–100</span>
+                  <span className="text-xs font-medium text-red-600">מספר לא תקין</span>
+                )}
+                {isException && (
+                  <span className="text-xs font-medium text-amber-700">חריג — יידרש אישור מנהל</span>
                 )}
               </div>
             );
           })}
         </div>
+        {exceptionSlots.length > 0 && (
+          <div className="mt-3 rounded-lg bg-amber-50 border border-amber-300 p-3 text-sm text-amber-800">
+            <div className="font-bold">בקשת כמות חריגה (מחוץ לטווח {MIN_PORTIONS}–{MAX_PORTIONS} מנות)</div>
+            <p className="mt-0.5">
+              ניתן לשלוח את ההזמנה, אך היא תסומן כבקשת חריג ותמתין לאישור מנהל לפני שתאושר.
+            </p>
+          </div>
+        )}
       </section>
 
       {selectedSlots.length > 0 && (
@@ -373,6 +440,11 @@ export default function NewOrder({ customer }) {
             לא הוגדר מחיר לצירוף הסעודות שנבחר. יש לבחור צירוף אחר או לפנות למנהל להגדרת מסלול מתאים.
           </p>
         )}
+        {exceptionSlots.length > 0 && (
+          <p className="text-sm text-amber-700 mt-2 font-medium">
+            ההזמנה כוללת כמות מנות חריגה ותסומן כבקשת חריג הממתינה לאישור מנהל.
+          </p>
+        )}
         <p className="text-xs text-brand-burgundy/50 mt-2">
           לפני השליחה תוצג ההזמנה המלאה לאישור. המחיר הסופי מחושב על ידי המערכת.
         </p>
@@ -385,6 +457,7 @@ export default function NewOrder({ customer }) {
           preview={orderPreview}
           priceEstimate={priceEstimate}
           deliveryDetails={{ contactName, contactPhone, venueAddress }}
+          hasException={exceptionSlots.length > 0}
           submitting={submitting}
           onClose={() => setPreviewOpen(false)}
           onSubmit={submit}
@@ -394,7 +467,7 @@ export default function NewOrder({ customer }) {
   );
 }
 
-function OrderPreviewModal({ customer, shabbat, preview, priceEstimate, deliveryDetails, submitting, onClose, onSubmit }) {
+function OrderPreviewModal({ customer, shabbat, preview, priceEstimate, deliveryDetails, hasException, submitting, onClose, onSubmit }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-brand-burgundy-dark/55 p-3 sm:p-6">
       <section className="w-full max-w-3xl max-h-[92vh] overflow-hidden rounded-xl bg-white shadow-card border border-brand-cream-dark">
@@ -409,6 +482,14 @@ function OrderPreviewModal({ customer, shabbat, preview, priceEstimate, delivery
         </div>
 
         <div className="overflow-y-auto p-4 space-y-4 max-h-[calc(92vh-150px)]">
+          {hasException && (
+            <div className="rounded-lg bg-amber-50 border border-amber-300 p-3 text-sm text-amber-800">
+              <div className="font-bold">בקשת כמות מנות חריגה</div>
+              <p className="mt-0.5">
+                אחת הסעודות מחוץ לטווח הרגיל (50–100 מנות). ההזמנה תסומן כבקשת חריג ותמתין לאישור מנהל.
+              </p>
+            </div>
+          )}
           {preview.slots.map((slot) => (
             <div key={slot.meal_slot_id} className="rounded-lg border border-brand-cream-dark p-3">
               <div className="flex items-center justify-between gap-3 border-b border-brand-cream-dark pb-2 mb-2">
