@@ -4,7 +4,7 @@
 // נרשם ב-index.js תחת /api/cron (מחוץ ל-requireAdmin).
 import { Router } from 'express';
 import { asyncHandler, fail } from '../lib/helpers.js';
-import { generateForMonth, monthKeyOf } from '../services/recurringExpenses.js';
+import { generateForMonth, monthKeyOf, isMonthKey } from '../services/recurringExpenses.js';
 
 const router = Router();
 
@@ -31,6 +31,7 @@ router.post('/run-due', asyncHandler(async (req, res) => {
   const rawDay = Number(req.body?.day) || now.getDate();
   const day = Math.min(Math.max(rawDay, 1), 28);
   const month = req.body?.month || monthKeyOf(now);
+  if (!isMonthKey(month)) return fail(res, 400, 'חודש לא תקין (נדרש YYYY-MM).');
 
   const result = await generateForMonth({ month, onlyDayOfMonth: day });
   res.json({ ...result, day });
@@ -44,6 +45,7 @@ router.post('/run-month', asyncHandler(async (req, res) => {
   if (!checkSecret(req, res)) return;
 
   const month = req.body?.month || monthKeyOf(new Date());
+  if (!isMonthKey(month)) return fail(res, 400, 'חודש לא תקין (נדרש YYYY-MM).');
   const result = await generateForMonth({ month });
   res.json(result);
 }));

@@ -234,10 +234,11 @@ async function seedInventory(mealIdByName) {
 // חלק ממתנדבי הבישול מקושרים למאכל כדי להדגים שיבוץ אוטומטי (סעיף 24.2).
 async function seedVolunteers(mealIdByName) {
   // --- מתנדבים ---
+  // meals = מערך מאכלים לבישול קבוע (many-to-many). מתנדב אחד יכול לבשל כמה מאכלים.
   const demoVolunteers = [
-    { name: 'אברהם כהן', phone: '050-111-1111', area: 'cooking', meal: 'מרק עוף', regular: true },
-    { name: 'יצחק לוי', phone: '050-222-2222', area: 'cooking', meal: 'סלט חצילים', regular: true },
-    { name: 'יעקב מזרחי', phone: '050-333-3333', area: 'cooking', meal: 'עוף בגריל', regular: true },
+    { name: 'אברהם כהן', phone: '050-111-1111', area: 'cooking', meals: ['מרק עוף', 'עוף בגריל'], regular: true },
+    { name: 'יצחק לוי', phone: '050-222-2222', area: 'cooking', meals: ['סלט חצילים'], regular: true },
+    { name: 'יעקב מזרחי', phone: '050-333-3333', area: 'cooking', meals: ['עוף בגריל'], regular: true },
     { name: 'שרה פרידמן', phone: '050-444-4444', area: 'packing', regular: true },
     { name: 'רבקה גולן', phone: '050-555-5555', area: 'packing', regular: false },
     { name: 'משה דיין', phone: '050-666-6666', area: 'transport', vehicle: true, regular: true },
@@ -252,16 +253,33 @@ async function seedVolunteers(mealIdByName) {
     await supabase.from('volunteer_assignments').delete().in('volunteer_id', ids);
     await supabase.from('volunteers').delete().in('id', ids);
   }
-  const volRows = demoVolunteers.map((v) => ({
-    full_name: v.name,
-    phone: v.phone,
-    area: v.area,
-    linked_meal_id: v.meal ? mealIdByName[v.meal] || null : null,
-    has_vehicle: !!v.vehicle,
-    is_regular: !!v.regular,
-    is_active: true,
-  }));
-  await supabase.from('volunteers').insert(volRows);
+  const volMealNames = (v) => (v.meals || (v.meal ? [v.meal] : []));
+  const volRows = demoVolunteers.map((v) => {
+    const mealIds = volMealNames(v).map((n) => mealIdByName[n]).filter(Boolean);
+    return {
+      full_name: v.name,
+      phone: v.phone,
+      area: v.area,
+      linked_meal_id: mealIds[0] || null, // מאכל ראשי — תאימות לאחור
+      has_vehicle: !!v.vehicle,
+      is_regular: !!v.regular,
+      is_active: true,
+    };
+  });
+  const { data: insertedVols } = await supabase.from('volunteers').insert(volRows).select('id, full_name');
+
+  // קישורי מאכלים מרובים (volunteer_meal_links, סעיף 24.2)
+  const volIdByName = Object.fromEntries((insertedVols || []).map((v) => [v.full_name, v.id]));
+  const mealLinkRows = [];
+  for (const v of demoVolunteers) {
+    const volId = volIdByName[v.name];
+    if (!volId) continue;
+    for (const name of volMealNames(v)) {
+      const mealId = mealIdByName[name];
+      if (mealId) mealLinkRows.push({ volunteer_id: volId, meal_id: mealId });
+    }
+  }
+  if (mealLinkRows.length) await supabase.from('volunteer_meal_links').insert(mealLinkRows);
 
   // --- משימות קבועות (סעיף 24.3) — לא נוצרות מחדש בכל שבת ---
   const demoTasks = [

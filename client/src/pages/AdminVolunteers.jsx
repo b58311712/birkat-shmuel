@@ -113,7 +113,7 @@ function VolunteersManager({ meals, onErr, canDelete }) {
               <th className="p-3 text-right">טלפון</th>
               <th className="p-3 text-right">תחום</th>
               <th className="p-3 text-right">משימות קבועות</th>
-              <th className="p-3 text-right">מאכל</th>
+              <th className="p-3 text-right">מאכלים</th>
               <th className="p-3 text-right">רכב</th>
               <th className="p-3 text-right">קבוע</th>
               <th className="p-3 text-right">סטטוס</th>
@@ -133,7 +133,12 @@ function VolunteersManager({ meals, onErr, canDelete }) {
                     ? '—'
                     : (v.task_ids || []).map((tid) => taskName[tid]).filter(Boolean).join(', ')}
                 </td>
-                <td className="p-3 text-sm text-brand-burgundy/60">{v.meals?.name || '—'}</td>
+                <td className="p-3 text-sm text-brand-burgundy/60">
+                  {(v.linked_meals?.length
+                    ? v.linked_meals.map((m) => m.name)
+                    : (v.meals?.name ? [v.meals.name] : [])
+                  ).join(', ') || '—'}
+                </td>
                 <td className="p-3 text-center">{v.has_vehicle ? '🚗' : '—'}</td>
                 <td className="p-3 text-center">{v.is_regular ? '✓' : '—'}</td>
                 <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={v.is_active ? 'active' : 'inactive'} /></td>
@@ -180,12 +185,15 @@ function VolunteerForm({ meals, customers, tasks, initial, onSave, onCancel }) {
     phone: initial.phone || '',
     email: initial.email || '',
     area: initial.area || 'cooking',
-    linked_meal_id: initial.linked_meal_id || '',
     has_vehicle: initial.has_vehicle || false,
     is_regular: initial.is_regular || false,
   });
   const [taskIds, setTaskIds] = useState(initial.task_ids || []); // שיוך מרובה למשימות קבועות
   const toggleTask = (id) => setTaskIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const [mealIds, setMealIds] = useState(
+    initial.meal_ids || (initial.linked_meal_id ? [initial.linked_meal_id] : []), // שיוך מרובה למאכלי בישול
+  );
+  const toggleMeal = (id) => setMealIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   const linkedCustomer = customers.find((customer) => customer.id === f.customer_id);
   const set = (k, v) => setF((s) => {
     if (k !== 'customer_id') return { ...s, [k]: v };
@@ -202,7 +210,9 @@ function VolunteerForm({ meals, customers, tasks, initial, onSave, onCancel }) {
   function submit(e) {
     e.preventDefault();
     if (!f.customer_id && !f.full_name.trim()) return alert('חובה להזין שם מלא.');
-    onSave({ ...f, customer_id: f.customer_id || null, linked_meal_id: f.linked_meal_id || null, task_ids: taskIds });
+    // בישול משבץ לפי meal_ids; לתחומים אחרים אין קישור מאכל.
+    const meal_ids = f.area === 'cooking' ? mealIds : [];
+    onSave({ ...f, customer_id: f.customer_id || null, task_ids: taskIds, meal_ids });
   }
 
   return (
@@ -250,15 +260,28 @@ function VolunteerForm({ meals, customers, tasks, initial, onSave, onCancel }) {
             {AREAS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
           </select>
         </Field>
-        {f.area === 'cooking' && (
-          <Field label="קישור למאכל (לשיבוץ בישול אוטומטי)">
-            <select value={f.linked_meal_id} onChange={(e) => set('linked_meal_id', e.target.value)} className={inputCls}>
-              <option value="">— ללא —</option>
-              {meals.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </Field>
-        )}
       </div>
+
+      {f.area === 'cooking' && (
+        <div>
+          <span className="text-sm text-brand-burgundy/70 block mb-1">
+            מאכלים לבישול (לשיבוץ בישול אוטומטי — ניתן לסמן כמה)
+          </span>
+          {meals.length === 0 ? (
+            <p className="text-xs text-brand-burgundy/40">אין מאכלים מוגדרים בקטלוג.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 border border-brand-cream-dark rounded-lg p-3 max-h-52 overflow-y-auto">
+              {meals.map((m) => (
+                <label key={m.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={mealIds.includes(m.id)} onChange={() => toggleMeal(m.id)} />
+                  <span>{m.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-4">
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={f.has_vehicle} onChange={(e) => set('has_vehicle', e.target.checked)} />

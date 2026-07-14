@@ -527,13 +527,20 @@ export async function autoAssignCooking(shabbatId) {
 
   const mealIds = [...new Set(relevantTasks.map((t) => t.linked_meal_id))];
 
-  // מתנדבי בישול פעילים המקושרים למאכלים אלה
-  const { data: vols, error: vErr } = await supabase.from('volunteers')
-    .select('id, linked_meal_id')
-    .eq('is_active', true).eq('area', 'cooking').in('linked_meal_id', mealIds);
+  // מתנדבי בישול פעילים המקושרים למאכלים אלה. מתנדב יכול להיות מקושר למספר
+  // מאכלים (volunteer_meal_links, סעיף 24.2) ולכן משבצים אותו לכל משימת בישול
+  // שהמאכל שלה מקושר אליו.
+  const { data: links, error: vErr } = await supabase.from('volunteer_meal_links')
+    .select('meal_id, volunteers!inner (id, is_active, area)')
+    .in('meal_id', mealIds)
+    .eq('volunteers.is_active', true)
+    .eq('volunteers.area', 'cooking');
   if (vErr) throw vErr;
   const volsByMeal = {};
-  for (const v of vols || []) (volsByMeal[v.linked_meal_id] ||= []).push(v);
+  for (const l of links || []) {
+    if (!l.volunteers) continue;
+    (volsByMeal[l.meal_id] ||= []).push({ id: l.volunteers.id });
+  }
 
   // שיבוצים קיימים בשבת זו — לא ליצור כפילויות (task+volunteer)
   const { data: existing, error: eErr } = await supabase.from('volunteer_assignments')
