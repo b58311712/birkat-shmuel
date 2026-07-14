@@ -1,0 +1,117 @@
+{
+  "name": "מטבח החסד — הפקת הוצאות קבועות (יומי)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 6,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "schedule-daily",
+      "name": "כל יום ב-06:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://birkat-shmuel.onrender.com/api/cron/run-due",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-cron-secret",
+              "value": "={{ $env.BIRKAT_CRON_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        }
+      },
+      "id": "http-run-due",
+      "name": "הפק הוצאות של היום",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "has-created",
+              "leftValue": "={{ $json.created_count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-created",
+      "name": "נוצרו הוצאות?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [740, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "summary",
+              "name": "summary",
+              "value": "=הופקו {{ $json.created_count }} הוצאות קבועות לחודש {{ $json.month }} (יום {{ $json.day }}).",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-summary",
+      "name": "סיכום להתראה",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [980, 200]
+    }
+  ],
+  "connections": {
+    "כל יום ב-06:00": {
+      "main": [[{ "node": "הפק הוצאות של היום", "type": "main", "index": 0 }]]
+    },
+    "הפק הוצאות של היום": {
+      "main": [[{ "node": "נוצרו הוצאות?", "type": "main", "index": 0 }]]
+    },
+    "נוצרו הוצאות?": {
+      "main": [
+        [{ "node": "סיכום להתראה", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
