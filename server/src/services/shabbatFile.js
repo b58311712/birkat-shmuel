@@ -7,6 +7,7 @@
 // הזמנה שבוטלה או שלא שולמה (ואין חריגה) — לא נכנסת לחישוב.
 import { supabase } from '../lib/supabase.js';
 import { roundUp } from '../lib/helpers.js';
+import { reconcileShabbatVolunteerTasks } from './volunteerScheduling.js';
 
 // סטטוסי תשלום שמזכים הזמנה להיכנס לחישובים (סעיף 8.7)
 const OPERATIONAL_PAYMENT_STATUSES = ['paid', 'partially_paid', 'payment_override'];
@@ -425,6 +426,91 @@ export async function buildVolunteerReport(shabbatId) {
   const { shabbat, orders } = await loadShabbatOrders(shabbatId);
   if (!shabbat) return null;
 
+  {
+  await reconcileShabbatVolunteerTasks(shabbatId);
+  const { nameByMeal } = computePortionsByMeal(orders);
+  const [{ data: weeklyTasks, error: taskError }, { data: assignments, error: assignmentError }] = await Promise.all([
+    supabase.from('shabbat_volunteer_tasks').select(`
+      *, meals:linked_meal_id (id, name),
+      template_task:template_task_id (
+        volunteer_task_links (
+          volunteer_id, role, priority,
+          volunteers:volunteer_id (id, full_name, phone, area, has_vehicle, is_active)
+        )
+      )
+    `).eq('shabbat_id', shabbatId).eq('is_relevant', true).order('display_order').order('name'),
+    supabase.from('volunteer_assignments').select(`
+      id, shabbat_task_id, volunteer_id, is_auto, notes, assignment_kind, source,
+      volunteers (id, full_name, phone, area, has_vehicle)
+    `).eq('shabbat_id', shabbatId).not('shabbat_task_id', 'is', null),
+  ]);
+  if (taskError) throw taskError;
+  if (assignmentError) throw assignmentError;
+
+  const assignmentsByTask = {};
+  for (const assignment of assignments || []) {
+    (assignmentsByTask[assignment.shabbat_task_id] ||= []).push(assignment);
+  }
+  const areaLabels = {
+    cooking: 'בישול', packing: 'אריזה', transport: 'שינוע', cleaning: 'ניקיון', general: 'כללי',
+  };
+  const dayOrder = ['general', 'tuesday', 'wednesday', 'thursday', 'friday', 'shabbat', 'motzei_shabbat'];
+  const shiftOrder = [null, 'morning', 'noon', 'evening', 'night'];
+  const sortedWeeklyTasks = [...(weeklyTasks || [])].sort((a, b) =>
+    (a.parent_category_display_order ?? a.category_display_order) - (b.parent_category_display_order ?? b.category_display_order)
+    || a.category_display_order - b.category_display_order
+    || dayOrder.indexOf(a.execution_day) - dayOrder.indexOf(b.execution_day)
+    || shiftOrder.indexOf(a.shift) - shiftOrder.indexOf(b.shift)
+    || a.display_order - b.display_order
+    || a.name.localeCompare(b.name, 'he'));
+  const tasksOut = sortedWeeklyTasks.map((task) => {
+    const staffing = task.template_task?.volunteer_task_links || [];
+    const preferredCandidates = ['backup', 'candidate'].flatMap((role) => staffing
+      .filter((link) => link.role === role && link.volunteers?.is_active)
+      .sort((a, b) => (a.priority || 0) - (b.priority || 0))
+      .map((link) => ({ ...link.volunteers, role, priority: link.priority })));
+    const assigned = (assignmentsByTask[task.id] || []).filter((row) => row.volunteer_id).map((row) => ({
+      assignment_id: row.id,
+      volunteer_id: row.volunteer_id,
+      volunteer_name: row.volunteers?.full_name,
+      phone: row.volunteers?.phone || null,
+      has_vehicle: row.volunteers?.has_vehicle || false,
+      is_auto: row.is_auto,
+      source: row.source,
+      assignment_kind: row.assignment_kind,
+      notes: row.notes || null,
+    }));
+    return {
+      shabbat_task_id: task.id,
+      task_id: task.template_task_id,
+      name: task.name,
+      area: task.area,
+      area_label: areaLabels[task.area] || task.area,
+      category_id: task.category_id,
+      category_name: task.category_name,
+      parent_category_id: task.parent_category_id,
+      parent_category_name: task.parent_category_name,
+      execution_day: task.execution_day,
+      shift: task.shift,
+      timing_note: task.timing_note,
+      display_order: task.display_order,
+      linked_meal_id: task.linked_meal_id,
+      linked_meal_name: task.meals?.name || nameByMeal[task.linked_meal_id] || null,
+      default_volunteer_id: task.default_volunteer_id,
+      has_manual_override: task.has_manual_override,
+      preferred_candidates: preferredCandidates,
+      assigned,
+      is_unassigned: !assigned.some((row) => row.assignment_kind === 'lead'),
+    };
+  });
+  return {
+    shabbat_id: shabbatId,
+    tasks: tasksOut,
+    unassigned_count: tasksOut.filter((task) => task.is_unassigned).length,
+    free_assignments: [],
+  };
+  }
+
   // מאכלים תפעוליים בשבת — כדי לסמן אילו משימות בישול רלוונטיות בפועל
   const { portionsByMeal, nameByMeal } = computePortionsByMeal(orders);
   const operationalMealIds = new Set(Object.keys(portionsByMeal));
@@ -512,6 +598,9 @@ export async function buildVolunteerReport(shabbatId) {
 // אם המאכל מוזמן בשבת (תפעולי) — משבצים אוטומטית מתנדבים פעילים המקושרים
 // לאותו מאכל, אם עדיין לא משובצים. מחזיר { created } — כמה שיבוצים נוצרו.
 export async function autoAssignCooking(shabbatId) {
+  const result = await reconcileShabbatVolunteerTasks(shabbatId);
+  return { created: 0, refreshed: result.task_count };
+
   const { shabbat, orders } = await loadShabbatOrders(shabbatId);
   if (!shabbat) return { created: 0 };
 
@@ -531,11 +620,18 @@ export async function autoAssignCooking(shabbatId) {
   // מתנדבי בישול פעילים המקושרים למאכלים אלה. מתנדב יכול להיות מקושר למספר
   // מאכלים (volunteer_meal_links, סעיף 24.2) ולכן משבצים אותו לכל משימת בישול
   // שהמאכל שלה מקושר אליו.
+  const { data: cookingAreaLinks, error: areaErr } = await supabase.from('volunteer_area_links')
+    .select('volunteer_id')
+    .eq('area', 'cooking');
+  if (areaErr) throw areaErr;
+  const cookingVolunteerIds = [...new Set((cookingAreaLinks || []).map((link) => link.volunteer_id))];
+  if (!cookingVolunteerIds.length) return { created: 0 };
+
   const { data: links, error: vErr } = await supabase.from('volunteer_meal_links')
-    .select('meal_id, volunteers!inner (id, is_active, area)')
+    .select('meal_id, volunteer_id, volunteers!inner (id, is_active)')
     .in('meal_id', mealIds)
-    .eq('volunteers.is_active', true)
-    .eq('volunteers.area', 'cooking');
+    .in('volunteer_id', cookingVolunteerIds)
+    .eq('volunteers.is_active', true);
   if (vErr) throw vErr;
   const volsByMeal = {};
   for (const l of links || []) {

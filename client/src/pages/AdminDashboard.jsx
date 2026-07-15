@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
+import { LAST_UPDATED } from '../lib/version.js';
 
 export default function AdminDashboard({ onAuthError }) {
   const [data, setData] = useState(null);
@@ -93,6 +94,10 @@ export default function AdminDashboard({ onAuthError }) {
           <NextShabbatOrders orders={nextOrders} shabbat={ns} />
         </aside>
       </div>
+
+      <footer className="mt-8 border-t border-black/[0.055] pt-4 text-center text-xs font-medium text-[#9b9295]">
+        עודכן לאחרונה: {LAST_UPDATED}
+      </footer>
     </main>
   );
 }

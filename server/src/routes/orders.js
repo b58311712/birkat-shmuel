@@ -5,6 +5,7 @@ import { asyncHandler, fail } from '../lib/helpers.js';
 import { buildOrderItems } from '../services/orderItems.js';
 import { createAdminNotification } from '../services/adminNotifications.js';
 import { sendTemplateEmail, orderVars, officeEmail } from '../services/email.js';
+import { reconcileShabbatVolunteerTasks } from '../services/volunteerScheduling.js';
 
 const router = Router();
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'check'];
@@ -100,6 +101,8 @@ router.post('/', asyncHandler(async (req, res) => {
     await supabase.from('order_meals').insert(mealRows.map((m) => ({ ...m, order_id: order.id })));
   if (extraRows.length)
     await supabase.from('order_extras').insert(extraRows.map((e) => ({ ...e, order_id: order.id })));
+
+  await reconcileShabbatVolunteerTasks(b.shabbat_id);
 
   await supabase.from('order_history').insert({
     order_id: order.id,

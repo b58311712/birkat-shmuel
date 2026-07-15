@@ -39,6 +39,11 @@ export default function OrderView() {
           <div>
             <h1 className="text-2xl font-extrabold text-brand-burgundy">הזמנה {order.order_number}</h1>
             <p className="text-brand-burgundy/60">{order.shabbatot?.parasha} · {order.shabbatot?.gregorian_date}</p>
+            {order.created_at && (
+              <p className="text-sm text-brand-burgundy/50 mt-0.5">
+                בוצעה בתאריך {new Date(order.created_at).toLocaleString('he-IL')}
+              </p>
+            )}
           </div>
           <div className="flex gap-1">
             <Badge map={ORDER_STATUS} value={order.order_status} />

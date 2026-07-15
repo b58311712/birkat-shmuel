@@ -13,6 +13,7 @@ import {
   buildWorkFile,
   autoAssignCooking,
 } from '../services/shabbatFile.js';
+import { addWeeklySupport, reconcileShabbatVolunteerTasks, setWeeklyLead } from '../services/volunteerScheduling.js';
 
 const router = Router();
 const SHABBAT_STATUSES = ['open', 'closed', 'completed', 'cancelled'];
@@ -176,6 +177,27 @@ router.post('/:id/volunteers/auto-assign', asyncHandler(async (req, res) => {
 
 // POST /api/admin/shabbat-files/:id/volunteers/assign — שיבוץ ידני של מתנדב למשימה
 router.post('/:id/volunteers/assign', asyncHandler(async (req, res) => {
+  if (req.body?.shabbat_task_id || req.body?.assignment_kind === 'lead') {
+    const { task_id, shabbat_task_id, volunteer_id, notes, assignment_kind = 'lead' } = req.body || {};
+    if (!volunteer_id) return fail(res, 400, 'חובה לבחור מתנדב.');
+    await reconcileShabbatVolunteerTasks(req.params.id);
+    let weeklyTaskId = shabbat_task_id || null;
+    if (!weeklyTaskId && task_id) {
+      const { data: weeklyTask, error: weeklyTaskError } = await supabase.from('shabbat_volunteer_tasks')
+        .select('id').eq('shabbat_id', req.params.id).eq('template_task_id', task_id).maybeSingle();
+      if (weeklyTaskError) throw weeklyTaskError;
+      weeklyTaskId = weeklyTask?.id || null;
+    }
+    if (!weeklyTaskId) return fail(res, 404, 'משימת השבת לא נמצאה.');
+    if (assignment_kind === 'lead') {
+      const result = await setWeeklyLead(req.params.id, weeklyTaskId, volunteer_id);
+      if (!result) return fail(res, 404, 'משימת השבת לא נמצאה.');
+      return res.json({ ok: true });
+    }
+    const support = await addWeeklySupport(req.params.id, weeklyTaskId, volunteer_id, notes);
+    if (!support) return fail(res, 404, 'משימת השבת לא נמצאה.');
+    return res.json({ ok: true, assignment_id: support.id });
+  }
   const { task_id, volunteer_id, notes } = req.body || {};
   if (!volunteer_id) return fail(res, 400, 'חובה לבחור מתנדב.');
 
@@ -206,14 +228,29 @@ router.post('/:id/volunteers/assign', asyncHandler(async (req, res) => {
   res.json({ ok: true, assignment_id: data.id });
 }));
 
+router.post('/:id/volunteers/tasks/:shabbatTaskId/reset', asyncHandler(async (req, res) => {
+  const result = await setWeeklyLead(req.params.id, req.params.shabbatTaskId, null, { reset: true });
+  if (!result) return fail(res, 404, 'משימת השבת לא נמצאה.');
+  res.json({ ok: true, ...result });
+}));
+
 // DELETE /api/admin/shabbat-files/:id/volunteers/assign/:assignmentId — ביטול שיבוץ
 router.delete('/:id/volunteers/assign/:assignmentId', asyncHandler(async (req, res) => {
+  const { data: assignment, error: getError } = await supabase.from('volunteer_assignments')
+    .select('shabbat_task_id, assignment_kind').eq('id', req.params.assignmentId)
+    .eq('shabbat_id', req.params.id).maybeSingle();
+  if (getError) throw getError;
   const { error } = await supabase
     .from('volunteer_assignments')
     .delete()
     .eq('id', req.params.assignmentId)
     .eq('shabbat_id', req.params.id); // אבטחה: השיבוץ שייך לשבת הזו
   if (error) throw error;
+  if (assignment?.assignment_kind === 'lead' && assignment.shabbat_task_id) {
+    const { error: updateError } = await supabase.from('shabbat_volunteer_tasks')
+      .update({ has_manual_override: true }).eq('id', assignment.shabbat_task_id);
+    if (updateError) throw updateError;
+  }
   res.json({ ok: true });
 }));
 

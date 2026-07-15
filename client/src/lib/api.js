@@ -199,6 +199,7 @@ export const api = {
   shabbatVolunteerAutoAssign: (id) => request(`/admin/shabbat-files/${id}/volunteers/auto-assign`, { method: 'POST' }),
   shabbatVolunteerAssign: (id, payload) => request(`/admin/shabbat-files/${id}/volunteers/assign`, { method: 'POST', body: JSON.stringify(payload) }),
   shabbatVolunteerUnassign: (id, assignmentId) => request(`/admin/shabbat-files/${id}/volunteers/assign/${assignmentId}`, { method: 'DELETE' }),
+  shabbatVolunteerReset: (id, shabbatTaskId) => request(`/admin/shabbat-files/${id}/volunteers/tasks/${shabbatTaskId}/reset`, { method: 'POST' }),
   shabbatStatus: (id, status) => request(`/admin/shabbat-files/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   shabbatNotes: (id, notes) => request(`/admin/shabbat-files/${id}/notes`, { method: 'PATCH', body: JSON.stringify({ notes }) }),
   deleteShabbat: (id) => request(`/admin/shabbat-files/${id}`, { method: 'DELETE' }),
@@ -212,6 +213,10 @@ export const api = {
   createVolunteerTask: (payload) => request('/admin/volunteers/tasks', { method: 'POST', body: JSON.stringify(payload) }),
   updateVolunteerTask: (id, payload) => request(`/admin/volunteers/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteVolunteerTask: (id) => request(`/admin/volunteers/tasks/${id}`, { method: 'DELETE' }),
+  volunteerTaskCategories: () => request('/admin/volunteers/categories'),
+  createVolunteerTaskCategory: (payload) => request('/admin/volunteers/categories', { method: 'POST', body: JSON.stringify(payload) }),
+  updateVolunteerTaskCategory: (id, payload) => request(`/admin/volunteers/categories/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteVolunteerTaskCategory: (id) => request(`/admin/volunteers/categories/${id}`, { method: 'DELETE' }),
 
   // ניהול מלאי (סעיף 25)
   invItems: (q = '') => request(`/admin/inventory/items${q}`),

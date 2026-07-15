@@ -270,6 +270,11 @@ async function seedVolunteers(mealIdByName) {
 
   // קישורי מאכלים מרובים (volunteer_meal_links, סעיף 24.2)
   const volIdByName = Object.fromEntries((insertedVols || []).map((v) => [v.full_name, v.id]));
+  const areaLinkRows = demoVolunteers
+    .map((v) => ({ volunteer_id: volIdByName[v.name], area: v.area }))
+    .filter((link) => link.volunteer_id);
+  if (areaLinkRows.length) await supabase.from('volunteer_area_links').insert(areaLinkRows);
+
   const mealLinkRows = [];
   for (const v of demoVolunteers) {
     const volId = volIdByName[v.name];
@@ -298,9 +303,12 @@ async function seedVolunteers(mealIdByName) {
     await supabase.from('volunteer_assignments').delete().in('task_id', ids);
     await supabase.from('volunteer_tasks').delete().in('id', ids);
   }
+  const { data: uncategorized } = await supabase.from('volunteer_task_categories')
+    .select('id').eq('name', 'לא מסווג').is('parent_id', null).single();
   const taskRows = demoTasks.map((t) => ({
     name: t.name,
     area: t.area,
+    category_id: uncategorized.id,
     linked_meal_id: t.meal ? mealIdByName[t.meal] || null : null,
     display_order: t.order,
     is_active: true,
