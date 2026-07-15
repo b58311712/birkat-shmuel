@@ -22,38 +22,49 @@ export default function AdminLogin({ onLogin }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-brand-cream px-4 py-10">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-6">
-          <img src="/logo.png" alt="מטבח החסד" className="h-32 w-32 object-contain mx-auto mb-3" />
-          <h1 className="text-3xl font-extrabold text-brand-cream">אזור ניהול</h1>
-          <p className="text-brand-gold-light">מטבח החסד — ברכת שמואל</p>
+    <div className="customer-login min-h-screen px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto grid min-h-[calc(100vh-6rem)] w-full max-w-5xl items-center gap-8 lg:grid-cols-[1.05fr_.95fr]">
+        <div className="login-brand-panel text-center lg:text-right">
+          <img src="/logo.png" alt="מטבח החסד" className="mx-auto h-40 w-40 object-contain lg:mx-0 lg:h-52 lg:w-52" />
+          <p className="mt-4 text-sm font-bold tracking-[0.18em] text-brand-gold-dark">ברכת שמואל</p>
+          <h1 className="mt-2 text-4xl font-extrabold tracking-tight text-[#2b2024] sm:text-5xl">
+            מנהלים את המטבח<br />בפשטות ובנחת
+          </h1>
+          <p className="mx-auto mt-4 max-w-md text-base leading-7 text-[#746a6d] lg:mx-0">
+            כל מה שצריך לניהול ההזמנות, המטבח והקהילה — במקום אחד.
+          </p>
         </div>
 
-        <div className="card">
+        <div className="login-card">
+          <div className="mb-6">
+            <span className="section-title">אזור ניהול</span>
+            <h2 className="mt-2 text-2xl font-extrabold text-[#2b2024]">כניסה למערכת הניהול</h2>
+            <p className="mt-1 text-sm text-[#81777a]">הזינו את פרטי המשתמש שלכם</p>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
-            <h2 className="text-xl font-bold text-brand-burgundy">כניסת מנהל</h2>
             <div>
               <label className="block text-sm font-medium text-brand-burgundy mb-1">אימייל</label>
               <input className="input" type="email" placeholder="manager@example.com"
-                inputMode="email" required value={email}
+                inputMode="email" autoComplete="email" dir="ltr" required value={email}
                 onChange={(e) => setEmail(e.target.value)} />
             </div>
             <div>
               <label className="block text-sm font-medium text-brand-burgundy mb-1">סיסמה</label>
-              <input className="input" type="password" placeholder="••••••••"
+              <input className="input" type="password" placeholder="••••••••" dir="ltr"
+                autoComplete="current-password"
                 required value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
-            {error && <p className="text-red-600 text-sm">{error}</p>}
+            {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
             <button className="btn-primary w-full text-lg" disabled={loading}>
               {loading ? 'רגע...' : 'כניסה'}
             </button>
           </form>
-        </div>
 
-        <p className="text-center text-brand-cream/60 text-sm mt-4">
-          שכחת סיסמה? פני למנהל המערכת לאיפוס.
-        </p>
+          <p className="mt-5 text-center text-sm text-[#81777a]">
+            שכחת סיסמה? פנה למנהל המערכת לאיפוס.
+          </p>
+        </div>
       </div>
     </div>
   );
