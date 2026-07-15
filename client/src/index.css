@@ -345,19 +345,25 @@
   }
 }
 
-/* גוף טופס ההזמנה להדפסה — זרימת שלוש עמודות (CSS columns) גם במסך.
-   כך התצוגה שעל המסך זהה לפריסת ההדפסה, ומדידת ה-zoom מדויקת. */
-.print-form-body {
-  column-count: 3;
+/* גוף טופס ההזמנה להדפסה — מופרד לפי סעודה (ליל שבת / יום שבת / סעודה שלישית).
+   כל סעודה היא בלוק (.print-slot) עם כותרת ושדה מנות משלה, וקטגוריות הזמינות בה
+   בלבד. הקטגוריות בתוך כל סעודה זורמות בשתי עמודות (CSS columns) — כך התצוגה
+   שעל המסך זהה לפריסת ההדפסה ומדידת ה-zoom מדויקת. */
+.print-slot { break-inside: avoid; margin-bottom: 0.9rem; }
+.print-slot-body {
+  column-count: 2;
   column-gap: 0.9rem;
   column-fill: balance;
 }
-.print-form-body > section {
+.print-slot-body > section,
+.print-slot-body > .print-slot-note {
   break-inside: avoid;
   -webkit-column-break-inside: avoid;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.6rem;
   width: 100%;
 }
+/* הערה שמשתרעת על שתי העמודות (למשל הפניית סלטי-הבוקר) */
+.print-slot-note.span-all { column-span: all; }
 
 header img[src="/logo.png"] {
   height: 2.5rem;
@@ -648,8 +654,10 @@ tbody tr:hover {
   /* גוף התפריט: זרימת עמודות דחוסה (balance) במקום grid עם פערים גדולים.
      column-fill: balance מפזר את הקטגוריות בין העמודות בגובה אחיד. */
   /* גוף התפריט בהדפסה — אותה זרימת עמודות כמו במסך, רק צפוף יותר. */
-  .print-form-body { column-gap: 0.8rem; }
-  .print-form-body > section { margin-bottom: 0.45rem; }
+  .print-slot { margin-bottom: 0.55rem; }
+  .print-slot-body { column-gap: 0.8rem; }
+  .print-slot-body > section,
+  .print-slot-body > .print-slot-note { margin-bottom: 0.4rem; }
 
   /* שורות מאכל דחוסות */
   .print-form li { padding-top: 0.1rem !important; padding-bottom: 0.1rem !important; }

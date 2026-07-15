@@ -4,9 +4,20 @@
 // שואב את הקטלוג החי (GET /api/catalog) — אותו מקור של אשף ההזמנה — כך שהטופס
 // המודפס תמיד תואם למאכלים, לקטגוריות ולתוספות שבמערכת. משתמש בתשתית ההדפסה
 // הקיימת (.print-area / .no-print ב-index.css) כדי להדפיס רק את הטופס.
+//
+// המבנה מופרד לפי סעודה בדיוק כמו במסך ההזמנה של הלקוח (ליל שבת / יום שבת /
+// סעודה שלישית): בכל סעודה מופיעות רק הקטגוריות והמאכלים הזמינים בה, והכללים
+// המיוחדים משתקפים דינמית מהקטלוג —
+//   • דגים (split_mode='additive'): תיוג דג עיקרי / דג נוסף + כלל האחוזים
+//     (primary_percent / secondary_percent) בבחירת שני סוגים.
+//   • חלוקה ידנית (split_mode='equal'): הערה + שדה "מנות" לכל סוג.
+//   • ירושת סלטים (inherit_from_slot_id): הקטגוריה מוצגת פעם אחת בלבד בסעודת-האב
+//     עם שני טורי סימון (לילה / בוקר). בסעודת היעד מוצגת הפניה לטור זה.
+//   • אמצעי תשלום: שדה סימון בגוש הפרטים (מ-PAYMENT_METHOD).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
+import { PAYMENT_METHOD } from '../lib/status.jsx';
 
 // מידות עמוד A4 להדפסה (ב-CSS px @96dpi) בניכוי שוליים 1.4cm מכל צד.
 // רוחב שימושי ≈ (21 - 2.8)ס"מ, גובה שימושי ≈ (29.7 - 2.8)ס"מ.
@@ -15,23 +26,96 @@ const PRINT_MARGIN_CM = 1.4;
 const A4_PRINT_W = (21 - 2 * PRINT_MARGIN_CM) * CM_TO_PX;   // ≈ 688px
 const A4_PRINT_H = (29.7 - 2 * PRINT_MARGIN_CM) * CM_TO_PX; // ≈ 1017px
 
+// מצב חלוקת המנות של קטגוריה: 'none' | 'equal' | 'additive'.
+// תאימות-לאחור: קטגוריה ישנה עם requires_portion_split בלבד נחשבת 'equal'.
+function splitModeOf(category) {
+  if (!category) return 'none';
+  if (category.split_mode) return category.split_mode;
+  return category.requires_portion_split ? 'equal' : 'none';
+}
+
 // ------------------------------------------------------------------------
-// עוזרים לפריסת המאכלים לפי קטגוריה + סעודה זמינה
-function groupMealsByCategory(catalog) {
-  const catById = Object.fromEntries(catalog.categories.map((c) => [c.id, c]));
-  const byCat = {};
+// פריסת הטופס לפי סעודה: לכל סעודה (meal_slot) רשימת הקטגוריות והמאכלים
+// הזמינים בה. קטגוריה שיורשת מסעודת-אב (inherit_from_slot_id) מוצגת רק
+// בסעודת-האב עם טורי לילה/בוקר, ובסעודת היעד מוחלפת בהערת הפניה.
+function buildSlotLayout(catalog) {
+  const slotById = Object.fromEntries(catalog.meal_slots.map((s) => [s.id, s]));
+  const slots = catalog.meal_slots
+    .slice()
+    .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+
+  // מאכלים לפי קטגוריה, ממוינים לפי display_order של המאכל.
+  const mealsByCat = {};
   for (const meal of catalog.meals) {
-    const cat = catById[meal.category_id];
-    if (!cat) continue;
-    (byCat[cat.id] ||= { category: cat, meals: [] }).meals.push(meal);
+    (mealsByCat[meal.category_id] ||= []).push(meal);
   }
-  // ממוין לפי display_order של הקטגוריה, ובתוך כל קטגוריה לפי display_order של המאכל
-  return Object.values(byCat)
-    .sort((a, b) => (a.category.display_order ?? 0) - (b.category.display_order ?? 0))
-    .map((g) => ({
-      ...g,
-      meals: g.meals.slice().sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)),
-    }));
+  for (const list of Object.values(mealsByCat)) {
+    list.sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+  }
+
+  const sortedCats = catalog.categories
+    .slice()
+    .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+
+  return slots.map((slot) => {
+    const blocks = [];
+    // הפניות לסעודות-יעד של ירושה שסעודת-האב שלהן היא הסעודה הנוכחית — נאספות
+    // כדי להציג הערה "יש לסמן בטור בוקר" בסעודת היעד.
+    const inheritNotes = [];
+
+    for (const category of sortedCats) {
+      const meals = (mealsByCat[category.id] || []).filter((m) =>
+        m.available_slot_ids.includes(slot.id)
+      );
+      if (meals.length === 0) continue;
+
+      const parentSlotId = category.inherit_from_slot_id || null;
+      const isInheriting = !!parentSlotId;
+
+      if (isInheriting && parentSlotId !== slot.id) {
+        // סעודת-יעד של ירושה: לא מציגים את הקטגוריה — היא מסומנת בסעודת-האב
+        // (טור בוקר). נרשום הערת הפניה אחת לכל קטגוריה יורשת בסעודה זו.
+        inheritNotes.push({
+          categoryName: category.name,
+          parentSlotName: slotById[parentSlotId]?.name || 'סעודת-האב',
+          extraAllowed: category.extra_allowed ?? null,
+        });
+        continue;
+      }
+
+      blocks.push({
+        category,
+        meals,
+        mode: splitModeOf(category),
+        // סעודת-אב של ירושה: מציגים טור "יעד" (בוקר) לצד טור הלילה.
+        inheritTarget: isInheriting && parentSlotId === slot.id
+          ? {
+              // שם סעודת-היעד לצורך כותרת הטור: הסעודה הראשונה שאיננה האב
+              // שהקטגוריה זמינה בה. אם אין — מדלגים על הטור.
+              targetSlotName: targetSlotNameFor(category, slot.id, catalog, slotById),
+              extraAllowed: category.extra_allowed ?? null,
+            }
+          : null,
+      });
+    }
+
+    return { slot, blocks, inheritNotes };
+  }).filter((s) => s.blocks.length > 0 || s.inheritNotes.length > 0);
+}
+
+// שם סעודת-היעד של ירושה: הסעודה (שאינה האב) שבה מאכלי הקטגוריה זמינים.
+function targetSlotNameFor(category, parentSlotId, catalog, slotById) {
+  const mealIds = new Set(
+    catalog.meals.filter((m) => m.category_id === category.id).map((m) => m.id)
+  );
+  for (const s of catalog.meal_slots) {
+    if (s.id === parentSlotId) continue;
+    const anyAvailable = catalog.meals.some(
+      (m) => mealIds.has(m.id) && m.available_slot_ids.includes(s.id)
+    );
+    if (anyAvailable) return slotById[s.id]?.name || s.name;
+  }
+  return null;
 }
 
 export default function AdminPrintForm({ onAuthError }) {
@@ -51,7 +135,7 @@ export default function AdminPrintForm({ onAuthError }) {
       .finally(() => setLoading(false));
   }, [onAuthError]);
 
-  const groups = useMemo(() => (catalog ? groupMealsByCategory(catalog) : []), [catalog]);
+  const slotSections = useMemo(() => (catalog ? buildSlotLayout(catalog) : []), [catalog]);
 
   // חישוב "התאמה ל-2 עמודים": מודדים את גובה הטופס כולו (כותרת + פרטים + מנות
   // + תוספות) ברוחב ההדפסה האמיתי, וגוזרים zoom שמכווץ רק אם התוכן חורג
@@ -100,7 +184,7 @@ export default function AdminPrintForm({ onAuthError }) {
       window.removeEventListener('resize', measure);
       if (img) img.removeEventListener('load', measure);
     };
-  }, [catalog, groups]);
+  }, [catalog, slotSections]);
 
 
   // מסלולי מחיר לתצוגת "מחיר למנה" בטופס (מ-DB, לא מקודד-קשיח)
@@ -118,13 +202,13 @@ export default function AdminPrintForm({ onAuthError }) {
   return (
     <Page
       title="דף הזמנה להדפסה"
-      subtitle="טופס פיזי לחלוקה ללקוחות שאינם מזמינים דרך הממשק — נשאב מהקטלוג החי במערכת"
+      subtitle="טופס פיזי לחלוקה ללקוחות שאינם מזמינים דרך הממשק — נשאב מהקטלוג החי, מופרד לפי סעודה"
     >
       {/* פס פעולות — לא מודפס */}
       <div className="no-print mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-brand-burgundy/70">
           <p>
-            הטופס משקף את המאכלים והתוספות הפעילים במערכת. לעריכת התוכן — מסך
+            הטופס משקף את המאכלים והתוספות הפעילים במערכת, מופרד לפי סעודה. לעריכת התוכן — מסך
             <span className="font-semibold"> מאכלים וקטגוריות</span>.
           </p>
           <p className="mt-1 flex items-center gap-2 text-xs">
@@ -153,12 +237,11 @@ export default function AdminPrintForm({ onAuthError }) {
 
           <OrderMetaFields />
 
-          {/* גוף התפריט — קטגוריות בזרימת עמודות (CSS columns) גם במסך וגם בהדפסה.
-              הכול זורם טבעי על פני עד 2 עמודים; ה-zoom מכווץ רק אם צריך כדי לא
-              לחרוג מ-2 עמודים, כך שברוב המקרים הטקסט נשאר בגודל מלא. */}
-          <div className="print-form-body mt-5">
-            {groups.map((g) => (
-              <CategoryBlock key={g.category.id} group={g} />
+          {/* גוף התפריט — סעודה אחר סעודה. בכל סעודה הקטגוריות זורמות בשתי עמודות
+              (.print-slot-body); ה-zoom מכווץ רק אם צריך כדי לא לחרוג מ-2 עמודים. */}
+          <div className="mt-5 space-y-4">
+            {slotSections.map((section) => (
+              <SlotSection key={section.slot.id} section={section} />
             ))}
           </div>
 
@@ -205,7 +288,7 @@ function FormHeader({ priceLines }) {
   );
 }
 
-// שדות פרטי ההזמנה (שם / פרשה / אירוע / מס' מנות / אולם) — לכתיבה ידנית
+// שדות פרטי ההזמנה (שם / פרשה / אירוע / מס' מנות / אולם + אמצעי תשלום) — לכתיבה ידנית
 function OrderMetaFields() {
   return (
     <div className="mt-4 rounded-lg border border-brand-cream-dark bg-brand-cream/30 p-4">
@@ -222,6 +305,16 @@ function OrderMetaFields() {
         <BlankField label="מס׳ מנות יום שבת" small />
         <BlankField label="סה״כ מנות" small />
       </div>
+      {/* אמצעי תשלום — סימון (מקור: PAYMENT_METHOD) */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-brand-cream-dark pt-3">
+        <span className="text-sm font-semibold text-brand-burgundy-dark">אמצעי תשלום:</span>
+        {Object.values(PAYMENT_METHOD).map((label) => (
+          <span key={label} className="flex items-center gap-1.5 text-sm text-brand-burgundy-dark">
+            <CheckBox />
+            {label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -236,38 +329,153 @@ function BlankField({ label, hint, small }) {
   );
 }
 
-// בלוק קטגוריה: כותרת + רשימת מאכלים עם תיבת סימון וציון סעודות זמינות
-function CategoryBlock({ group }) {
-  const { category, meals } = group;
+// תיבת סימון ריקה לכתיבה ידנית
+function CheckBox() {
+  return (
+    <span
+      className="inline-block h-4 w-4 shrink-0 rounded border border-brand-burgundy/50 print:border-black"
+      aria-hidden="true"
+    />
+  );
+}
+
+// קו-סימון קצר לכתיבת ערך ידני (כמות / מנות)
+function BlankLine({ w = 'w-10' }) {
+  return (
+    <span
+      className={`inline-block h-4 ${w} shrink-0 border-b border-dashed border-brand-burgundy/40`}
+      aria-hidden="true"
+    />
+  );
+}
+
+// סעודה שלמה: כותרת + שדה מנות + קטגוריות הזמינות בה (בשתי עמודות)
+function SlotSection({ section }) {
+  const { slot, blocks, inheritNotes } = section;
+  return (
+    <section className="print-slot rounded-lg border border-brand-cream-dark">
+      <div className="flex items-baseline gap-3 rounded-t-lg bg-brand-burgundy px-3 py-1.5 text-brand-cream print:bg-brand-cream print:text-brand-burgundy-dark">
+        <h3 className="text-base font-extrabold">{slot.name}</h3>
+        <span className="ms-auto flex items-center gap-2 text-xs font-medium">
+          מס׳ מנות: <BlankLine w="w-16" />
+        </span>
+      </div>
+      <div className="print-slot-body px-3 py-2">
+        {/* הפניית סלטי-הבוקר (וכל קטגוריה יורשת אחרת) — משתרעת על שתי העמודות */}
+        {inheritNotes.map((n) => (
+          <div
+            key={n.categoryName}
+            className="print-slot-note span-all mb-2 rounded-lg border border-dashed border-brand-gold bg-brand-gold/10 px-3 py-1.5 text-xs text-brand-burgundy-dark"
+          >
+            <b>{n.categoryName} ל{slot.name}:</b> יש לסמן את ה{n.categoryName} ל{slot.name} בטור{' '}
+            <b>"{slot.name}"</b> שברשימת ה{n.categoryName} של {n.parentSlotName}
+            {n.extraAllowed != null && ` (עד ${n.extraAllowed})`}.
+          </div>
+        ))}
+        {blocks.map((block) => (
+          <CategoryBlock key={block.category.id} block={block} slot={slot} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// בלוק קטגוריה בתוך סעודה: כותרת + כלל דינמי + רשימת מאכלים.
+function CategoryBlock({ block, slot }) {
+  const { category, meals, mode, inheritTarget } = block;
+  const primaryPct = Number(category.primary_percent ?? 80);
+  const secondaryPct = Number(category.secondary_percent ?? 50);
+  const isEqual = mode === 'equal';
+  const isAdditive = mode === 'additive';
+  // קטגוריה יורשת עם סעודת-יעד: שני טורי סימון (הסעודה הנוכחית + היעד).
+  const twoColumns = !!(inheritTarget && inheritTarget.targetSlotName);
+
   return (
     <section className="print-cat rounded-lg border border-brand-cream-dark">
-      <h3 className="rounded-t-lg bg-brand-burgundy px-3 py-1.5 text-sm font-extrabold text-brand-cream print:bg-brand-cream print:text-brand-burgundy-dark">
-        {category.name}
-        {(category.recommended_min || category.max_allowed) && (
-          <span className="mr-2 text-xs font-medium opacity-90">
-            {category.max_allowed ? `לבחירה ${category.max_allowed} סוגים` : `מומלץ ${category.recommended_min}`}
-          </span>
+      <h4 className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-t-lg bg-brand-cream px-3 py-1.5 text-sm font-extrabold text-brand-burgundy-dark print:bg-brand-cream">
+        <span>{category.name}</span>
+        <CategoryLimit category={category} inheritTarget={inheritTarget} />
+        {isEqual && (
+          <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-800">חלוקה ידנית</span>
         )}
-      </h3>
+        {isAdditive && (
+          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-800">דג עיקרי + דג נוסף</span>
+        )}
+      </h4>
+
+      {/* כלל דינמי לפי מצב החלוקה */}
+      {isAdditive && (
+        <p className="border-b border-brand-cream-dark/70 bg-brand-gold/10 px-3 py-1 text-[11px] leading-snug text-brand-burgundy-dark">
+          בבחירת 2 סוגים: הדג העיקרי מיוצר לפי <b>{primaryPct}%</b> מהמנות, והדג הנוסף לפי <b>{secondaryPct}%</b> מהמנות.
+        </p>
+      )}
+      {isEqual && (
+        <p className="border-b border-brand-cream-dark/70 bg-brand-gold/10 px-3 py-1 text-[11px] leading-snug text-brand-burgundy-dark">
+          חלוקה ידנית — יש לרשום את מספר המנות לכל סוג שנבחר. סך המנות בקטגוריה חייב להתאים למספר מנות הסעודה.
+        </p>
+      )}
+
+      {/* מקרא טורי הסימון בקטגוריה יורשת: טור ראשון = הסעודה הנוכחית, טור שני = היעד */}
+      {twoColumns && (
+        <p className="border-b border-brand-cream-dark/70 px-3 pt-1 text-[11px] font-bold text-brand-gold-dark">
+          סימון: טור ימין = {slot.name} · טור שמאל = {inheritTarget.targetSlotName}
+        </p>
+      )}
+
       <ul className="divide-y divide-brand-cream-dark/60 px-3 py-1">
-        {meals.length === 0 ? (
-          <li className="py-1.5 text-xs text-brand-burgundy/50">אין מאכלים פעילים בקטגוריה זו.</li>
-        ) : meals.map((meal) => {
-          return (
-            <li key={meal.id} className="flex items-center gap-2 py-1.5">
-              <span className="inline-block h-4 w-4 shrink-0 rounded border border-brand-burgundy/50 print:border-black" aria-hidden="true" />
-              <span className="flex-1 text-sm text-brand-burgundy-dark">
-                {meal.name}
-                {meal.requires_extra_charge && meal.extra_charge_amount != null && (
-                  <span className="text-brand-gold-dark"> (+{Number(meal.extra_charge_amount)} ש״ח)</span>
-                )}
+        {meals.map((meal) => (
+          <li key={meal.id} className="flex items-center gap-2 py-1.5">
+            {/* תיבות סימון: קטגוריה יורשת עם יעד → שתי תיבות (נוכחית / יעד); אחרת → אחת */}
+            {twoColumns ? (
+              <span className="flex shrink-0 gap-1">
+                <CheckBox />
+                <CheckBox />
               </span>
-            </li>
-          );
-        })}
+            ) : (
+              <CheckBox />
+            )}
+
+            <span className="flex-1 text-sm text-brand-burgundy-dark">
+              {meal.name}
+              {meal.requires_extra_charge && meal.extra_charge_amount != null && (
+                <span className="text-brand-gold-dark"> (+{Number(meal.extra_charge_amount)} ש״ח)</span>
+              )}
+            </span>
+
+            {/* additive: תיוג דג עיקרי / דג נוסף */}
+            {isAdditive && (
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-bold ${
+                  meal.is_secondary ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                {meal.is_secondary ? 'דג נוסף' : 'דג עיקרי'}
+              </span>
+            )}
+
+            {/* equal: שדה "מנות" לכתיבה ידנית לכל סוג */}
+            {isEqual && (
+              <span className="flex shrink-0 items-center gap-1 text-[11px] text-brand-burgundy/60">
+                מנות: <BlankLine w="w-10" />
+              </span>
+            )}
+          </li>
+        ))}
       </ul>
     </section>
   );
+}
+
+// טקסט מגבלת הבחירה של הקטגוריה (max_allowed / recommended_min + תוספת ירושה).
+function CategoryLimit({ category, inheritTarget }) {
+  const parts = [];
+  if (category.max_allowed) parts.push(`בחרו עד ${category.max_allowed}`);
+  else if (category.recommended_min) parts.push(`מומלץ ${category.recommended_min}`);
+  if (inheritTarget && inheritTarget.extraAllowed != null && inheritTarget.targetSlotName) {
+    parts.push(`סמנו עד ${inheritTarget.extraAllowed} גם ל${inheritTarget.targetSlotName}`);
+  }
+  if (parts.length === 0) return null;
+  return <span className="text-[11.5px] font-medium text-brand-gold-dark">{parts.join(' · ')}</span>;
 }
 
 function ExtrasBlock({ extras }) {
@@ -279,14 +487,14 @@ function ExtrasBlock({ extras }) {
       <ul className="grid grid-cols-1 gap-x-6 px-3 py-1 sm:grid-cols-2">
         {extras.map((e) => (
           <li key={e.id} className="flex items-center gap-2 py-1.5">
-            <span className="inline-block h-4 w-4 shrink-0 rounded border border-brand-burgundy/50 print:border-black" aria-hidden="true" />
+            <CheckBox />
             <span className="flex-1 text-sm text-brand-burgundy-dark">
               {e.name}
               <span className="text-brand-burgundy/60"> — {Number(e.unit_price)} ש״ח ל{e.billing_unit}</span>
               {e.customer_note && <span className="block text-[11px] text-brand-gold-dark">{e.customer_note}</span>}
             </span>
             <span className="shrink-0 text-xs text-brand-burgundy/60">כמות:</span>
-            <span className="inline-block h-4 w-10 shrink-0 border-b border-dashed border-brand-burgundy/40" aria-hidden="true" />
+            <BlankLine w="w-10" />
           </li>
         ))}
       </ul>
