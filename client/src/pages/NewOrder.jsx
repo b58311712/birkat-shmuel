@@ -677,7 +677,7 @@ function PreviewField({ label, value, dir }) {
   return (
     <div>
       <div className="text-xs text-brand-burgundy/50">{label}</div>
-      <div className="font-medium text-brand-burgundy" dir={dir}>{value || '—'}</div>
+      <div className="font-medium text-brand-burgundy text-right" dir={dir}>{value || '—'}</div>
     </div>
   );
 }

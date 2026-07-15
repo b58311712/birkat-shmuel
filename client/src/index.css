@@ -126,6 +126,13 @@
   vertical-align: middle;
 }
 
+/* LTR keeps phone numbers, emails, dates and amounts readable, but table
+   values should still line up with their RTL column headings. */
+.admin-pilot table td[dir="ltr"],
+.admin-pilot table th[dir="ltr"] {
+  text-align: right;
+}
+
 .admin-pilot .pilot-table tbody tr + tr {
   border-top: 1px solid rgba(42, 31, 36, 0.045);
 }
