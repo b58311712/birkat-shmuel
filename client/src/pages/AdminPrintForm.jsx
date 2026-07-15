@@ -150,14 +150,14 @@ export default function AdminPrintForm({ onAuthError }) {
       // zoom חדש על בסיס פונט ההדפסה בזמן שההדפסה רצה. המדידה נעשית במצב מסך.
       if (window.matchMedia && window.matchMedia('print').matches) return;
 
-      // מודדים את פריסת ההדפסה: רוחב A4 שימושי, פונט הדפסה (11.5px — מסונכרן עם
+      // מודדים את פריסת ההדפסה: רוחב A4 שימושי, פונט הדפסה (13px — מסונכרן עם
       // הכלל @media print ב-index.css), בלי zoom.
       const prev = { width: card.style.width, maxWidth: card.style.maxWidth, zoom: card.style.zoom, fontSize: card.style.fontSize, lineHeight: card.style.lineHeight };
       card.style.zoom = '1';
       card.style.maxWidth = 'none';
       card.style.width = `${Math.round(A4_PRINT_W)}px`;
-      card.style.fontSize = '11.5px';
-      card.style.lineHeight = '1.3';
+      card.style.fontSize = '13px';
+      card.style.lineHeight = '1.32';
 
       // eslint-disable-next-line no-unused-expressions
       card.offsetHeight; // כפיית reflow
@@ -212,17 +212,20 @@ export default function AdminPrintForm({ onAuthError }) {
             הטופס משקף את המאכלים והתוספות הפעילים במערכת, מופרד לפי סעודה. לעריכת התוכן — מסך
             <span className="font-semibold"> מאכלים וקטגוריות</span>.
           </p>
-          <p className="mt-1 flex items-center gap-2 text-xs">
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-xs">
             <span className="inline-flex items-center gap-1 rounded-full bg-brand-cream px-2 py-0.5 font-semibold text-brand-burgundy-dark">
               📄 {fit.pages} {fit.pages === 1 ? 'עמוד' : 'עמודים'} (דף דו-צדדי)
             </span>
             {fit.zoom < 1 && (
               <span className="text-brand-gold-dark">כווץ ל-{Math.round(fit.zoom * 100)}% כדי להיכנס ל-2 עמודים</span>
             )}
+            <span className="text-brand-burgundy/60">
+              להורדת PDF: בחרו ביעד <span className="font-semibold">"שמירה כ-PDF"</span> בחלון ההדפסה.
+            </span>
           </p>
         </div>
         <button type="button" onClick={() => window.print()} className="btn-primary">
-          🖨️ הדפסת הטופס
+          🖨️ הדפסה / הורדת PDF
         </button>
       </div>
 
