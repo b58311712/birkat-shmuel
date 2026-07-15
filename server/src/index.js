@@ -1,7 +1,14 @@
 // שרת מטבח החסד — נקודת כניסה
 import 'dotenv/config';
+import dns from 'node:dns';
 import express from 'express';
 import cors from 'cors';
+
+// מכריחים resolve ל-IPv4 תחילה בכל הרזולוציות של התהליך. בסביבת Render אין
+// ניתוב IPv6 יוצא, וב-Node 24 סדר ברירת-המחדל של תוצאות ה-DNS ('verbatim')
+// עלול להחזיר כתובת IPv6 קודם → שליחת SMTP ל-Gmail נכשלת ב-ENETUNREACH /
+// Connection timeout. זה משלים את family:4 שב-smtpConfig ומבטיח יציבות.
+dns.setDefaultResultOrder('ipv4first');
 
 import authRoutes from './routes/auth.js';
 import catalogRoutes from './routes/catalog.js';

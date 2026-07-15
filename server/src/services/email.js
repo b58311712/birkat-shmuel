@@ -34,6 +34,10 @@ function smtpConfig() {
     // ל-SMTP של Gmail, ואז ה-DNS מחזיר כתובת IPv6 והחיבור נכשל ב-ENETUNREACH
     // / Connection timeout. family:4 מכריח resolve ל-A record (IPv4) ומייצב שליחה.
     family: 4,
+    // תקרות זמן — כדי ששליחה תקועה תיכשל מהר במקום להישאר תלויה דקות ברקע.
+    connectionTimeout: 10000, // המתנה מרבית לחיבור TCP
+    greetingTimeout: 10000,   // המתנה מרבית ל-greeting של השרת
+    socketTimeout: 20000,     // חוסר-פעילות מרבי על הסוקט
     auth: process.env.SMTP_USER
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
       : undefined,

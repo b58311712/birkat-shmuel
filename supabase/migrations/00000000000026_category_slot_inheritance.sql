@@ -17,15 +17,22 @@
 -- =============================================================================
 
 alter table categories
-  add column inherit_from_slot_id uuid references meal_slots(id),
-  add column extra_allowed         integer;
+  add column if not exists inherit_from_slot_id uuid references meal_slots(id),
+  add column if not exists extra_allowed         integer;
 
 comment on column categories.inherit_from_slot_id is
   'הסעודה שהקטגוריה יורשת ממנה מאכלים. בסעודה אחרת, המאכלים שנבחרו בסעודה זו מסומנים אוטומטית (סלטים: ליל שבת)';
 comment on column categories.extra_allowed is
   'כמה מאכלים מותר להוסיף בסעודה היורשת מעבר למאכלים הירושים (סלטים בבוקר: 2)';
 
--- מקסימום התוספת אינו יכול להיות שלילי.
-alter table categories
-  add constraint chk_categories_extra_allowed
-    check (extra_allowed is null or extra_allowed >= 0);
+-- מקסימום התוספת אינו יכול להיות שלילי. (idempotent — לא נכשל בהרצה חוזרת)
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'chk_categories_extra_allowed'
+  ) then
+    alter table categories
+      add constraint chk_categories_extra_allowed
+        check (extra_allowed is null or extra_allowed >= 0);
+  end if;
+end $$;

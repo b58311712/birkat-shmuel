@@ -113,24 +113,35 @@ router.post('/', asyncHandler(async (req, res) => {
     link_path: `/admin/orders/${order.id}`,
   });
 
-  // --- מיילים (סעיף 18) — תופעת-לוואי, לא מפילה את יצירת ההזמנה ---
+  // --- תשובה ללקוח מיד לאחר שההזמנה נשמרה ---
+  // המיילים הם תופעת-לוואי ורצים ברקע *אחרי* התשובה. אחרת שליחת SMTP איטית/תקועה
+  // (נפוץ ב-Render חינם) הייתה מעכבת את res והמסך היה "נתקע" ב"שולח" למרות
+  // שההזמנה כבר נשמרה במערכת. sendTemplateEmail בולע כל כשל, כך שאין promise דחוי.
+  res.status(201).json({ ok: true, order });
+
+  // --- מיילים (סעיף 18) — ברקע, לא חוסמים את התשובה ולא מפילים את הבקשה ---
+  sendOrderEmails({ order, shabbat, customerId: b.customer_id }).catch((e) =>
+    console.warn('sendOrderEmails failed:', e.message)
+  );
+}));
+
+// שליחת מיילי "הזמנה חדשה" ברקע (סיכום ללקוח + התראה למנהלים). לא נזרק כלפי מעלה.
+async function sendOrderEmails({ order, shabbat, customerId }) {
   const { data: customer } = await supabase
-    .from('customers').select('full_name, email').eq('id', b.customer_id).maybeSingle();
+    .from('customers').select('full_name, email').eq('id', customerId).maybeSingle();
   const vars = orderVars({ order, customer, shabbat });
 
   // 18.1 — סיכום הזמנה ללקוח (אם יש מייל)
   await sendTemplateEmail({ code: 'order_summary', to: customer?.email, vars, orderId: order.id });
 
-  // 18.2 — התראה למנהלים/רכזים על הזמנה חדשה (בנוסף להתראה במסך שכבר נוצרה למעלה)
+  // 18.2 — התראה למנהלים/רכזים על הזמנה חדשה (בנוסף להתראה במסך שכבר נוצרה)
   const { data: managers } = await supabase
     .from('app_users').select('email')
     .in('role', ['manager', 'coordinator', 'developer']).eq('is_active', true);
   for (const m of managers || []) {
     await sendTemplateEmail({ code: 'new_order_manager_alert', to: m.email, vars, orderId: order.id });
   }
-
-  res.status(201).json({ ok: true, order });
-}));
+}
 
 // =====================================================================
 // GET /api/orders/customer/:customerId — היסטוריית הזמנות של לקוח (סעיף 5.4)
