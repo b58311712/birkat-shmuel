@@ -1198,6 +1198,8 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
     split_mode: initial.split_mode || (initial.requires_portion_split ? 'equal' : 'none'),
     primary_percent: initial.primary_percent ?? 80,
     secondary_percent: initial.secondary_percent ?? 50,
+    inherit_from_slot_id: initial.inherit_from_slot_id || '',
+    extra_allowed: initial.extra_allowed ?? '',
     meal_slot_ids: initial.meal_slot_ids || [],
   });
 
@@ -1216,6 +1218,9 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
         if (v === '' || Number(v) < 1 || Number(v) > 100) return alert(`${label} חייב להיות בין 1 ל-100.`);
       }
     }
+    if (f.inherit_from_slot_id && (f.extra_allowed === '' || Number(f.extra_allowed) < 0)) {
+      return alert('כשמוגדרת ירושה מסעודה, יש להזין כמה מאכלים מותר להוסיף (0 ומעלה).');
+    }
     onSave({
       ...f,
       name: f.name.trim(),
@@ -1225,6 +1230,8 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
       split_mode: f.split_mode,
       primary_percent: Number(f.primary_percent) || 80,
       secondary_percent: Number(f.secondary_percent) || 50,
+      inherit_from_slot_id: f.inherit_from_slot_id || null,
+      extra_allowed: f.inherit_from_slot_id ? Number(f.extra_allowed) || 0 : null,
     });
   }
 
@@ -1275,6 +1282,34 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
           onToggle={toggleSlot}
           emptyText="אין סעודות פעילות."
         />
+      </Field>
+      <Field label="ירושת מאכלים מסעודה (למשל סלטים: בבוקר מקבלים את בחירת הלילה)">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <select
+            value={f.inherit_from_slot_id}
+            onChange={(e) => set('inherit_from_slot_id', e.target.value)}
+            className={inputCls}
+          >
+            <option value="">ללא ירושה — כל סעודה נבחרת בנפרד</option>
+            {mealSlots
+              .filter((s) => f.meal_slot_ids.includes(s.id))
+              .map((s) => (
+                <option key={s.id} value={s.id}>יורש מ: {s.name}</option>
+              ))}
+          </select>
+          {f.inherit_from_slot_id && (
+            <Field label="כמה מותר להוסיף בסעודה היורשת">
+              <input type="number" min="0" value={f.extra_allowed}
+                onChange={(e) => set('extra_allowed', e.target.value)} className={inputCls} dir="ltr" placeholder="0" />
+            </Field>
+          )}
+        </div>
+        {f.inherit_from_slot_id && (
+          <p className="mt-1 text-xs text-brand-burgundy/60">
+            בסעודות האחרות של קטגוריה זו, המאכלים שנבחרו בסעודת-האב יסומנו אוטומטית (נעולים),
+            והלקוח יוכל להוסיף עד המספר שהוגדר. בסעודת-האב עצמה חל כלל "מקסימום מותר" הרגיל.
+          </p>
+        )}
       </Field>
       <div className="flex gap-2">
         <button type="submit" className="btn-primary">שמירה</button>

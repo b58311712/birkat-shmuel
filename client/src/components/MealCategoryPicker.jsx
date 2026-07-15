@@ -47,6 +47,11 @@ function selectedInGroup(group, mealSlotId, selectedMeals) {
   return group.meals.filter((meal) => isSelected(selectedMeals, mealSlotId, meal.id)).length;
 }
 
+// כמה מאכלים בקבוצה נבחרו דרך ירושה מסעודת-האב (נעולים, לא נספרים במכסה).
+function countInheritedInGroup(group, mealSlotId, inheritedKeys) {
+  return group.meals.filter((meal) => inheritedKeys.has(`${mealSlotId}:${meal.id}`)).length;
+}
+
 // מצב חלוקת המנות של הקטגוריה: 'none' | 'equal' | 'additive'.
 // תאימות-לאחור: קטגוריה ישנה עם requires_portion_split בלבד נחשבת 'equal'.
 function splitModeOf(category) {
@@ -70,8 +75,23 @@ function primarySelectedInGroup(group, mealSlotId, selectedMeals) {
   ).length;
 }
 
-function isGroupComplete(group, mealSlotId, selectedMeals, slotPortions) {
+// מידע ירושה של קבוצה בסעודה הנוכחית, או null אם אינה סעודה יורשת.
+// { extraAllowed, inheritedCount, manualCount } — extraAllowed הוא מכסת התוספת.
+function inheritStateOfGroup(group, mealSlotId, selectedMeals, inheritByCategory, inheritedKeys) {
+  const info = group.category ? inheritByCategory[group.category.id] : undefined;
+  if (!info || info.parentSlotId === mealSlotId) return null;
+  const inheritedCount = countInheritedInGroup(group, mealSlotId, inheritedKeys);
+  const manualCount = selectedInGroup(group, mealSlotId, selectedMeals) - inheritedCount;
+  return { extraAllowed: info.extraAllowed, inheritedCount, manualCount };
+}
+
+function isGroupComplete(group, mealSlotId, selectedMeals, slotPortions, inherit) {
   const selectedCount = selectedInGroup(group, mealSlotId, selectedMeals);
+  // סעודה יורשת: מושלמת כשיש ירושה כלשהי ומכסת התוספת נוצלה במלואה.
+  if (inherit) {
+    if (inherit.inheritedCount === 0) return false;
+    return inherit.extraAllowed == null || inherit.manualCount >= inherit.extraAllowed;
+  }
   const mode = splitModeOf(group.category);
   // additive מושלם כשנבחר לפחות דג אחד ולא נבחר יותר מדג מרכזי אחד.
   if (mode === 'additive') {
@@ -86,7 +106,12 @@ function isGroupComplete(group, mealSlotId, selectedMeals, slotPortions) {
   return group.category?.max_allowed != null && selectedCount >= group.category.max_allowed;
 }
 
-function shortLimitText(category, selectedCount) {
+function shortLimitText(category, selectedCount, inherit) {
+  if (inherit) {
+    return inherit.extraAllowed != null
+      ? `${inherit.inheritedCount}+${inherit.manualCount}/${inherit.extraAllowed}`
+      : `${inherit.inheritedCount}+${inherit.manualCount}`;
+  }
   if (category?.max_allowed != null) return `${selectedCount}/${category.max_allowed}`;
   return String(selectedCount);
 }
@@ -96,7 +121,7 @@ function fullLimitText(category, selectedCount) {
   return `${selectedCount} נבחרו, ללא מגבלה`;
 }
 
-export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, selectedMeals, onToggleMeal, onSetMealPortions, allowOverMax = false }) {
+export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, selectedMeals, onToggleMeal, onSetMealPortions, allowOverMax = false, inheritByCategory = {}, inheritedKeys = new Set() }) {
   const groups = useMemo(() => categoryGroups(catalog, mealSlotId), [catalog, mealSlotId]);
   const [activeGroupId, setActiveGroupId] = useState('');
 
@@ -110,12 +135,20 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
     firstGroupWithSelection ||
     groups[0];
   const activeSelectedCount = selectedInGroup(activeGroup, mealSlotId, selectedMeals);
-  const activeComplete = isGroupComplete(activeGroup, mealSlotId, selectedMeals, slotPortions);
-  const maxAllowed = activeGroup.category?.max_allowed;
-  const atOrOverMax = maxAllowed != null && activeSelectedCount >= maxAllowed;
+  // ירושה: בקטגוריה יורשת (וכשהסעודה הנוכחית איננה סעודת-האב), חלק מהבחירות
+  // הן ירושות ונעולות. המכסה (extra_allowed) חלה רק על התוספות הידניות.
+  const activeInherit = inheritStateOfGroup(activeGroup, mealSlotId, selectedMeals, inheritByCategory, inheritedKeys);
+  const isInheritingSlot = !!activeInherit;
+  const inheritedCount = activeInherit?.inheritedCount ?? 0;
+  const manualCount = activeInherit?.manualCount ?? activeSelectedCount;
+  const activeComplete = isGroupComplete(activeGroup, mealSlotId, selectedMeals, slotPortions, activeInherit);
+  const maxAllowed = isInheritingSlot ? activeInherit.extraAllowed : activeGroup.category?.max_allowed;
+  // בסעודה יורשת סופרים רק תוספות ידניות מול extra_allowed.
+  const limitCount = isInheritingSlot ? manualCount : activeSelectedCount;
+  const atOrOverMax = maxAllowed != null && limitCount >= maxAllowed;
   // בזרימת המנהל (allowOverMax) לא חוסמים את המקסימום — רק מתריעים על החריגה.
   const reachedLimit = atOrOverMax && !allowOverMax;
-  const overMax = allowOverMax && maxAllowed != null && activeSelectedCount > maxAllowed;
+  const overMax = allowOverMax && maxAllowed != null && limitCount > maxAllowed;
   const splitMode = splitModeOf(activeGroup.category);
   const isEqualSplit = splitMode === 'equal';
   const isAdditive = splitMode === 'additive';
@@ -132,10 +165,12 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
       <div className="flex gap-1.5 overflow-x-auto p-2 bg-brand-cream/35 border-b border-brand-cream-dark">
         {groups.map((group) => {
           const selectedCount = selectedInGroup(group, mealSlotId, selectedMeals);
+          const groupInherit = inheritStateOfGroup(group, mealSlotId, selectedMeals, inheritByCategory, inheritedKeys);
           const isActive = group.id === activeGroup.id;
-          const complete = isGroupComplete(group, mealSlotId, selectedMeals, slotPortions);
+          const complete = isGroupComplete(group, mealSlotId, selectedMeals, slotPortions, groupInherit);
           const completedStyle = complete ? (isActive ? activeCompletedTabStyle : completedTabStyle) : undefined;
           const groupOverMax = allowOverMax
+            && !groupInherit
             && group.category?.max_allowed != null
             && selectedCount > group.category.max_allowed;
 
@@ -183,7 +218,7 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
                       : undefined
                 }
               >
-                {groupOverMax && '⚠ '}{shortLimitText(group.category, selectedCount)}
+                {groupOverMax && '⚠ '}{shortLimitText(group.category, selectedCount, groupInherit)}
               </span>
             </button>
           );
@@ -202,7 +237,9 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
           )}
         </div>
         <span className={`text-xs font-medium ${activeComplete ? 'text-green-800' : 'text-brand-burgundy/60'}`}>
-          {fullLimitText(activeGroup.category, activeSelectedCount)}
+          {isInheritingSlot
+            ? `מהלילה: ${inheritedCount}${maxAllowed != null ? ` · נוספים: ${manualCount}/${maxAllowed}` : ` · נוספים: ${manualCount}`}`
+            : fullLimitText(activeGroup.category, activeSelectedCount)}
         </span>
       </div>
 
@@ -233,9 +270,11 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
           const key = `${mealSlotId}:${meal.id}`;
           const value = selectedMeals[key];
           const selected = Object.prototype.hasOwnProperty.call(selectedMeals, key);
+          // מאכל ירוש מהלילה: נבחר ונעול — לא ניתן לבטלו כאן.
+          const inherited = value === 'inherited';
           // additive: אי-אפשר לבחור דג מרכזי נוסף כשכבר נבחר אחד.
           const blockedPrimary = isAdditive && !selected && !meal.is_secondary && primarySelected >= 1;
-          const disabled = (reachedLimit && !selected) || blockedPrimary;
+          const disabled = inherited || (reachedLimit && !selected) || blockedPrimary;
 
           return (
             <button
@@ -243,16 +282,22 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
               type="button"
               onClick={() => onToggleMeal(mealSlotId, meal.id)}
               disabled={disabled}
-              title={blockedPrimary ? 'ניתן לבחור רק דג עיקרי אחד' : undefined}
+              title={inherited ? 'נבחר בליל שבת — משוכפל אוטומטית' : blockedPrimary ? 'ניתן לבחור רק דג עיקרי אחד' : undefined}
               className={`relative min-h-10 rounded-lg border px-2.5 py-2 text-right text-sm leading-tight transition-colors ${
-                selected
-                  ? 'bg-brand-burgundy text-brand-cream border-brand-burgundy shadow-card'
-                  : disabled
-                    ? 'bg-brand-cream/40 text-brand-burgundy/35 border-brand-cream-dark cursor-not-allowed'
-                    : 'bg-white text-brand-burgundy border-brand-cream-dark hover:border-brand-gold hover:bg-brand-cream/30'
+                inherited
+                  ? 'bg-brand-burgundy/70 text-brand-cream border-brand-burgundy/70 cursor-not-allowed'
+                  : selected
+                    ? 'bg-brand-burgundy text-brand-cream border-brand-burgundy shadow-card'
+                    : disabled
+                      ? 'bg-brand-cream/40 text-brand-burgundy/35 border-brand-cream-dark cursor-not-allowed'
+                      : 'bg-white text-brand-burgundy border-brand-cream-dark hover:border-brand-gold hover:bg-brand-cream/30'
               }`}
             >
               <span className="block font-medium">{meal.name}</span>
+              {/* ירושה: תיוג "מהלילה" כדי שהלקוח יבין שהמאכל הגיע מבחירת ליל שבת */}
+              {inherited && (
+                <span className="block text-xs opacity-80 mt-0.5">🔒 מהלילה</span>
+              )}
               {/* additive: תיוג דג משני/זול כדי שהלקוח יבין את החלוקה */}
               {isAdditive && meal.is_secondary && (
                 <span className="block text-xs opacity-70 mt-0.5">דג נוסף (זול)</span>
