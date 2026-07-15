@@ -150,13 +150,14 @@ export default function AdminPrintForm({ onAuthError }) {
       // zoom חדש על בסיס פונט ההדפסה בזמן שההדפסה רצה. המדידה נעשית במצב מסך.
       if (window.matchMedia && window.matchMedia('print').matches) return;
 
-      // מודדים את פריסת ההדפסה: רוחב A4 שימושי, פונט הדפסה (10px), בלי zoom.
+      // מודדים את פריסת ההדפסה: רוחב A4 שימושי, פונט הדפסה (11.5px — מסונכרן עם
+      // הכלל @media print ב-index.css), בלי zoom.
       const prev = { width: card.style.width, maxWidth: card.style.maxWidth, zoom: card.style.zoom, fontSize: card.style.fontSize, lineHeight: card.style.lineHeight };
       card.style.zoom = '1';
       card.style.maxWidth = 'none';
       card.style.width = `${Math.round(A4_PRINT_W)}px`;
-      card.style.fontSize = '10px';
-      card.style.lineHeight = '1.25';
+      card.style.fontSize = '11.5px';
+      card.style.lineHeight = '1.3';
 
       // eslint-disable-next-line no-unused-expressions
       card.offsetHeight; // כפיית reflow
@@ -354,11 +355,8 @@ function SlotSection({ section }) {
   const { slot, blocks, inheritNotes } = section;
   return (
     <section className="print-slot rounded-lg border border-brand-cream-dark">
-      <div className="flex items-baseline gap-3 rounded-t-lg bg-brand-burgundy px-3 py-1.5 text-brand-cream print:bg-brand-cream print:text-brand-burgundy-dark">
+      <div className="rounded-t-lg bg-brand-burgundy px-3 py-1.5 text-brand-cream print:bg-brand-cream print:text-brand-burgundy-dark">
         <h3 className="text-base font-extrabold">{slot.name}</h3>
-        <span className="ms-auto flex items-center gap-2 text-xs font-medium">
-          מס׳ מנות: <BlankLine w="w-16" />
-        </span>
       </div>
       <div className="print-slot-body px-3 py-2">
         {/* הפניית סלטי-הבוקר (וכל קטגוריה יורשת אחרת) — משתרעת על שתי העמודות */}
@@ -435,7 +433,7 @@ function CategoryBlock({ block, slot }) {
               <CheckBox />
             )}
 
-            <span className="flex-1 text-sm text-brand-burgundy-dark">
+            <span className="flex-1 text-sm font-medium text-black">
               {meal.name}
               {meal.requires_extra_charge && meal.extra_charge_amount != null && (
                 <span className="text-brand-gold-dark"> (+{Number(meal.extra_charge_amount)} ש״ח)</span>
@@ -488,9 +486,9 @@ function ExtrasBlock({ extras }) {
         {extras.map((e) => (
           <li key={e.id} className="flex items-center gap-2 py-1.5">
             <CheckBox />
-            <span className="flex-1 text-sm text-brand-burgundy-dark">
+            <span className="flex-1 text-sm font-medium text-black">
               {e.name}
-              <span className="text-brand-burgundy/60"> — {Number(e.unit_price)} ש״ח ל{e.billing_unit}</span>
+              <span className="text-brand-burgundy/70"> — {Number(e.unit_price)} ש״ח ל{e.billing_unit}</span>
               {e.customer_note && <span className="block text-[11px] text-brand-gold-dark">{e.customer_note}</span>}
             </span>
             <span className="shrink-0 text-xs text-brand-burgundy/60">כמות:</span>

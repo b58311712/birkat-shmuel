@@ -640,13 +640,20 @@ tbody tr:hover {
    למלא את הדף ולצמצם עמודים, במקום רשת עם מרווחים גדולים.
 --------------------------------------------------------------------------- */
 @media print {
-  /* שוליים צרים יותר לטופס — יותר שטח שימושי, פחות עמודים */
-  .print-form { font-size: 10px; line-height: 1.25; }
+  /* שוליים צרים יותר לטופס — יותר שטח שימושי, פחות עמודים.
+     פונט בסיס 11.5px (מסונכרן עם מדידת ה-zoom ב-AdminPrintForm.jsx) — גדול דיו
+     לקריאה בטופס מודפס, ועדיין נכנס ל-2 עמודים בזכות ה-zoom האוטומטי. */
+  .print-form { font-size: 11.5px; line-height: 1.3; }
   .print-form .max-w-4xl { padding: 0 !important; }
 
+  /* טקסט רץ שחור ומעט עבה יותר — קריאות מרבית בהדפסה */
+  .print-form li,
+  .print-form .print-slot-body { color: #000 !important; }
+  .print-form li .flex-1 { font-weight: 500; }
+
   /* כותרת ומחירים קומפקטיים */
-  .print-form h2 { font-size: 20px !important; }
-  .print-form h3 { font-size: 11px !important; }
+  .print-form h2 { font-size: 21px !important; }
+  .print-form h3 { font-size: 13px !important; }
 
   /* שדות הפרטים — פחות גובה */
   .print-form .h-6 { height: 0.9rem !important; }
