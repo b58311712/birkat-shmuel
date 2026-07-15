@@ -30,6 +30,10 @@ function smtpConfig() {
     host,
     port: Number(process.env.SMTP_PORT) || 587,
     secure: String(process.env.SMTP_SECURE) === 'true', // true ל-465, false ל-587 (STARTTLS)
+    // מכריחים חיבור מעל IPv4. ב-Render (ובחלק מהסביבות) אין ניתוב IPv6 יוצא
+    // ל-SMTP של Gmail, ואז ה-DNS מחזיר כתובת IPv6 והחיבור נכשל ב-ENETUNREACH
+    // / Connection timeout. family:4 מכריח resolve ל-A record (IPv4) ומייצב שליחה.
+    family: 4,
     auth: process.env.SMTP_USER
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
       : undefined,
