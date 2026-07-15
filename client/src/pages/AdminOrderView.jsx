@@ -122,9 +122,10 @@ export default function AdminOrderView({ onAuthError, currentAdmin }) {
             <Field label="אופן אספקה" value={DELIVERY_METHOD[order.delivery_method] || order.delivery_method} />
             <Field label="איש קשר לקבלה" value={order.contact_name} />
             <Field label="טלפון איש קשר" value={order.contact_phone} />
+            <Field label="שם האולם" value={order.venue_name} />
             <Field label="כתובת האולם" value={order.venue_address} />
             <Field label="הערות שינוע" value={order.transport_notes} />
-            <Field label="אמצעי תשלום מועדף"
+            <Field label="אמצעי תשלום"
               value={order.preferred_payment_method ? PAYMENT_METHOD[order.preferred_payment_method] || order.preferred_payment_method : null} />
           </Section>
         </div>

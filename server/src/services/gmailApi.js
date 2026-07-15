@@ -8,15 +8,14 @@
 // המנגנון:
 //   - OAuth2 עם refresh_token קבוע (scope gmail.send). ה-access_token מתחדש
 //     אוטומטית ע"י ספריית googleapis בכל שליחה — אין מה לשמור/לרענן ידנית.
-//   - בונים הודעת MIME multipart/related ידנית (Gmail API לא מקבל attachments
-//     array כמו nodemailer): חלק text, חלק html, וחלק תמונת לוגו inline עם
-//     Content-ID התואם ל-cid:brand-logo שבמעטפת (emailTemplate.js).
+//   - בונים הודעת MIME multipart/alternative ידנית (Gmail API לא מקבל
+//     attachments array כמו nodemailer): חלק text וחלק html. המעטפת רשמית
+//     וטקסטואלית — אין תמונות/לוגו מצורפים.
 //   - שולחים דרך gmail.users.messages.send עם raw = base64url של ה-MIME.
 //
 // env נדרשים: GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN.
 // אם חסר אחד מהם — isGmailApiConfigured()=false והמערכת נופלת ל-SMTP/dry-run.
 // =============================================================================
-import fs from 'node:fs';
 import { google } from 'googleapis';
 
 export function isGmailApiConfigured() {
@@ -71,19 +70,20 @@ function encodeFrom(from) {
 }
 
 // =============================================================================
-// buildMimeMessage — בונה הודעת RFC 822 מלאה.
-//   { from, to, subject, text, html, logo }
-//   logo — { path, cid, filename } אופציונלי (התאמה ל-brandLogoAttachment).
-// אם יש logo → multipart/related עוטף multipart/alternative + תמונת ה-inline.
-// אם אין   → multipart/alternative בלבד (text + html).
+// buildMimeMessage — בונה הודעת RFC 822 מלאה: multipart/alternative (text + html).
 // =============================================================================
-function buildMimeMessage({ from, to, subject, text, html, logo }) {
+function buildMimeMessage({ from, to, subject, text, html }) {
   const altBoundary = 'alt_' + Math.random().toString(36).slice(2);
-  const relBoundary = 'rel_' + Math.random().toString(36).slice(2);
   const nl = '\r\n';
 
-  // גוף ה-alternative (טקסט + HTML) — משותף לשני המקרים.
-  const alternative = [
+  const headers = [
+    `From: ${encodeFrom(from)}`,
+    `To: ${to}`,
+    `Subject: ${encodeHeader(subject)}`,
+    'MIME-Version: 1.0',
+  ];
+
+  const body = [
     `Content-Type: multipart/alternative; boundary="${altBoundary}"`, '',
     `--${altBoundary}`,
     'Content-Type: text/plain; charset="UTF-8"',
@@ -96,57 +96,17 @@ function buildMimeMessage({ from, to, subject, text, html, logo }) {
     `--${altBoundary}--`,
   ].join(nl);
 
-  // תמונת לוגו inline זמינה? (עשוי להיכשל אם הקובץ חסר — אז שולחים בלי לוגו)
-  let logoPart = null;
-  if (logo?.path) {
-    try {
-      const data = fs.readFileSync(logo.path).toString('base64');
-      // מפרקים לשורות של 76 תווים (RFC 2045) — Gmail סלחני, אך תקין ובטוח.
-      const wrapped = data.replace(/.{76}/g, '$&' + nl);
-      logoPart = [
-        `--${relBoundary}`,
-        'Content-Type: image/png',
-        'Content-Transfer-Encoding: base64',
-        `Content-ID: <${logo.cid}>`,
-        `Content-Disposition: inline; filename="${logo.filename || 'logo.png'}"`, '',
-        wrapped, '',
-      ].join(nl);
-    } catch {
-      logoPart = null; // הלוגו לא קריטי — ממשיכים בלעדיו
-    }
-  }
-
-  const headers = [
-    `From: ${encodeFrom(from)}`,
-    `To: ${to}`,
-    `Subject: ${encodeHeader(subject)}`,
-    'MIME-Version: 1.0',
-  ];
-
-  let body;
-  if (logoPart) {
-    body = [
-      `Content-Type: multipart/related; boundary="${relBoundary}"`, '',
-      `--${relBoundary}`,
-      alternative, '',
-      logoPart,
-      `--${relBoundary}--`,
-    ].join(nl);
-  } else {
-    body = alternative;
-  }
-
   return headers.join(nl) + nl + body;
 }
 
 // =============================================================================
 // sendViaGmailApi — שולח מייל אחד דרך Gmail API. זורק בכשל (הקורא תופס ומתעד).
 // =============================================================================
-export async function sendViaGmailApi({ from, to, subject, text, html, logo }) {
+export async function sendViaGmailApi({ from, to, subject, text, html }) {
   const gmail = getGmailClient();
   if (!gmail) throw new Error('Gmail API not configured');
 
-  const mime = buildMimeMessage({ from, to, subject, text, html, logo });
+  const mime = buildMimeMessage({ from, to, subject, text, html });
   await gmail.users.messages.send({
     userId: 'me',
     requestBody: { raw: toBase64Url(mime) },

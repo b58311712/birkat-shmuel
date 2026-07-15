@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
-import { Badge, ORDER_STATUS, PAYMENT_STATUS } from '../lib/status.jsx';
+import { Badge, ORDER_STATUS, PAYMENT_STATUS, PAYMENT_METHOD } from '../lib/status.jsx';
 
 // צפייה בהזמנה בודדת + מסך סיכום לאחר יצירה (סעיף 18.1)
 export default function OrderView() {
@@ -80,6 +80,12 @@ export default function OrderView() {
           </div>
         )}
 
+        <div className="grid sm:grid-cols-3 gap-3 mb-4 rounded-xl border border-brand-cream-dark p-3 text-sm">
+          <Detail label="שם האולם" value={order.venue_name} />
+          <Detail label="כתובת האולם" value={order.venue_address} />
+          <Detail label="אמצעי תשלום" value={PAYMENT_METHOD[order.preferred_payment_method]} />
+        </div>
+
         {/* סיכום מחיר */}
         <div className="bg-brand-cream/50 rounded-xl p-4 space-y-1">
           <Row label="מחיר בסיס" value={order.base_amount} />
@@ -96,6 +102,15 @@ export default function OrderView() {
         <Link to="/my-orders" className="btn-ghost">← חזרה להזמנות שלי</Link>
       </div>
     </Page>
+  );
+}
+
+function Detail({ label, value }) {
+  return (
+    <div>
+      <div className="text-xs text-brand-burgundy/50">{label}</div>
+      <div className="font-medium text-brand-burgundy">{value || '—'}</div>
+    </div>
   );
 }
 

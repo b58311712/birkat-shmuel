@@ -4,13 +4,43 @@
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 const ADMIN_TOKEN_KEY = 'matbach_admin_token';
+const ADMIN_AUTH_NOTICE_KEY = 'matbach_admin_auth_notice';
+
+function setAdminAuthNotice(message) {
+  sessionStorage.setItem(ADMIN_AUTH_NOTICE_KEY, message);
+}
+
+function isExpiredToken(token) {
+  try {
+    const rawPayload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = rawPayload.padEnd(Math.ceil(rawPayload.length / 4) * 4, '=');
+    const decoded = JSON.parse(atob(payload));
+    return !decoded.exp || decoded.exp * 1000 <= Date.now();
+  } catch {
+    return true;
+  }
+}
 
 // ניהול טוקן מנהל בדפדפן
 export const adminAuth = {
-  get: () => localStorage.getItem(ADMIN_TOKEN_KEY),
+  get: () => {
+    const token = localStorage.getItem(ADMIN_TOKEN_KEY);
+    if (token && isExpiredToken(token)) {
+      localStorage.removeItem(ADMIN_TOKEN_KEY);
+      setAdminAuthNotice('פג תוקף ההתחברות. יש להתחבר מחדש; שינויים שלא נשמרו יישארו כטיוטה.');
+      return null;
+    }
+    return token;
+  },
   set: (t) => localStorage.setItem(ADMIN_TOKEN_KEY, t),
   clear: () => localStorage.removeItem(ADMIN_TOKEN_KEY),
 };
+
+export function consumeAdminAuthNotice() {
+  const notice = sessionStorage.getItem(ADMIN_AUTH_NOTICE_KEY) || '';
+  sessionStorage.removeItem(ADMIN_AUTH_NOTICE_KEY);
+  return notice;
+}
 
 // נזרק כשטוקן המנהל חסר/פג — מאפשר לפרונט להפנות חזרה לכניסה.
 export class AdminAuthError extends Error {
@@ -29,9 +59,10 @@ async function request(path, options = {}) {
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    // טוקן מנהל פג/לא תקין — מנקים ומאותתים לפרונט
-    if (admin && (res.status === 401 || res.status === 403)) {
+    // טוקן מנהל פג/לא תקין — מנקים ומאותתים לפרונט. 403 הוא כשל הרשאה, לא כשל התחברות.
+    if (admin && res.status === 401) {
       adminAuth.clear();
+      setAdminAuthNotice('פג תוקף ההתחברות. יש להתחבר מחדש; שינויים בנוסחי המייל נשמרו כטיוטה.');
       throw new AdminAuthError(data.error || 'נדרשת התחברות מנהל מחדש.');
     }
     throw new Error(data.error || 'אירעה שגיאה. נא לנסות שוב.');

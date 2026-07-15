@@ -28,6 +28,7 @@ export default function AdminOrderEdit({ onAuthError }) {
   const [delivery, setDelivery] = useState('volunteer_transport');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [venueName, setVenueName] = useState('');
   const [venueAddress, setVenueAddress] = useState('');
   const [transportNotes, setTransportNotes] = useState('');
   const [payMethod, setPayMethod] = useState('');
@@ -59,6 +60,7 @@ export default function AdminOrderEdit({ onAuthError }) {
         setDelivery(ord.delivery_method || 'volunteer_transport');
         setContactName(ord.contact_name || '');
         setContactPhone(ord.contact_phone || '');
+        setVenueName(ord.venue_name || '');
         setVenueAddress(ord.venue_address || '');
         setTransportNotes(ord.transport_notes || '');
         setPayMethod(ord.preferred_payment_method || '');
@@ -184,6 +186,9 @@ export default function AdminOrderEdit({ onAuthError }) {
     if (selectedSlots.some((slot) => !Number.isInteger(slot.portions) || slot.portions <= 0)) {
       return setError('מספר המנות בכל סעודה חייב להיות מספר שלם וחיובי.');
     }
+    if (!venueName.trim()) return setError('נא להזין את שם האולם.');
+    if (!venueAddress.trim()) return setError('נא להזין את כתובת האולם.');
+    if (!payMethod) return setError('נא לבחור אמצעי תשלום.');
     if (splitErrors.length > 0) {
       return setError(`יש להתאים את כמויות המנות בקטגוריות המחלקות מנות:\n${splitErrors.join('\n')}`);
     }
@@ -214,9 +219,10 @@ export default function AdminOrderEdit({ onAuthError }) {
         delivery_method: delivery,
         contact_name: contactName || null,
         contact_phone: contactPhone || null,
-        venue_address: venueAddress || null,
+        venue_name: venueName.trim(),
+        venue_address: venueAddress.trim(),
         transport_notes: transportNotes || null,
-        preferred_payment_method: payMethod || null,
+        preferred_payment_method: payMethod,
       });
       nav(`/admin/orders/${id}`);
     } catch (e) { if (!handleErr(e)) setError(e.message); }
@@ -267,9 +273,9 @@ export default function AdminOrderEdit({ onAuthError }) {
             </select>
           </label>
           <label className="block">
-            <span className="text-sm text-brand-burgundy/60">אמצעי תשלום מועדף</span>
-            <select className="input w-full" value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
-              <option value="">— לא נבחר —</option>
+            <span className="text-sm text-brand-burgundy/60">אמצעי תשלום *</span>
+            <select className="input w-full" value={payMethod} onChange={(e) => setPayMethod(e.target.value)} required>
+              <option value="">— נא לבחור —</option>
               <option value="bank_transfer">העברה בנקאית</option>
               <option value="cash">מזומן</option>
               <option value="check">צ׳ק</option>
@@ -277,7 +283,8 @@ export default function AdminOrderEdit({ onAuthError }) {
           </label>
           <LabeledInput label="איש קשר לקבלה" value={contactName} onChange={setContactName} />
           <LabeledInput label="טלפון איש קשר" value={contactPhone} onChange={setContactPhone} />
-          <LabeledInput label="כתובת האולם" value={venueAddress} onChange={setVenueAddress} />
+          <LabeledInput label="שם האולם *" value={venueName} onChange={setVenueName} />
+          <LabeledInput label="כתובת האולם *" value={venueAddress} onChange={setVenueAddress} />
           <LabeledInput label="הערות שינוע" value={transportNotes} onChange={setTransportNotes} />
         </div>
       </section>

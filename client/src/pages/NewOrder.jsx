@@ -5,6 +5,7 @@ import { Page } from '../components/Layout.jsx';
 import { MealCategoryPicker } from '../components/MealCategoryPicker.jsx';
 import { formatGregorianDate, formatShabbatHebrewDate, formatShabbatTitle } from '../lib/dates.js';
 import { slotComboKey } from '../lib/pricing.js';
+import { PAYMENT_METHOD } from '../lib/status.jsx';
 
 // טווח מנות סטנדרטי. כמות מחוץ לטווח מותרת כ"בקשת חריג" הממתינה לאישור מנהל (סעיף 12.2).
 const MIN_PORTIONS = 50;
@@ -25,7 +26,9 @@ export default function NewOrder({ customer }) {
   const [extras, setExtras] = useState({});
   const [contactName, setContactName] = useState(customer?.full_name || '');
   const [contactPhone, setContactPhone] = useState(customer?.phone || '');
+  const [venueName, setVenueName] = useState('');
   const [venueAddress, setVenueAddress] = useState('');
+  const [payMethod, setPayMethod] = useState('');
 
   useEffect(() => {
     Promise.all([api.catalog(), api.openShabbatot()])
@@ -293,6 +296,18 @@ export default function NewOrder({ customer }) {
       setError('נא לבחור לפחות סעודה אחת עם מספר מנות.');
       return false;
     }
+    if (!venueName.trim()) {
+      setError('נא להזין את שם האולם.');
+      return false;
+    }
+    if (!venueAddress.trim()) {
+      setError('נא להזין את כתובת האולם.');
+      return false;
+    }
+    if (!payMethod) {
+      setError('נא לבחור אמצעי תשלום.');
+      return false;
+    }
     if (splitErrors.length > 0) {
       setError(`יש להתאים את כמויות המנות בקטגוריות המחלקות מנות:\n${splitErrors.join('\n')}`);
       return false;
@@ -327,7 +342,9 @@ export default function NewOrder({ customer }) {
         extras: extrasPayload,
         contact_name: contactName.trim() || null,
         contact_phone: contactPhone.trim() || null,
-        venue_address: venueAddress.trim() || null,
+        venue_name: venueName.trim(),
+        venue_address: venueAddress.trim(),
+        preferred_payment_method: payMethod,
       });
       nav(`/order/${res.order.id}?created=1`);
     } catch (e) { setError(e.message); }
@@ -476,11 +493,19 @@ export default function NewOrder({ customer }) {
 
           <section className="card mb-5">
             <h2 className="font-bold text-brand-burgundy mb-3">5. פרטי משלוח</h2>
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,0.85fr)] sm:items-end">
-              <LabeledInput label="כתובת האולם" value={venueAddress} onChange={setVenueAddress} />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 sm:items-end">
+              <LabeledInput label="שם האולם" value={venueName} onChange={setVenueName} required />
+              <LabeledInput label="כתובת האולם" value={venueAddress} onChange={setVenueAddress} required />
               <LabeledInput label="איש קשר" value={contactName} onChange={setContactName} />
               <LabeledInput label="טלפון" value={contactPhone} onChange={setContactPhone} dir="ltr" />
             </div>
+            <label className="block mt-3 sm:max-w-sm">
+              <span className="text-sm text-brand-burgundy/60">אמצעי תשלום *</span>
+              <select className="input w-full" value={payMethod} onChange={(e) => setPayMethod(e.target.value)} required>
+                <option value="">— נא לבחור —</option>
+                {Object.entries(PAYMENT_METHOD).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
           </section>
         </>
       )}
@@ -524,7 +549,7 @@ export default function NewOrder({ customer }) {
           shabbat={selectedShabbat}
           preview={orderPreview}
           priceEstimate={priceEstimate}
-          deliveryDetails={{ contactName, contactPhone, venueAddress }}
+          deliveryDetails={{ contactName, contactPhone, venueName, venueAddress, payMethod }}
           hasException={exceptionSlots.length > 0}
           submitting={submitting}
           onClose={() => setPreviewOpen(false)}
@@ -601,9 +626,11 @@ function OrderPreviewModal({ customer, shabbat, preview, priceEstimate, delivery
           <div className="rounded-lg border border-brand-cream-dark p-3">
             <h3 className="font-bold text-brand-gold-dark mb-2">פרטי משלוח</h3>
             <div className="grid sm:grid-cols-2 gap-2 text-sm">
+              <PreviewField label="שם האולם" value={deliveryDetails.venueName} />
               <PreviewField label="כתובת האולם" value={deliveryDetails.venueAddress} />
               <PreviewField label="איש קשר לקבלת המשלוח" value={deliveryDetails.contactName} />
               <PreviewField label="טלפון איש קשר" value={deliveryDetails.contactPhone} dir="ltr" />
+              <PreviewField label="אמצעי תשלום" value={PAYMENT_METHOD[deliveryDetails.payMethod]} />
             </div>
           </div>
 
@@ -637,11 +664,11 @@ function SummaryRow({ label, value }) {
   );
 }
 
-function LabeledInput({ label, value, onChange, dir }) {
+function LabeledInput({ label, value, onChange, dir, required = false }) {
   return (
     <label className="block">
-      <span className="text-sm text-brand-burgundy/60">{label}</span>
-      <input className="input w-full" value={value} dir={dir} onChange={(e) => onChange(e.target.value)} />
+      <span className="text-sm text-brand-burgundy/60">{label}{required && ' *'}</span>
+      <input className="input w-full" value={value} dir={dir} required={required} onChange={(e) => onChange(e.target.value)} />
     </label>
   );
 }

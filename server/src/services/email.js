@@ -12,7 +12,7 @@
 // =============================================================================
 import nodemailer from 'nodemailer';
 import { supabase } from '../lib/supabase.js';
-import { renderBrandedEmail, brandLogoAttachment } from './emailTemplate.js';
+import { renderBrandedEmail } from './emailTemplate.js';
 import { isGmailApiConfigured, sendViaGmailApi } from './gmailApi.js';
 
 // תיאורים בעברית לאמצעי תשלום — לשימוש ב-placeholder {payment_method}
@@ -62,6 +62,13 @@ export function isDryRun() {
 // כתובת השולח — מ-.env, עם ברירת מחדל סבירה.
 function fromAddress() {
   return process.env.SMTP_FROM || process.env.SMTP_USER || 'מטבח החסד <no-reply@matbach-hachesed.local>';
+}
+
+// כתובת המשרד — היעד היחיד לכל מיילי ההתראה למנהל המערכת.
+// כל התראות המנהל (למשל "הזמנה חדשה") נשלחות *רק* לתיבת המשרד, ולא לכל
+// המשתמשים בהרשאת מנהל. ניתן לעקוף דרך .env, אך ברירת המחדל היא תיבת המשרד.
+export function officeEmail() {
+  return process.env.OFFICE_EMAIL || 'b58311712@gmail.com';
 }
 
 // --- מילוי placeholders ---
@@ -116,14 +123,13 @@ export async function sendTemplateEmail({ code, to, vars = {}, orderId = null })
       return { status: 'dry_run' };
     }
 
-    // עוטפים את גוף הטקסט של המנהל במעטפת HTML מותגית; הטקסט נשמר כגיבוי.
-    const logoAttachment = brandLogoAttachment();
-    const html = renderBrandedEmail({ subject, body, hasLogo: !!logoAttachment });
+    // עוטפים את גוף הטקסט של המנהל במעטפת HTML רשמית; הטקסט נשמר כגיבוי.
+    const html = renderBrandedEmail({ subject, body });
 
     try {
       if (isGmailApiConfigured()) {
         // מסלול מועדף — Gmail API על HTTPS/443 (עובד ב-Render, שחוסמת SMTP).
-        await sendViaGmailApi({ from: fromAddress(), to, subject, text: body, html, logo: logoAttachment });
+        await sendViaGmailApi({ from: fromAddress(), to, subject, text: body, html });
       } else {
         // fallback — SMTP דרך nodemailer (עובד מקומית; ב-Render נחסם).
         await getTransporter().sendMail({
@@ -132,7 +138,6 @@ export async function sendTemplateEmail({ code, to, vars = {}, orderId = null })
           subject,
           text: body,
           html,
-          attachments: logoAttachment ? [logoAttachment] : [],
         });
       }
       await logEmail({ template_code: code, to_email: to, subject, body, status: 'sent', order_id: orderId });

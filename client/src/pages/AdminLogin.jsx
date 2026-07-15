@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api } from '../lib/api.js';
+import { api, consumeAdminAuthNotice } from '../lib/api.js';
 
 // כניסת משתמש מערכת (מנהל / רכז / מפתחת) — אימייל + סיסמה (סעיף 5)
 export default function AdminLogin({ onLogin }) {
@@ -7,6 +7,7 @@ export default function AdminLogin({ onLogin }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [notice] = useState(() => consumeAdminAuthNotice());
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -43,6 +44,11 @@ export default function AdminLogin({ onLogin }) {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {notice && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
+                {notice}
+              </p>
+            )}
             <div>
               <label className="block text-sm font-medium text-brand-burgundy mb-1">אימייל</label>
               <input className="input" type="email" placeholder="manager@example.com"

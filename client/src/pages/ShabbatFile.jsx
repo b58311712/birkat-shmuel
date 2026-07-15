@@ -588,7 +588,7 @@ function TransportTab({ id, onAuthError }) {
             <th className="p-3 text-right">מזמין</th>
             <th className="p-3 text-right">איש קשר</th>
             <th className="p-3 text-right">טלפון</th>
-            <th className="p-3 text-right">כתובת</th>
+            <th className="p-3 text-right">אולם וכתובת</th>
             <th className="p-3 text-right">מנות</th>
             <th className="p-3 text-right">הערות</th>
           </tr>
@@ -600,7 +600,7 @@ function TransportTab({ id, onAuthError }) {
               <td className="p-3">{o.customer_name}</td>
               <td className="p-3">{o.contact_name}</td>
               <td className="p-3 text-sm" dir="ltr">{o.contact_phone}</td>
-              <td className="p-3 text-sm">{o.venue_address || '—'}</td>
+              <td className="p-3 text-sm">{[o.venue_name, o.venue_address].filter(Boolean).join(' · ') || '—'}</td>
               <td className="p-3 font-bold">{o.total_portions}</td>
               <td className="p-3 text-sm text-brand-burgundy/60">{o.transport_notes || '—'}</td>
             </tr>
@@ -994,14 +994,14 @@ function PrintTab({ id, onAuthError }) {
           {!tr?.orders?.length ? (
             <p className="text-brand-burgundy/50 text-sm">אין הזמנות לשינוע (כולן באיסוף עצמי).</p>
           ) : (
-            <PrintTable head={['מס׳', 'מזמין', 'איש קשר', 'טלפון', 'כתובת', 'מנות', 'הערות']}>
+            <PrintTable head={['מס׳', 'מזמין', 'איש קשר', 'טלפון', 'אולם וכתובת', 'מנות', 'הערות']}>
               {tr.orders.map((o) => (
                 <tr key={o.order_id}>
                   <td className="border border-brand-cream-dark p-2 font-mono">#{o.order_number}</td>
                   <td className="border border-brand-cream-dark p-2">{o.customer_name}</td>
                   <td className="border border-brand-cream-dark p-2">{o.contact_name}</td>
                   <td className="border border-brand-cream-dark p-2" dir="ltr">{o.contact_phone}</td>
-                  <td className="border border-brand-cream-dark p-2">{o.venue_address || '—'}</td>
+                  <td className="border border-brand-cream-dark p-2">{[o.venue_name, o.venue_address].filter(Boolean).join(' · ') || '—'}</td>
                   <td className="border border-brand-cream-dark p-2 font-bold">{o.total_portions}</td>
                   <td className="border border-brand-cream-dark p-2 text-brand-burgundy/60">{o.transport_notes || '—'}</td>
                 </tr>
@@ -1056,7 +1056,7 @@ function PrintTab({ id, onAuthError }) {
               <div className="text-sm text-brand-burgundy/70 mb-3 space-y-0.5">
                 <div>איש קשר: {o.contact_name} {o.contact_phone && <span dir="ltr">({o.contact_phone})</span>}</div>
                 <div>אספקה: {DELIVERY_LABELS[o.delivery_method] || o.delivery_method}
-                  {o.venue_address && ` · ${o.venue_address}`}</div>
+                  {(o.venue_name || o.venue_address) && ` · ${[o.venue_name, o.venue_address].filter(Boolean).join(' · ')}`}</div>
                 <div>סך מנות: <span className="font-bold text-brand-burgundy">{o.total_portions}</span></div>
               </div>
               {o.slots.map((slot) => (

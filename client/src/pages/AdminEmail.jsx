@@ -2,6 +2,18 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 
+const EMAIL_DRAFTS_KEY = 'matbach_email_template_drafts';
+
+function readDrafts() {
+  try { return JSON.parse(sessionStorage.getItem(EMAIL_DRAFTS_KEY)) || {}; }
+  catch { return {}; }
+}
+
+function writeDrafts(drafts) {
+  if (Object.keys(drafts).length) sessionStorage.setItem(EMAIL_DRAFTS_KEY, JSON.stringify(drafts));
+  else sessionStorage.removeItem(EMAIL_DRAFTS_KEY);
+}
+
 // ניהול מיילים (סעיף 18) — עריכת נוסחי מייל דינמיים, שליחת תזכורות תשלום, ויומן שליחה.
 // שמות ידידותיים לנוסחים המוכרים.
 const TEMPLATE_LABELS = {
@@ -34,6 +46,31 @@ export default function AdminEmail({ onAuthError }) {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(true);
+  const [drafts, setDrafts] = useState(readDrafts);
+
+  useEffect(() => {
+    if (Object.keys(drafts).length) {
+      setMsg('טיוטת השינויים שלא נשמרו שוחזרה. יש ללחוץ שוב על שמירה.');
+    }
+  }, []); // טיוטות נקראות פעם אחת בעת הכניסה למסך
+
+  function keepDraft(code, patch) {
+    if (patch.subject == null && patch.body == null) return;
+    setDrafts((prev) => {
+      const next = { ...prev, [code]: { ...prev[code], ...patch } };
+      writeDrafts(next);
+      return next;
+    });
+  }
+
+  function clearDraft(code) {
+    setDrafts((prev) => {
+      const next = { ...prev };
+      delete next[code];
+      writeDrafts(next);
+      return next;
+    });
+  }
 
   const handleErr = useCallback((err) => {
     if (err.name === 'AdminAuthError') onAuthError?.();
@@ -54,9 +91,11 @@ export default function AdminEmail({ onAuthError }) {
 
   async function saveTemplate(code, patch) {
     setError(''); setMsg('');
+    keepDraft(code, patch);
     try {
       const { template } = await api.updateEmailTemplate(code, patch);
       setTemplates((prev) => prev.map((t) => (t.code === code ? template : t)));
+      clearDraft(code);
       setMsg('הנוסח נשמר.');
     } catch (err) { handleErr(err); }
   }
@@ -122,7 +161,7 @@ export default function AdminEmail({ onAuthError }) {
       {/* עורכי נוסחים */}
       <div className="space-y-4">
         {templates.map((t) => (
-          <TemplateEditor key={t.code} template={t} onSave={saveTemplate} />
+          <TemplateEditor key={t.code} template={t} draft={drafts[t.code]} onSave={saveTemplate} />
         ))}
       </div>
 
@@ -168,9 +207,9 @@ export default function AdminEmail({ onAuthError }) {
 }
 
 // עורך נוסח בודד — נושא, גוף, סטטוס פעיל.
-function TemplateEditor({ template, onSave }) {
-  const [subject, setSubject] = useState(template.subject);
-  const [body, setBody] = useState(template.body);
+function TemplateEditor({ template, draft, onSave }) {
+  const [subject, setSubject] = useState(draft?.subject ?? template.subject);
+  const [body, setBody] = useState(draft?.body ?? template.body);
   const dirty = subject !== template.subject || body !== template.body;
 
   return (

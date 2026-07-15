@@ -4,9 +4,10 @@ import { supabase } from '../lib/supabase.js';
 import { asyncHandler, fail } from '../lib/helpers.js';
 import { buildOrderItems } from '../services/orderItems.js';
 import { createAdminNotification } from '../services/adminNotifications.js';
-import { sendTemplateEmail, orderVars } from '../services/email.js';
+import { sendTemplateEmail, orderVars, officeEmail } from '../services/email.js';
 
 const router = Router();
+const PAYMENT_METHODS = ['cash', 'bank_transfer', 'check'];
 
 // ------- עזר: טוען תיק שבת קיים או פותח חדש (סעיף 8.5) -------
 async function ensureShabbatFile(shabbatId) {
@@ -23,8 +24,8 @@ async function ensureShabbatFile(shabbatId) {
 // POST /api/orders — יצירת הזמנה חדשה (מהלקוח)
 // body: { customer_id, shabbat_id, slots:[{meal_slot_id,portions}],
 //         meals:[{meal_slot_id, meal_id}], extras:[{extra_id, actual_quantity?}],
-//         delivery_method?, contact_name?, contact_phone?, venue_address?,
-//         preferred_payment_method? }
+//         delivery_method?, contact_name?, contact_phone?, venue_name,
+//         venue_address, preferred_payment_method }
 // כל המחירים מחושבים בשרת ונשמרים "קפואים" (סעיף 15.3).
 // =====================================================================
 router.post('/', asyncHandler(async (req, res) => {
@@ -35,6 +36,12 @@ router.post('/', asyncHandler(async (req, res) => {
   if (!b.shabbat_id) return fail(res, 400, 'חסרה בחירת שבת.');
   if (!Array.isArray(b.slots) || b.slots.length === 0)
     return fail(res, 400, 'יש לבחור לפחות סעודה אחת.');
+  const venueName = String(b.venue_name || '').trim();
+  const venueAddress = String(b.venue_address || '').trim();
+  if (!venueName) return fail(res, 400, 'יש להזין את שם האולם.');
+  if (!venueAddress) return fail(res, 400, 'יש להזין את כתובת האולם.');
+  if (!PAYMENT_METHODS.includes(b.preferred_payment_method))
+    return fail(res, 400, 'יש לבחור אמצעי תשלום תקין.');
 
   // --- שבת חייבת להיות פתוחה (סעיף 8.4) ---
   const { data: shabbat, error: shErr } = await supabase
@@ -72,8 +79,9 @@ router.post('/', asyncHandler(async (req, res) => {
     delivery_method: b.delivery_method || 'volunteer_transport',
     contact_name: b.contact_name || null,
     contact_phone: b.contact_phone || null,
-    venue_address: b.venue_address || null,
-    preferred_payment_method: b.preferred_payment_method || null,
+    venue_name: venueName,
+    venue_address: venueAddress,
+    preferred_payment_method: b.preferred_payment_method,
     base_amount: amounts.base_amount,
     extras_amount: amounts.extras_amount,
     manual_charges_amount: 0,
@@ -134,13 +142,9 @@ async function sendOrderEmails({ order, shabbat, customerId }) {
   // 18.1 — סיכום הזמנה ללקוח (אם יש מייל)
   await sendTemplateEmail({ code: 'order_summary', to: customer?.email, vars, orderId: order.id });
 
-  // 18.2 — התראה למנהלים/רכזים על הזמנה חדשה (בנוסף להתראה במסך שכבר נוצרה)
-  const { data: managers } = await supabase
-    .from('app_users').select('email')
-    .in('role', ['manager', 'coordinator', 'developer']).eq('is_active', true);
-  for (const m of managers || []) {
-    await sendTemplateEmail({ code: 'new_order_manager_alert', to: m.email, vars, orderId: order.id });
-  }
+  // 18.2 — התראה על הזמנה חדשה (בנוסף להתראה במסך שכבר נוצרה).
+  // נשלחת *רק* לתיבת המשרד, לא לכל המשתמשים בהרשאת מנהל.
+  await sendTemplateEmail({ code: 'new_order_manager_alert', to: officeEmail(), vars, orderId: order.id });
 }
 
 // =====================================================================

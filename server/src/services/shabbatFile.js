@@ -31,7 +31,7 @@ async function loadShabbatOrders(shabbatId) {
     .from('orders')
     .select(`
       id, order_number, order_status, payment_status, delivery_method,
-      contact_name, contact_phone, venue_address, transport_notes,
+      contact_name, contact_phone, venue_name, venue_address, transport_notes,
       final_amount, base_amount,
       customers ( full_name, phone ),
       order_meal_slots ( meal_slot_id, portions ),
@@ -274,6 +274,7 @@ export async function buildTransportReport(shabbatId) {
       customer_name: o.customers?.full_name,
       contact_name: o.contact_name || o.customers?.full_name,
       contact_phone: o.contact_phone || o.customers?.phone,
+      venue_name: o.venue_name,
       venue_address: o.venue_address,
       transport_notes: o.transport_notes,
       total_portions: (o.order_meal_slots || []).reduce((s, ms) => s + Number(ms.portions || 0), 0),
@@ -603,6 +604,7 @@ export async function buildCustomerSlips(shabbatId) {
       contact_name: o.contact_name || o.customers?.full_name,
       contact_phone: o.contact_phone || o.customers?.phone,
       delivery_method: o.delivery_method,
+      venue_name: o.venue_name,
       venue_address: o.venue_address,
       total_portions: Object.values(portionsBySlot).reduce((a, b) => a + b, 0),
       slots: slotsOut,

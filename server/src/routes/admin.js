@@ -14,6 +14,7 @@ const USER_SELECT = 'id, full_name, email, phone, role, is_active, notes, last_l
 const USER_ROLES = ['developer', 'manager', 'coordinator'];
 const CUSTOMER_SELECT = 'id, full_name, phone, phone_normalized, email, address, status, internal_notes, created_at, updated_at';
 const CUSTOMER_STATUSES = ['active', 'pending_approval', 'inactive', 'blocked'];
+const ORDER_PAYMENT_METHODS = ['cash', 'bank_transfer', 'check'];
 
 function cleanEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -514,6 +515,12 @@ router.put('/orders/:id', asyncHandler(async (req, res) => {
   // --- ולידציה בסיסית ---
   if (!Array.isArray(b.slots) || b.slots.length === 0)
     return fail(res, 400, 'יש לבחור לפחות סעודה אחת.');
+  const venueName = String(b.venue_name || '').trim();
+  const venueAddress = String(b.venue_address || '').trim();
+  if (!venueName) return fail(res, 400, 'יש להזין את שם האולם.');
+  if (!venueAddress) return fail(res, 400, 'יש להזין את כתובת האולם.');
+  if (!ORDER_PAYMENT_METHODS.includes(b.preferred_payment_method))
+    return fail(res, 400, 'יש לבחור אמצעי תשלום תקין.');
   const shabbatId = b.shabbat_id || order.shabbat_id;
 
   // --- חישוב-מחדש של פריטי המשנה + סכומים (משותף עם יצירה) ---
@@ -544,9 +551,10 @@ router.put('/orders/:id', asyncHandler(async (req, res) => {
     delivery_method: b.delivery_method || 'volunteer_transport',
     contact_name: b.contact_name ?? null,
     contact_phone: b.contact_phone ?? null,
-    venue_address: b.venue_address ?? null,
+    venue_name: venueName,
+    venue_address: venueAddress,
     transport_notes: b.transport_notes ?? null,
-    preferred_payment_method: b.preferred_payment_method || null,
+    preferred_payment_method: b.preferred_payment_method,
     base_amount: amounts.base_amount,
     extras_amount: amounts.extras_amount,
     manual_charges_amount: amounts.manual_charges_amount,
