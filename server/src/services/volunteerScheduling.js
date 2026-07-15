@@ -60,8 +60,14 @@ export async function reconcileShabbatVolunteerTasks(shabbatId) {
     });
     let inserted = [];
     if (rows.length) {
-      const insertResult = await supabase
+      let insertResult = await supabase
         .from('shabbat_volunteer_tasks').insert(rows).select('id, template_task_id, default_volunteer_id');
+      if (insertResult.error?.code === 'PGRST204'
+        && /category_display_order|parent_category_display_order/.test(insertResult.error.message || '')) {
+        const compatibleRows = rows.map(({ category_display_order, parent_category_display_order, ...row }) => row);
+        insertResult = await supabase.from('shabbat_volunteer_tasks')
+          .insert(compatibleRows).select('id, template_task_id, default_volunteer_id');
+      }
       if (insertResult.error) throw insertResult.error;
       inserted = insertResult.data || [];
     }
