@@ -13,6 +13,7 @@
 import nodemailer from 'nodemailer';
 import { supabase } from '../lib/supabase.js';
 import { renderBrandedEmail, brandLogoAttachment } from './emailTemplate.js';
+import { isGmailApiConfigured, sendViaGmailApi } from './gmailApi.js';
 
 // תיאורים בעברית לאמצעי תשלום — לשימוש ב-placeholder {payment_method}
 const PAYMENT_METHOD_HE = {
@@ -52,8 +53,10 @@ function getTransporter() {
   return cachedTransporter;
 }
 
+// מצב יבש רק אם אין שום מסלול שליחה אמיתי: לא Gmail API ולא SMTP.
+// עדיפות בשליחה: Gmail API (HTTPS/443, עובד ב-Render) → SMTP (fallback מקומי).
 export function isDryRun() {
-  return getTransporter() === null;
+  return !isGmailApiConfigured() && getTransporter() === null;
 }
 
 // כתובת השולח — מ-.env, עם ברירת מחדל סבירה.
@@ -106,9 +109,8 @@ export async function sendTemplateEmail({ code, to, vars = {}, orderId = null })
 
     const subject = fillTemplate(tpl.subject, vars);
     const body = fillTemplate(tpl.body, vars);
-    const transporter = getTransporter();
 
-    if (!transporter) {
+    if (isDryRun()) {
       // מצב יבש — מתעדים ולא שולחים.
       await logEmail({ template_code: code, to_email: to, subject, body, status: 'dry_run', order_id: orderId });
       return { status: 'dry_run' };
@@ -119,14 +121,20 @@ export async function sendTemplateEmail({ code, to, vars = {}, orderId = null })
     const html = renderBrandedEmail({ subject, body, hasLogo: !!logoAttachment });
 
     try {
-      await transporter.sendMail({
-        from: fromAddress(),
-        to,
-        subject,
-        text: body,
-        html,
-        attachments: logoAttachment ? [logoAttachment] : [],
-      });
+      if (isGmailApiConfigured()) {
+        // מסלול מועדף — Gmail API על HTTPS/443 (עובד ב-Render, שחוסמת SMTP).
+        await sendViaGmailApi({ from: fromAddress(), to, subject, text: body, html, logo: logoAttachment });
+      } else {
+        // fallback — SMTP דרך nodemailer (עובד מקומית; ב-Render נחסם).
+        await getTransporter().sendMail({
+          from: fromAddress(),
+          to,
+          subject,
+          text: body,
+          html,
+          attachments: logoAttachment ? [logoAttachment] : [],
+        });
+      }
       await logEmail({ template_code: code, to_email: to, subject, body, status: 'sent', order_id: orderId });
       return { status: 'sent' };
     } catch (sendErr) {
