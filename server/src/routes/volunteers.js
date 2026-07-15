@@ -102,7 +102,31 @@ async function syncTaskStaffing(taskId, body) {
     p_backup_ids: staffing.backups,
     p_candidate_ids: staffing.candidates,
   });
-  if (error) throw error;
+  if (!error) return;
+  // Compatibility for a deployed database whose migration 29 predates the RPC.
+  // Once migration 30 is applied this branch is no longer used.
+  if (!['PGRST202', '42883'].includes(error.code)) throw error;
+
+  const volunteerIds = [staffing.primary, ...staffing.backups, ...staffing.candidates].filter(Boolean);
+  if (volunteerIds.length) {
+    const { data: existing, error: validationError } = await supabase.from('volunteers')
+      .select('id').in('id', volunteerIds);
+    if (validationError) throw validationError;
+    if ((existing || []).length !== volunteerIds.length) {
+      throw Object.assign(new Error('אחד המתנדבים שנבחרו אינו קיים.'), { statusCode: 400 });
+    }
+  }
+
+  const rows = [];
+  if (staffing.primary) rows.push({ task_id: taskId, volunteer_id: staffing.primary, role: 'primary', priority: null });
+  staffing.backups.forEach((volunteer_id, index) => rows.push({ task_id: taskId, volunteer_id, role: 'backup', priority: index + 1 }));
+  staffing.candidates.forEach((volunteer_id) => rows.push({ task_id: taskId, volunteer_id, role: 'candidate', priority: null }));
+  const { error: deleteError } = await supabase.from('volunteer_task_links').delete().eq('task_id', taskId);
+  if (deleteError) throw deleteError;
+  if (rows.length) {
+    const { error: insertError } = await supabase.from('volunteer_task_links').insert(rows);
+    if (insertError) throw insertError;
+  }
 }
 
 function withStaffing(task) {
