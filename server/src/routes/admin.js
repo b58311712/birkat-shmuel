@@ -7,7 +7,6 @@ import { normalizePhone, isValidPhone } from '../lib/helpers.js';
 import { hashPassword, requireRole } from '../lib/auth.js';
 import { sendTemplateEmail, orderVars } from '../services/email.js';
 import { createAdminNotification } from '../services/adminNotifications.js';
-import { reconcileShabbatVolunteerTasks } from '../services/volunteerScheduling.js';
 
 const router = Router();
 
@@ -280,9 +279,6 @@ router.delete('/customers/:id', requireRole('developer'), asyncHandler(async (re
     const del = await deleteOrder(order.id);
     if (del.error) throw del.error;
   }
-  for (const shabbatId of [...new Set((orders || []).map((order) => order.shabbat_id).filter(Boolean))]) {
-    await reconcileShabbatVolunteerTasks(shabbatId);
-  }
 
   await supabase.from('customer_registration_requests')
     .delete()
@@ -497,13 +493,9 @@ router.get('/orders/:id', asyncHandler(async (req, res) => {
 
 // DELETE /api/admin/orders/:id -- developer hard delete.
 router.delete('/orders/:id', requireRole('developer'), asyncHandler(async (req, res) => {
-  const { data: existingOrder, error: existingError } = await supabase.from('orders')
-    .select('shabbat_id').eq('id', req.params.id).maybeSingle();
-  if (existingError) throw existingError;
   const { data, error } = await deleteOrder(req.params.id);
   if (error) throw error;
   if (!data) return fail(res, 404, 'הזמנה לא נמצאה.');
-  if (existingOrder?.shabbat_id) await reconcileShabbatVolunteerTasks(existingOrder.shabbat_id);
   await auditDelete(req, 'order', req.params.id);
   res.json({ ok: true });
 }));
@@ -585,9 +577,6 @@ router.put('/orders/:id', asyncHandler(async (req, res) => {
     await supabase.from('order_meals').insert(mealRows.map((m) => ({ ...m, order_id: order.id })));
   if (extraRows.length)
     await supabase.from('order_extras').insert(extraRows.map((e) => ({ ...e, order_id: order.id })));
-
-  await reconcileShabbatVolunteerTasks(shabbatId);
-  if (shabbatId !== order.shabbat_id) await reconcileShabbatVolunteerTasks(order.shabbat_id);
 
   await supabase.from('order_history').insert({
     order_id: order.id, changed_by: req.appUser?.sub || null,
@@ -821,7 +810,6 @@ router.post('/orders/:id/cancel', asyncHandler(async (req, res) => {
   await supabase.from('order_history').insert({
     order_id: req.params.id, action: 'ההזמנה בוטלה', changes: { reason: req.body.reason || null },
   });
-  await reconcileShabbatVolunteerTasks(data.shabbat_id);
   res.json({ ok: true, order: data });
 }));
 

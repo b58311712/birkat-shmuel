@@ -7,7 +7,7 @@
 // הזמנה שבוטלה או שלא שולמה (ואין חריגה) — לא נכנסת לחישוב.
 import { supabase } from '../lib/supabase.js';
 import { roundUp } from '../lib/helpers.js';
-import { reconcileShabbatVolunteerTasks } from './volunteerScheduling.js';
+import { orderedMealIds } from './volunteerScheduling.js';
 
 // סטטוסי תשלום שמזכים הזמנה להיכנס לחישובים (סעיף 8.7)
 const OPERATIONAL_PAYMENT_STATUSES = ['paid', 'partially_paid', 'payment_override'];
@@ -417,250 +417,133 @@ export async function buildInventoryReport(shabbatId) {
   };
 }
 
-// לשונית מתנדבים (סעיף 9.8, 24):
-//   - משימות קבועות פעילות (סעיף 24.3) + מי משובץ אליהן בשבת זו
-//   - משימות ללא שיבוץ (מודגשות לטיפול)
-//   - טלפונים והערות של המשובצים
-// שיבוץ בישול נעשה אוטומטית לפי קישור למאכל (סעיף 24.2) דרך autoAssignCooking.
+// לשונית מתנדבים (סעיף 9.8, 24) — מבנה מפושט, חישוב חי בלי snapshot:
+//   - משימות קבועות פעילות (volunteer_tasks) + מי משובץ אליהן בשבת זו
+//   - המשובץ = דריסה ידנית (is_override) אם קיימת, אחרת המתנדב הקבוע (primary),
+//     ולמשימת בישול — נפילה למתנדב המקושר למאכל (volunteer_meal_links)
+//   - משימת בישול שהמאכל שלה לא הוזמן בשבת — לא רלוונטית ומוסתרת
+//   - מחליפים (backup) מוצגים כרשימת גיבוי לבחירה
 export async function buildVolunteerReport(shabbatId) {
   const { shabbat, orders } = await loadShabbatOrders(shabbatId);
   if (!shabbat) return null;
 
-  {
-  await reconcileShabbatVolunteerTasks(shabbatId);
   const { nameByMeal } = computePortionsByMeal(orders);
-  const [{ data: weeklyTasks, error: taskError }, { data: assignments, error: assignmentError }] = await Promise.all([
-    supabase.from('shabbat_volunteer_tasks').select(`
-      *, meals:linked_meal_id (id, name),
-      template_task:template_task_id (
-        volunteer_task_links (
-          volunteer_id, role, priority,
-          volunteers:volunteer_id (id, full_name, phone, area, has_vehicle, is_active)
-        )
-      )
-    `).eq('shabbat_id', shabbatId).eq('is_relevant', true).order('display_order').order('name'),
-    supabase.from('volunteer_assignments').select(`
-      id, shabbat_task_id, volunteer_id, is_auto, notes, assignment_kind, source,
-      volunteers (id, full_name, phone, area, has_vehicle)
-    `).eq('shabbat_id', shabbatId).not('shabbat_task_id', 'is', null),
-  ]);
-  if (taskError) throw taskError;
-  if (assignmentError) throw assignmentError;
+  const orderedMeals = await orderedMealIds(shabbatId);
 
-  const assignmentsByTask = {};
-  for (const assignment of assignments || []) {
-    (assignmentsByTask[assignment.shabbat_task_id] ||= []).push(assignment);
+  const [
+    { data: tasks, error: taskError },
+    { data: areas, error: areaError },
+    { data: staffingLinks, error: staffingError },
+    { data: overrides, error: overrideError },
+    { data: mealLinks, error: mealLinkError },
+  ] = await Promise.all([
+    supabase.from('volunteer_tasks')
+      .select('id, name, area_id, linked_meal_id, execution_day, shift, timing_note, display_order, meals:linked_meal_id (id, name)')
+      .eq('is_active', true).order('display_order').order('name'),
+    supabase.from('volunteer_areas').select('id, name, is_cooking, display_order'),
+    supabase.from('volunteer_task_links')
+      .select('task_id, role, priority, volunteers:volunteer_id (id, full_name, phone, area_id, has_vehicle, is_active)'),
+    supabase.from('volunteer_assignments')
+      .select('id, task_id, volunteer_id, notes, volunteers:volunteer_id (id, full_name, phone, area_id, has_vehicle)')
+      .eq('shabbat_id', shabbatId).eq('is_override', true),
+    supabase.from('volunteer_meal_links')
+      .select('meal_id, volunteers:volunteer_id (id, full_name, phone, area_id, has_vehicle, is_active)'),
+  ]);
+  for (const result of [taskError, areaError, staffingError, overrideError, mealLinkError]) {
+    if (result) throw result;
   }
-  const areaLabels = {
-    cooking: 'בישול', packing: 'אריזה', transport: 'שינוע', cleaning: 'ניקיון', general: 'כללי',
-  };
+
+  const areaById = Object.fromEntries((areas || []).map((a) => [a.id, a]));
+  // קישורי צוות (primary/backup) מקובצים לפי משימה
+  const staffingByTask = {};
+  for (const link of staffingLinks || []) (staffingByTask[link.task_id] ||= []).push(link);
+  // דריסה ידנית אחת לכל משימה בשבת זו
+  const overrideByTask = Object.fromEntries((overrides || []).map((o) => [o.task_id, o]));
+  // מתנדבי בישול פעילים לפי מאכל (לנפילה כשאין primary)
+  const mealVolunteersByMeal = {};
+  for (const link of mealLinks || []) {
+    if (link.volunteers?.is_active) (mealVolunteersByMeal[link.meal_id] ||= []).push(link.volunteers);
+  }
+
   const dayOrder = ['general', 'tuesday', 'wednesday', 'thursday', 'friday', 'shabbat', 'motzei_shabbat'];
   const shiftOrder = [null, 'morning', 'noon', 'evening', 'night'];
-  const sortedWeeklyTasks = [...(weeklyTasks || [])].sort((a, b) =>
-    (a.parent_category_display_order ?? a.category_display_order) - (b.parent_category_display_order ?? b.category_display_order)
-    || a.category_display_order - b.category_display_order
-    || dayOrder.indexOf(a.execution_day) - dayOrder.indexOf(b.execution_day)
-    || shiftOrder.indexOf(a.shift) - shiftOrder.indexOf(b.shift)
-    || a.display_order - b.display_order
-    || a.name.localeCompare(b.name, 'he'));
-  const tasksOut = sortedWeeklyTasks.map((task) => {
-    const staffing = task.template_task?.volunteer_task_links || [];
-    const preferredCandidates = ['backup', 'candidate'].flatMap((role) => staffing
-      .filter((link) => link.role === role && link.volunteers?.is_active)
+
+  const relevantTasks = (tasks || []).filter((task) =>
+    !task.linked_meal_id || orderedMeals.has(task.linked_meal_id));
+
+  const enriched = relevantTasks.map((task) => {
+    const area = areaById[task.area_id];
+    const links = staffingByTask[task.id] || [];
+    const primaryLink = links.find((l) => l.role === 'primary' && l.volunteers?.is_active);
+    const backups = links
+      .filter((l) => l.role === 'backup' && l.volunteers?.is_active)
       .sort((a, b) => (a.priority || 0) - (b.priority || 0))
-      .map((link) => ({ ...link.volunteers, role, priority: link.priority })));
-    const assigned = (assignmentsByTask[task.id] || []).filter((row) => row.volunteer_id).map((row) => ({
-      assignment_id: row.id,
-      volunteer_id: row.volunteer_id,
-      volunteer_name: row.volunteers?.full_name,
-      phone: row.volunteers?.phone || null,
-      has_vehicle: row.volunteers?.has_vehicle || false,
-      is_auto: row.is_auto,
-      source: row.source,
-      assignment_kind: row.assignment_kind,
-      notes: row.notes || null,
-    }));
+      .map((l) => ({ ...l.volunteers, priority: l.priority }));
+
+    const override = overrideByTask[task.id];
+    // המתנדב האחראי בפועל: דריסה > קבוע > (תחום בישול) מתנדב מקושר למאכל
+    let lead = null;
+    let source = null;
+    if (override?.volunteers) {
+      lead = override.volunteers;
+      source = 'override';
+    } else if (primaryLink?.volunteers) {
+      lead = primaryLink.volunteers;
+      source = 'primary';
+    } else if (area?.is_cooking && task.linked_meal_id) {
+      lead = (mealVolunteersByMeal[task.linked_meal_id] || [])[0] || null;
+      if (lead) source = 'meal';
+    }
+
     return {
-      shabbat_task_id: task.id,
-      task_id: task.template_task_id,
+      task_id: task.id,
       name: task.name,
-      area: task.area,
-      area_label: areaLabels[task.area] || task.area,
-      category_id: task.category_id,
-      category_name: task.category_name,
-      parent_category_id: task.parent_category_id,
-      parent_category_name: task.parent_category_name,
+      area_id: task.area_id,
+      area_name: area?.name || '—',
+      area_is_cooking: !!area?.is_cooking,
+      area_display_order: area?.display_order ?? 0,
       execution_day: task.execution_day,
       shift: task.shift,
       timing_note: task.timing_note,
       display_order: task.display_order,
       linked_meal_id: task.linked_meal_id,
       linked_meal_name: task.meals?.name || nameByMeal[task.linked_meal_id] || null,
-      default_volunteer_id: task.default_volunteer_id,
-      has_manual_override: task.has_manual_override,
-      preferred_candidates: preferredCandidates,
-      assigned,
-      is_unassigned: !assigned.some((row) => row.assignment_kind === 'lead'),
+      meal_is_ordered: task.linked_meal_id ? orderedMeals.has(task.linked_meal_id) : null,
+      // המתנדב האחראי בשבת זו (חי)
+      lead: lead ? {
+        volunteer_id: lead.id,
+        volunteer_name: lead.full_name,
+        phone: lead.phone || null,
+        has_vehicle: lead.has_vehicle || false,
+        source, // override | primary | meal
+        override_assignment_id: override?.id || null,
+      } : null,
+      is_override: !!override,
+      // מחליפים (גיבוי) לבחירה
+      backups: backups.map((b) => ({
+        volunteer_id: b.id,
+        volunteer_name: b.full_name,
+        phone: b.phone || null,
+        has_vehicle: b.has_vehicle || false,
+        priority: b.priority,
+      })),
+      is_unassigned: !lead,
     };
   });
+
+  const tasksOut = enriched.sort((a, b) =>
+    a.area_display_order - b.area_display_order
+    || a.area_name.localeCompare(b.area_name, 'he')
+    || dayOrder.indexOf(a.execution_day) - dayOrder.indexOf(b.execution_day)
+    || shiftOrder.indexOf(a.shift) - shiftOrder.indexOf(b.shift)
+    || a.display_order - b.display_order
+    || a.name.localeCompare(b.name, 'he'));
+
   return {
     shabbat_id: shabbatId,
     tasks: tasksOut,
     unassigned_count: tasksOut.filter((task) => task.is_unassigned).length,
-    free_assignments: [],
   };
-  }
-
-  // מאכלים תפעוליים בשבת — כדי לסמן אילו משימות בישול רלוונטיות בפועל
-  const { portionsByMeal, nameByMeal } = computePortionsByMeal(orders);
-  const operationalMealIds = new Set(Object.keys(portionsByMeal));
-
-  const [{ data: tasks, error: tErr }, { data: assignments, error: aErr }] = await Promise.all([
-    supabase.from('volunteer_tasks')
-      .select('id, name, area, linked_meal_id, display_order')
-      .eq('is_active', true)
-      .order('display_order').order('name'),
-    supabase.from('volunteer_assignments')
-      .select(`
-        id, task_id, volunteer_id, is_auto, notes,
-        volunteers ( id, full_name, phone, area, has_vehicle )
-      `)
-      .eq('shabbat_id', shabbatId),
-  ]);
-  if (tErr) throw tErr;
-  if (aErr) throw aErr;
-
-  // שמות מאכלים מקושרים למשימות (למקרה שהמאכל לא הוזמן ואין snapshot)
-  const linkedMealIds = [...new Set((tasks || []).map((t) => t.linked_meal_id).filter(Boolean))];
-  const mealNameById = { ...nameByMeal };
-  const missingMealIds = linkedMealIds.filter((id) => !mealNameById[id]);
-  if (missingMealIds.length) {
-    const { data: meals } = await supabase.from('meals').select('id, name').in('id', missingMealIds);
-    for (const m of meals || []) mealNameById[m.id] = m.name;
-  }
-
-  // מקבצים שיבוצים לפי משימה
-  const assignByTask = {};
-  const unassignedTaskAssignments = []; // שיבוצים ללא task_id (חופשי) — נדיר
-  for (const a of assignments || []) {
-    if (a.task_id) (assignByTask[a.task_id] ||= []).push(a);
-    else unassignedTaskAssignments.push(a);
-  }
-
-  const AREA_LABELS = {
-    cooking: 'בישול', packing: 'אריזה', transport: 'שינוע',
-    cleaning: 'ניקיון', general: 'כללי',
-  };
-
-  const tasksOut = (tasks || []).map((t) => {
-    const rows = (assignByTask[t.id] || [])
-      .filter((a) => a.volunteer_id) // רק שיבוצים בפועל
-      .map((a) => ({
-        assignment_id: a.id,
-        volunteer_id: a.volunteer_id,
-        volunteer_name: a.volunteers?.full_name,
-        phone: a.volunteers?.phone || null,
-        has_vehicle: a.volunteers?.has_vehicle || false,
-        is_auto: a.is_auto,
-        notes: a.notes || null,
-      }));
-    return {
-      task_id: t.id,
-      name: t.name,
-      area: t.area,
-      area_label: AREA_LABELS[t.area] || t.area,
-      linked_meal_id: t.linked_meal_id,
-      linked_meal_name: t.linked_meal_id ? (mealNameById[t.linked_meal_id] || null) : null,
-      // סימון: משימת בישול שהמאכל שלה מוזמן בשבת אך אין לה מתנדב
-      meal_is_ordered: t.linked_meal_id ? operationalMealIds.has(t.linked_meal_id) : null,
-      assigned: rows,
-      is_unassigned: rows.length === 0,
-    };
-  });
-
-  return {
-    shabbat_id: shabbatId,
-    tasks: tasksOut,
-    unassigned_count: tasksOut.filter((t) => t.is_unassigned).length,
-    free_assignments: unassignedTaskAssignments
-      .filter((a) => a.volunteer_id)
-      .map((a) => ({
-        assignment_id: a.id,
-        volunteer_id: a.volunteer_id,
-        volunteer_name: a.volunteers?.full_name,
-        phone: a.volunteers?.phone || null,
-        notes: a.notes || null,
-      })),
-  };
-}
-
-// שיבוץ אוטומטי של מתנדבי בישול (סעיף 24.2): לכל משימת בישול עם קישור למאכל,
-// אם המאכל מוזמן בשבת (תפעולי) — משבצים אוטומטית מתנדבים פעילים המקושרים
-// לאותו מאכל, אם עדיין לא משובצים. מחזיר { created } — כמה שיבוצים נוצרו.
-export async function autoAssignCooking(shabbatId) {
-  const result = await reconcileShabbatVolunteerTasks(shabbatId);
-  return { created: 0, refreshed: result.task_count };
-
-  const { shabbat, orders } = await loadShabbatOrders(shabbatId);
-  if (!shabbat) return { created: 0 };
-
-  const { portionsByMeal } = computePortionsByMeal(orders);
-  const orderedMealIds = new Set(Object.keys(portionsByMeal));
-
-  // משימות בישול עם מאכל מקושר שמוזמן בפועל
-  const { data: tasks, error: tErr } = await supabase.from('volunteer_tasks')
-    .select('id, linked_meal_id')
-    .eq('is_active', true).eq('area', 'cooking').not('linked_meal_id', 'is', null);
-  if (tErr) throw tErr;
-  const relevantTasks = (tasks || []).filter((t) => orderedMealIds.has(t.linked_meal_id));
-  if (!relevantTasks.length) return { created: 0 };
-
-  const mealIds = [...new Set(relevantTasks.map((t) => t.linked_meal_id))];
-
-  // מתנדבי בישול פעילים המקושרים למאכלים אלה. מתנדב יכול להיות מקושר למספר
-  // מאכלים (volunteer_meal_links, סעיף 24.2) ולכן משבצים אותו לכל משימת בישול
-  // שהמאכל שלה מקושר אליו.
-  const { data: cookingAreaLinks, error: areaErr } = await supabase.from('volunteer_area_links')
-    .select('volunteer_id')
-    .eq('area', 'cooking');
-  if (areaErr) throw areaErr;
-  const cookingVolunteerIds = [...new Set((cookingAreaLinks || []).map((link) => link.volunteer_id))];
-  if (!cookingVolunteerIds.length) return { created: 0 };
-
-  const { data: links, error: vErr } = await supabase.from('volunteer_meal_links')
-    .select('meal_id, volunteer_id, volunteers!inner (id, is_active)')
-    .in('meal_id', mealIds)
-    .in('volunteer_id', cookingVolunteerIds)
-    .eq('volunteers.is_active', true);
-  if (vErr) throw vErr;
-  const volsByMeal = {};
-  for (const l of links || []) {
-    if (!l.volunteers) continue;
-    (volsByMeal[l.meal_id] ||= []).push({ id: l.volunteers.id });
-  }
-
-  // שיבוצים קיימים בשבת זו — לא ליצור כפילויות (task+volunteer)
-  const { data: existing, error: eErr } = await supabase.from('volunteer_assignments')
-    .select('task_id, volunteer_id').eq('shabbat_id', shabbatId);
-  if (eErr) throw eErr;
-  const existingKeys = new Set((existing || []).map((a) => `${a.task_id}::${a.volunteer_id}`));
-
-  const toInsert = [];
-  for (const task of relevantTasks) {
-    for (const vol of volsByMeal[task.linked_meal_id] || []) {
-      const key = `${task.id}::${vol.id}`;
-      if (existingKeys.has(key)) continue;
-      existingKeys.add(key);
-      toInsert.push({
-        shabbat_id: shabbatId, task_id: task.id, volunteer_id: vol.id, is_auto: true,
-      });
-    }
-  }
-
-  if (!toInsert.length) return { created: 0 };
-  const { error: iErr } = await supabase.from('volunteer_assignments').insert(toInsert);
-  if (iErr) throw iErr;
-  return { created: toInsert.length };
 }
 
 // דוח פירוט ללקוח (סעיף 33.6): לכל הזמנה תפעולית — המאכלים שהזמין לפי סעודה,

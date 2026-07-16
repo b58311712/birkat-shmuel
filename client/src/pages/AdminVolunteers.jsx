@@ -6,14 +6,8 @@ import { DragHandle } from '../components/DragHandle.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 // ניהול מתנדבים ומשימות קבועות (סעיף 24). מסך ניהול גלובלי.
-const AREAS = [
-  { value: 'cooking', label: 'בישול' },
-  { value: 'packing', label: 'אריזה' },
-  { value: 'transport', label: 'שינוע' },
-  { value: 'cleaning', label: 'ניקיון' },
-  { value: 'general', label: 'כללי' },
-];
-const AREA_LABEL = Object.fromEntries(AREAS.map((a) => [a.value, a.label]));
+// תחומי ההתנדבות ניתנים לניהול מהממשק (טבלת volunteer_areas) — אין יותר enum קבוע
+// ואין קטגוריות נפרדות. דגל is_cooking על תחום מפעיל קישור מאכלים ושיבוץ בישול.
 const DAYS = [
   ['general', 'כללי / ללא יום'], ['tuesday', 'יום ג׳'], ['wednesday', 'יום ד׳'],
   ['thursday', 'יום ה׳'], ['friday', 'יום ו׳'], ['shabbat', 'שבת'], ['motzei_shabbat', 'מוצ״ש'],
@@ -21,9 +15,9 @@ const DAYS = [
 const SHIFTS = [['', 'ללא משמרת'], ['morning', 'בוקר'], ['noon', 'צהריים'], ['evening', 'ערב'], ['night', 'לילה']];
 
 export default function AdminVolunteers({ onAuthError, currentAdmin }) {
-  const [view, setView] = useState('volunteers'); // volunteers | tasks
+  const [view, setView] = useState('volunteers'); // volunteers | tasks | areas
   const [meals, setMeals] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const [areas, setAreas] = useState([]);
   const [activeVolunteers, setActiveVolunteers] = useState([]);
   const canDelete = currentAdmin?.role === 'developer';
 
@@ -32,18 +26,18 @@ export default function AdminVolunteers({ onAuthError, currentAdmin }) {
     else alert(e.message);
   }, [onAuthError]);
 
+  const reloadAreas = useCallback(() => api.volunteerAreas().then(setAreas).catch(handleErr), [handleErr]);
+
   useEffect(() => {
     api.catalog().then((c) => setMeals(c.meals || [])).catch(() => {});
-    api.volunteerTaskCategories().then(setCategories).catch(handleErr);
+    reloadAreas();
     api.volunteers('?active=true').then(setActiveVolunteers).catch(handleErr);
-  }, [handleErr]);
-
-  const reloadCategories = useCallback(() => api.volunteerTaskCategories().then(setCategories).catch(handleErr), [handleErr]);
+  }, [handleErr, reloadAreas]);
 
   return (
-    <Page title="ניהול מתנדבים" subtitle="מתנדבים ומשימות קבועות">
+    <Page title="ניהול מתנדבים" subtitle="מתנדבים, משימות קבועות ותחומי התנדבות">
       <div className="flex gap-1 mb-5 border-b border-brand-cream-dark">
-        {[['volunteers', 'מתנדבים'], ['tasks', 'משימות קבועות'], ['categories', 'קטגוריות משימה']].map(([k, label]) => (
+        {[['volunteers', 'מתנדבים'], ['tasks', 'משימות קבועות'], ['areas', 'תחומי התנדבות']].map(([k, label]) => (
           <button key={k} onClick={() => setView(k)}
             className={`px-4 py-2 font-medium border-b-2 -mb-px transition-colors ${
               view === k ? 'border-brand-gold text-brand-burgundy' : 'border-transparent text-brand-burgundy/50 hover:text-brand-burgundy'
@@ -53,9 +47,9 @@ export default function AdminVolunteers({ onAuthError, currentAdmin }) {
         ))}
       </div>
 
-      {view === 'volunteers' && <VolunteersManager meals={meals} onErr={handleErr} canDelete={canDelete} />}
-      {view === 'tasks' && <TasksManager meals={meals} categories={categories} volunteers={activeVolunteers} onErr={handleErr} canDelete={canDelete} />}
-      {view === 'categories' && <TaskCategoriesManager categories={categories} onChanged={reloadCategories} onErr={handleErr} canDelete={canDelete} />}
+      {view === 'volunteers' && <VolunteersManager meals={meals} areas={areas} onErr={handleErr} canDelete={canDelete} />}
+      {view === 'tasks' && <TasksManager meals={meals} areas={areas} volunteers={activeVolunteers} onErr={handleErr} canDelete={canDelete} />}
+      {view === 'areas' && <AreasManager areas={areas} onChanged={reloadAreas} onErr={handleErr} canDelete={canDelete} />}
     </Page>
   );
 }
@@ -63,11 +57,11 @@ export default function AdminVolunteers({ onAuthError, currentAdmin }) {
 // ===========================================================================
 // ניהול מתנדבים
 // ===========================================================================
-function VolunteersManager({ meals, onErr, canDelete }) {
+function VolunteersManager({ meals, areas, onErr, canDelete }) {
   const [list, setList] = useState(null);
   const [customers, setCustomers] = useState([]);
-  const [tasks, setTasks] = useState([]); // משימות קבועות פעילות — לשיוך מרובה למתנדב
   const [editing, setEditing] = useState(null); // אובייקט מתנדב או null; {} = חדש
+  const areaName = Object.fromEntries(areas.map((a) => [a.id, a.name]));
 
   const load = useCallback(() => {
     api.volunteers().then(setList).catch(onErr);
@@ -75,9 +69,7 @@ function VolunteersManager({ meals, onErr, canDelete }) {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     api.adminCustomers().then(setCustomers).catch(onErr);
-    api.volunteerTasks('?active=true').then(setTasks).catch(onErr);
   }, [onErr]);
-  const taskName = Object.fromEntries(tasks.map((t) => [t.id, t.name]));
 
   async function save(form) {
     try {
@@ -108,8 +100,8 @@ function VolunteersManager({ meals, onErr, canDelete }) {
       {editing && !editing.id && (
         <VolunteerForm
           meals={meals}
+          areas={areas}
           customers={customers}
-          tasks={tasks}
           initial={editing}
           onSave={save}
           onCancel={() => setEditing(null)}
@@ -124,7 +116,6 @@ function VolunteersManager({ meals, onErr, canDelete }) {
               <th className="p-3 text-right">כרטיס לקוח</th>
               <th className="p-3 text-right">טלפון</th>
               <th className="p-3 text-right">תחום</th>
-              <th className="p-3 text-right">משימות קבועות</th>
               <th className="p-3 text-right">מאכלים</th>
               <th className="p-3 text-right">רכב</th>
               <th className="p-3 text-right">קבוע</th>
@@ -140,12 +131,7 @@ function VolunteersManager({ meals, onErr, canDelete }) {
                 <td className="p-3 text-sm text-brand-burgundy/60">{v.customer_id ? 'מקושר' : 'עצמאי'}</td>
                 <td className="p-3 text-sm" dir="ltr">{v.phone || '—'}</td>
                 <td className="p-3 text-sm">
-                  {(v.areas?.length ? v.areas : [v.area]).map((area) => AREA_LABEL[area]).filter(Boolean).join(', ')}
-                </td>
-                <td className="p-3 text-sm text-brand-burgundy/70">
-                  {(v.task_ids || []).length === 0
-                    ? '—'
-                    : (v.task_ids || []).map((tid) => taskName[tid]).filter(Boolean).join(', ')}
+                  {(v.area_ids || []).map((id) => areaName[id]).filter(Boolean).join(', ') || '—'}
                 </td>
                 <td className="p-3 text-sm text-brand-burgundy/60">
                   {(v.linked_meals?.length
@@ -173,8 +159,8 @@ function VolunteersManager({ meals, onErr, canDelete }) {
               </tr>
               {editing?.id === v.id && (
                 <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
-                  <td colSpan={10} className="p-3 sm:p-4">
-                    <VolunteerForm meals={meals} customers={customers} tasks={tasks} initial={editing}
+                  <td colSpan={9} className="p-3 sm:p-4">
+                    <VolunteerForm meals={meals} areas={areas} customers={customers} initial={editing}
                       onSave={save} onCancel={() => setEditing(null)} />
                   </td>
                 </tr>
@@ -182,7 +168,7 @@ function VolunteersManager({ meals, onErr, canDelete }) {
               </Fragment>
             ))}
             {list.length === 0 && (
-              <tr><td colSpan={10} className="p-6 text-center text-brand-burgundy/50">אין מתנדבים עדיין.</td></tr>
+              <tr><td colSpan={9} className="p-6 text-center text-brand-burgundy/50">אין מתנדבים עדיין.</td></tr>
             )}
           </tbody>
         </table>
@@ -191,7 +177,8 @@ function VolunteersManager({ meals, onErr, canDelete }) {
   );
 }
 
-function VolunteerForm({ meals, customers, tasks, initial, onSave, onCancel }) {
+function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel }) {
+  const activeAreas = areas.filter((a) => a.is_active);
   const [customerSearch, setCustomerSearch] = useState('');
   const [f, setF] = useState({
     id: initial.id,
@@ -199,18 +186,19 @@ function VolunteerForm({ meals, customers, tasks, initial, onSave, onCancel }) {
     full_name: initial.full_name || '',
     phone: initial.phone || '',
     email: initial.email || '',
-    area: initial.area || 'cooking',
     has_vehicle: initial.has_vehicle || false,
     is_regular: initial.is_regular || false,
   });
-  const [areaIds, setAreaIds] = useState(initial.areas?.length ? initial.areas : [initial.area || 'cooking']);
-  const toggleArea = (area) => setAreaIds((selected) => (
-    selected.includes(area) ? selected.filter((value) => value !== area) : [...selected, area]
+  const [areaIds, setAreaIds] = useState(
+    initial.area_ids?.length ? initial.area_ids : (initial.area_id ? [initial.area_id] : []),
+  );
+  const toggleArea = (id) => setAreaIds((selected) => (
+    selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id]
   ));
-  const [taskIds, setTaskIds] = useState(initial.task_ids || []); // שיוך מרובה למשימות קבועות
-  const toggleTask = (id) => setTaskIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  // בורר המאכלים מוצג רק אם נבחר תחום בישול (is_cooking)
+  const hasCookingArea = areaIds.some((id) => activeAreas.find((a) => a.id === id)?.is_cooking);
   const [mealIds, setMealIds] = useState(
-    initial.meal_ids || (initial.linked_meal_id ? [initial.linked_meal_id] : []), // שיוך מרובה למאכלי בישול
+    initial.meal_ids || (initial.linked_meal_id ? [initial.linked_meal_id] : []),
   );
   const [mealSearch, setMealSearch] = useState('');
   const toggleMeal = (id) => setMealIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
@@ -241,14 +229,13 @@ function VolunteerForm({ meals, customers, tasks, initial, onSave, onCancel }) {
     e.preventDefault();
     if (!f.customer_id && !f.full_name.trim()) return alert('חובה להזין שם מלא.');
     if (areaIds.length === 0) return alert('יש לבחור לפחות תחום התנדבות אחד.');
-    // בישול משבץ לפי meal_ids; לתחומים אחרים אין קישור מאכל.
-    const meal_ids = areaIds.includes('cooking') ? mealIds : [];
+    // מאכלים נשמרים רק אם נבחר תחום בישול; לתחומים אחרים אין קישור מאכל.
+    const meal_ids = hasCookingArea ? mealIds : [];
     onSave({
       ...f,
       customer_id: f.customer_id || null,
-      area: areaIds[0],
-      areas: areaIds,
-      task_ids: taskIds,
+      area_id: areaIds[0],
+      area_ids: areaIds,
       meal_ids,
     });
   }
@@ -307,22 +294,26 @@ function VolunteerForm({ meals, customers, tasks, initial, onSave, onCancel }) {
           />
         </Field>
         <Field label="תחומי התנדבות (ניתן לסמן כמה)">
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg border border-brand-cream-dark p-2">
-            {AREAS.map((area) => (
-              <span key={area.value} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={areaIds.includes(area.value)}
-                  onChange={() => toggleArea(area.value)}
-                />
-                <span>{area.label}</span>
-              </span>
-            ))}
-          </div>
+          {activeAreas.length === 0 ? (
+            <p className="text-xs text-brand-burgundy/40">אין תחומים מוגדרים. יש להוסיף בלשונית "תחומי התנדבות".</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg border border-brand-cream-dark p-2">
+              {activeAreas.map((area) => (
+                <span key={area.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={areaIds.includes(area.id)}
+                    onChange={() => toggleArea(area.id)}
+                  />
+                  <span>{area.name}{area.is_cooking ? ' 🍲' : ''}</span>
+                </span>
+              ))}
+            </div>
+          )}
         </Field>
       </div>
 
-      {areaIds.includes('cooking') && (
+      {hasCookingArea && (
         <div>
           <span className="text-sm text-brand-burgundy/70 block mb-1">
             מאכלים לבישול (לשיבוץ בישול אוטומטי — ניתן לסמן כמה)
@@ -365,22 +356,9 @@ function VolunteerForm({ meals, customers, tasks, initial, onSave, onCancel }) {
         </label>
       </div>
 
-      <div>
-        <span className="text-sm text-brand-burgundy/70 block mb-1">משימות קבועות (ניתן לסמן כמה)</span>
-        {tasks.length === 0 ? (
-          <p className="text-xs text-brand-burgundy/40">אין משימות קבועות מוגדרות. יש להגדיר משימות בלשונית "משימות קבועות".</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 border border-brand-cream-dark rounded-lg p-3">
-            {tasks.map((t) => (
-              <label key={t.id} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={taskIds.includes(t.id)} onChange={() => toggleTask(t.id)} />
-                <span>{t.name}</span>
-                <span className="text-xs text-brand-burgundy/40">({AREA_LABEL[t.area]})</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
+      <p className="text-xs text-brand-burgundy/40">
+        שיוך המתנדב למשימות (אחראי קבוע / מחליף) נעשה בלשונית "משימות קבועות".
+      </p>
 
       <div className="flex gap-2">
         <button type="submit" className="btn-primary">שמירה</button>
@@ -393,17 +371,12 @@ function VolunteerForm({ meals, customers, tasks, initial, onSave, onCancel }) {
 // ===========================================================================
 // ניהול משימות קבועות
 // ===========================================================================
-function TasksManager({ meals, categories, volunteers, onErr, canDelete }) {
+function TasksManager({ meals, areas, volunteers, onErr, canDelete }) {
   const [list, setList] = useState(null);
   const [editing, setEditing] = useState(null);
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [savingOrder, setSavingOrder] = useState(false);
-  const categoryById = Object.fromEntries((categories || []).map((category) => [category.id, category]));
-  const categoryPath = (task) => {
-    const category = categoryById[task.category_id];
-    const parent = category?.parent_id ? categoryById[category.parent_id] : null;
-    return [parent?.name, category?.name].filter(Boolean).join(' / ') || 'לא מסווג';
-  };
+  const areaName = Object.fromEntries(areas.map((a) => [a.id, a.name]));
 
   const load = useCallback(() => {
     api.volunteerTasks().then(setList).catch(onErr);
@@ -471,7 +444,7 @@ function TasksManager({ meals, categories, volunteers, onErr, canDelete }) {
       </div>
 
       {editing && !editing.id && (
-        <TaskForm meals={meals} categories={categories} volunteers={volunteers} initial={editing} onSave={save} onCancel={() => setEditing(null)} />
+        <TaskForm meals={meals} areas={areas} volunteers={volunteers} initial={editing} onSave={save} onCancel={() => setEditing(null)} />
       )}
 
       <div className="overflow-x-auto">
@@ -509,8 +482,8 @@ function TasksManager({ meals, categories, volunteers, onErr, canDelete }) {
                 <td className="p-3"><DragHandle label={`גרירת ${t.name}`} /></td>
                 <td className="p-3 font-medium">{t.name}</td>
                 <td className="p-3 text-sm">
-                  <div>{categoryPath(t)}</div>
-                  <div className="text-xs text-brand-burgundy/50">{AREA_LABEL[t.area]} · {DAYS.find(([value]) => value === t.execution_day)?.[1] || 'כללי'}</div>
+                  <div>{t.area?.name || areaName[t.area_id] || '—'}</div>
+                  <div className="text-xs text-brand-burgundy/50">{DAYS.find(([value]) => value === t.execution_day)?.[1] || 'כללי'}</div>
                   <div className="text-xs text-brand-burgundy/60">אחראי: {t.primary_volunteer?.full_name || 'ללא'}</div>
                 </td>
                 <td className="p-3 text-sm text-brand-burgundy/60">{t.meals?.name || '—'}</td>
@@ -533,7 +506,7 @@ function TasksManager({ meals, categories, volunteers, onErr, canDelete }) {
               {editing?.id === t.id && (
                 <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
                   <td colSpan={6} className="p-3 sm:p-4">
-                    <TaskForm meals={meals} categories={categories} volunteers={volunteers} initial={editing} onSave={save} onCancel={() => setEditing(null)} />
+                    <TaskForm meals={meals} areas={areas} volunteers={volunteers} initial={editing} onSave={save} onCancel={() => setEditing(null)} />
                   </td>
                 </tr>
               )}
@@ -549,103 +522,102 @@ function TasksManager({ meals, categories, volunteers, onErr, canDelete }) {
   );
 }
 
-function TaskCategoriesManager({ categories, onChanged, onErr, canDelete }) {
-  const [form, setForm] = useState({ name: '', parent_id: '' });
-  const roots = categories.filter((category) => !category.parent_id);
+// ===========================================================================
+// ניהול תחומי התנדבות (טבלה ניתנת-לניהול, כולל דגל "תחום בישול")
+// ===========================================================================
+function AreasManager({ areas, onChanged, onErr, canDelete }) {
+  const [form, setForm] = useState({ name: '', is_cooking: false });
   async function create(e) {
     e.preventDefault();
     if (!form.name.trim()) return;
     try {
-      await api.createVolunteerTaskCategory({ name: form.name, parent_id: form.parent_id || null, display_order: categories.length + 1 });
-      setForm({ name: '', parent_id: '' });
+      await api.createVolunteerArea({ name: form.name.trim(), is_cooking: form.is_cooking, display_order: areas.length + 1 });
+      setForm({ name: '', is_cooking: false });
       onChanged();
     } catch (error) { onErr(error); }
   }
-  async function toggle(category) {
-    try { await api.updateVolunteerTaskCategory(category.id, { is_active: !category.is_active }); onChanged(); }
+  async function toggle(area) {
+    try { await api.updateVolunteerArea(area.id, { is_active: !area.is_active }); onChanged(); }
     catch (error) { onErr(error); }
   }
-  async function rename(category) {
-    const name = prompt('שם הקטגוריה', category.name);
-    if (!name?.trim() || name.trim() === category.name) return;
-    try { await api.updateVolunteerTaskCategory(category.id, { name: name.trim() }); onChanged(); }
+  async function toggleCooking(area) {
+    try { await api.updateVolunteerArea(area.id, { is_cooking: !area.is_cooking }); onChanged(); }
     catch (error) { onErr(error); }
   }
-  async function remove(category) {
-    if (!confirm(`למחוק את הקטגוריה "${category.name}"?`)) return;
-    try { await api.deleteVolunteerTaskCategory(category.id); onChanged(); }
+  async function rename(area) {
+    const name = prompt('שם התחום', area.name);
+    if (!name?.trim() || name.trim() === area.name) return;
+    try { await api.updateVolunteerArea(area.id, { name: name.trim() }); onChanged(); }
     catch (error) { onErr(error); }
   }
-  async function move(category, direction) {
-    const siblings = categories.filter((item) => (item.parent_id || null) === (category.parent_id || null))
-      .sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name, 'he'));
-    const index = siblings.findIndex((item) => item.id === category.id);
-    const target = siblings[index + direction];
+  async function remove(area) {
+    if (!confirm(`למחוק את התחום "${area.name}"?`)) return;
+    try { await api.deleteVolunteerArea(area.id); onChanged(); }
+    catch (error) { onErr(error); }
+  }
+  async function move(area, direction) {
+    const sorted = [...areas].sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name, 'he'));
+    const index = sorted.findIndex((item) => item.id === area.id);
+    const target = sorted[index + direction];
     if (!target) return;
     try {
       await Promise.all([
-        api.updateVolunteerTaskCategory(category.id, { display_order: target.display_order }),
-        api.updateVolunteerTaskCategory(target.id, { display_order: category.display_order }),
+        api.updateVolunteerArea(area.id, { display_order: target.display_order }),
+        api.updateVolunteerArea(target.id, { display_order: area.display_order }),
       ]);
       onChanged();
     } catch (error) { onErr(error); }
   }
+  const sorted = [...areas].sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name, 'he'));
   return (
     <div className="space-y-4">
-      <form onSubmit={create} className="card grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
-        <Field label="שם קטגוריה"><input className={inputCls} value={form.name} onChange={(e) => setForm((state) => ({ ...state, name: e.target.value }))} /></Field>
-        <Field label="קטגוריית אב (אופציונלי)">
-          <select className={inputCls} value={form.parent_id} onChange={(e) => setForm((state) => ({ ...state, parent_id: e.target.value }))}>
-            <option value="">קטגוריה ראשית</option>
-            {roots.filter((root) => root.is_active).map((root) => <option key={root.id} value={root.id}>{root.name}</option>)}
-          </select>
-        </Field>
+      <form onSubmit={create} className="card grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3 items-end">
+        <Field label="שם תחום"><input className={inputCls} value={form.name} onChange={(e) => setForm((state) => ({ ...state, name: e.target.value }))} /></Field>
+        <label className="flex items-center gap-2 text-sm pb-2">
+          <input type="checkbox" checked={form.is_cooking} onChange={(e) => setForm((state) => ({ ...state, is_cooking: e.target.checked }))} />
+          תחום בישול 🍲
+        </label>
         <button className="btn-primary" type="submit">הוספה</button>
       </form>
-      <div className="space-y-3">
-        {roots.map((root) => (
-          <div key={root.id} className="card">
-            <CategoryRow category={root} onRename={rename} onToggle={toggle} onDelete={remove} onMove={move} canDelete={canDelete} />
-            <div className="mr-6 mt-2 space-y-1 border-r-2 border-brand-cream-dark pr-3">
-              {categories.filter((category) => category.parent_id === root.id).map((category) => (
-                <CategoryRow key={category.id} category={category} onRename={rename} onToggle={toggle} onDelete={remove} onMove={move} canDelete={canDelete} />
-              ))}
-            </div>
+      <p className="text-xs text-brand-burgundy/50">
+        סימון "תחום בישול" מפעיל קישור מאכלים למתנדב ולמשימה, ושיבוץ בישול אוטומטי לפי המאכל שהוזמן.
+      </p>
+      <div className="card divide-y divide-brand-cream-dark">
+        {sorted.map((area) => (
+          <div key={area.id} className="flex items-center gap-2 py-2">
+            <span className={`flex-1 ${area.is_active ? 'font-medium' : 'text-brand-burgundy/40'}`}>
+              {area.name}{area.is_cooking ? ' 🍲' : ''}
+            </span>
+            <button type="button" title="העלאה" onClick={() => move(area, -1)}>↑</button>
+            <button type="button" title="הורדה" onClick={() => move(area, 1)}>↓</button>
+            <button type="button" className="btn-ghost text-xs" onClick={() => toggleCooking(area)}>{area.is_cooking ? 'בטל בישול' : 'סמן בישול'}</button>
+            <button type="button" className="btn-ghost text-xs" onClick={() => rename(area)}>עריכה</button>
+            <button type="button" className="btn-ghost text-xs" onClick={() => toggle(area)}>{area.is_active ? 'השבתה' : 'הפעלה'}</button>
+            {canDelete && <button type="button" className="text-red-700 text-xs" onClick={() => remove(area)}>מחיקה</button>}
           </div>
         ))}
+        {sorted.length === 0 && <p className="py-4 text-center text-brand-burgundy/50">אין תחומים עדיין.</p>}
       </div>
     </div>
   );
 }
 
-function CategoryRow({ category, onRename, onToggle, onDelete, onMove, canDelete }) {
-  return <div className="flex items-center gap-2 py-1">
-    <span className={`flex-1 ${category.is_active ? 'font-medium' : 'text-brand-burgundy/40'}`}>{category.name}</span>
-    <button type="button" title="העלאה" onClick={() => onMove(category, -1)}>↑</button>
-    <button type="button" title="הורדה" onClick={() => onMove(category, 1)}>↓</button>
-    <button type="button" className="btn-ghost text-xs" onClick={() => onRename(category)}>עריכה</button>
-    <button type="button" className="btn-ghost text-xs" onClick={() => onToggle(category)}>{category.is_active ? 'השבתה' : 'הפעלה'}</button>
-    {canDelete && <button type="button" className="text-red-700 text-xs" onClick={() => onDelete(category)}>מחיקה</button>}
-  </div>;
-}
-
-function TaskForm({ meals, categories, volunteers, initial, onSave, onCancel }) {
+function TaskForm({ meals, areas, volunteers, initial, onSave, onCancel }) {
+  const activeAreas = areas.filter((a) => a.is_active);
   const [f, setF] = useState({
     id: initial.id,
     name: initial.name || '',
-    area: initial.area || 'cooking',
-    category_id: initial.category_id || categories.find((category) => category.is_active)?.id || '',
+    area_id: initial.area_id || activeAreas[0]?.id || '',
     linked_meal_id: initial.linked_meal_id || '',
     execution_day: initial.execution_day || 'general',
     shift: initial.shift || '',
     timing_note: initial.timing_note || '',
     primary_volunteer_id: initial.primary_volunteer_id || '',
     backup_volunteer_ids: initial.backup_volunteer_ids || [],
-    candidate_volunteer_ids: initial.candidate_volunteer_ids || [],
     display_order: initial.display_order ?? 0,
   });
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
-  const rootCategories = categories.filter((category) => !category.parent_id && category.is_active);
+  const isCookingArea = activeAreas.find((a) => a.id === f.area_id)?.is_cooking;
   const moveBackup = (from, to) => setF((state) => {
     if (to < 0 || to >= state.backup_volunteer_ids.length) return state;
     const next = [...state.backup_volunteer_ids];
@@ -657,12 +629,12 @@ function TaskForm({ meals, categories, volunteers, initial, onSave, onCancel }) 
   function submit(e) {
     e.preventDefault();
     if (!f.name.trim()) return alert('חובה להזין שם משימה.');
-    if (!f.category_id) return alert('חובה לבחור קטגוריה.');
-    const staffing = [f.primary_volunteer_id, ...f.backup_volunteer_ids, ...f.candidate_volunteer_ids].filter(Boolean);
+    if (!f.area_id) return alert('חובה לבחור תחום.');
+    const staffing = [f.primary_volunteer_id, ...f.backup_volunteer_ids].filter(Boolean);
     if (new Set(staffing).size !== staffing.length) return alert('אותו מתנדב לא יכול להופיע ביותר מתפקיד אחד.');
     onSave({
       ...f,
-      linked_meal_id: f.area === 'cooking' ? (f.linked_meal_id || null) : null,
+      linked_meal_id: isCookingArea ? (f.linked_meal_id || null) : null,
       shift: f.shift || null,
       primary_volunteer_id: f.primary_volunteer_id || null,
       display_order: Number(f.display_order) || 0,
@@ -676,21 +648,10 @@ function TaskForm({ meals, categories, volunteers, initial, onSave, onCancel }) 
         <Field label="שם משימה *">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />
         </Field>
-        <Field label="תחום">
-          <select value={f.area} onChange={(e) => set('area', e.target.value)} className={inputCls}>
-            {AREAS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-          </select>
-        </Field>
-        <Field label="קטגוריה *">
-          <select value={f.category_id} onChange={(e) => set('category_id', e.target.value)} className={inputCls}>
-            <option value="">בחר קטגוריה</option>
-            {rootCategories.map((root) => (
-              <Fragment key={root.id}>
-                <option value={root.id}>{root.name}</option>
-                {categories.filter((category) => category.parent_id === root.id && category.is_active)
-                  .map((category) => <option key={category.id} value={category.id}>↳ {root.name} / {category.name}</option>)}
-              </Fragment>
-            ))}
+        <Field label="תחום *">
+          <select value={f.area_id} onChange={(e) => set('area_id', e.target.value)} className={inputCls}>
+            <option value="">בחר תחום</option>
+            {activeAreas.map((a) => <option key={a.id} value={a.id}>{a.name}{a.is_cooking ? ' 🍲' : ''}</option>)}
           </select>
         </Field>
         <Field label="יום ביצוע">
@@ -706,7 +667,7 @@ function TaskForm({ meals, categories, volunteers, initial, onSave, onCancel }) 
         <Field label="הערת זמן">
           <input value={f.timing_note} onChange={(e) => set('timing_note', e.target.value)} className={inputCls} placeholder="למשל: אחרי מעריב" />
         </Field>
-        {f.area === 'cooking' && (
+        {isCookingArea && (
           <Field label="קישור למאכל (לשיבוץ בישול אוטומטי)">
             <select value={f.linked_meal_id} onChange={(e) => set('linked_meal_id', e.target.value)} className={inputCls}>
               <option value="">— ללא —</option>
@@ -715,15 +676,14 @@ function TaskForm({ meals, categories, volunteers, initial, onSave, onCancel }) 
           </Field>
         )}
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <Field label="אחראי ראשי">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <Field label="אחראי קבוע">
           <select value={f.primary_volunteer_id} onChange={(e) => {
             const id = e.target.value;
             setF((state) => ({
               ...state,
               primary_volunteer_id: id,
               backup_volunteer_ids: state.backup_volunteer_ids.filter((value) => value !== id),
-              candidate_volunteer_ids: state.candidate_volunteer_ids.filter((value) => value !== id),
             }));
           }} className={inputCls}>
             <option value="">ללא אחראי</option>
@@ -732,10 +692,7 @@ function TaskForm({ meals, categories, volunteers, initial, onSave, onCancel }) 
         </Field>
         <VolunteerMultiPicker label="מחליפים לפי סדר עדיפות" volunteers={volunteers}
           selected={f.backup_volunteer_ids} onChange={(ids) => set('backup_volunteer_ids', ids)}
-          onMove={moveBackup} excluded={[f.primary_volunteer_id, ...f.candidate_volunteer_ids]} ordered />
-        <VolunteerMultiPicker label="מועמדים נוספים" volunteers={volunteers}
-          selected={f.candidate_volunteer_ids} onChange={(ids) => set('candidate_volunteer_ids', ids)}
-          excluded={[f.primary_volunteer_id, ...f.backup_volunteer_ids]} />
+          onMove={moveBackup} excluded={[f.primary_volunteer_id]} ordered />
       </div>
       <div className="flex gap-2">
         <button type="submit" className="btn-primary">שמירה</button>

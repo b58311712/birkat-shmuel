@@ -612,28 +612,26 @@ function TransportTab({ id, onAuthError }) {
 }
 
 // ---- לשונית מתנדבים (סעיף 9.8, 24) ----
-const AREA_LABELS = {
-  cooking: 'בישול', packing: 'אריזה', transport: 'שינוע', cleaning: 'ניקיון', general: 'כללי',
-};
-const AREA_ORDER = ['cooking', 'packing', 'transport', 'cleaning', 'general'];
 const DAY_LABELS = { general: 'כללי', tuesday: 'יום ג׳', wednesday: 'יום ד׳', thursday: 'יום ה׳', friday: 'יום ו׳', shabbat: 'שבת', motzei_shabbat: 'מוצ״ש' };
 const SHIFT_LABELS = { morning: 'בוקר', noon: 'צהריים', evening: 'ערב', night: 'לילה' };
 
-function orderedVolunteerSuggestions(task, volunteers) {
-  const assignedIds = new Set((task.assigned || []).map((assignment) => assignment.volunteer_id));
-  const preferred = task.preferred_candidates || [];
-  const preferredIds = new Set(preferred.map((volunteer) => volunteer.id));
+// הצעות מתנדבים לדריסה: קודם המחליפים (backup) של המשימה, אחריהם שאר המתנדבים
+// באותו תחום — פרט למי שכבר האחראי בפועל.
+function overrideSuggestions(task, volunteers) {
+  const leadId = task.lead?.volunteer_id || null;
+  const backups = (task.backups || []).map((b) => ({ id: b.volunteer_id, full_name: b.volunteer_name, has_vehicle: b.has_vehicle, priority: b.priority }));
+  const backupIds = new Set(backups.map((b) => b.id));
   const areaCandidates = (volunteers || []).filter((volunteer) =>
-    (volunteer.areas?.length ? volunteer.areas : [volunteer.area]).includes(task.area)
-    && !preferredIds.has(volunteer.id));
-  return [...preferred, ...areaCandidates].filter((volunteer) => !assignedIds.has(volunteer.id));
+    (volunteer.area_ids || []).includes(task.area_id)
+    && !backupIds.has(volunteer.id));
+  return [...backups, ...areaCandidates].filter((volunteer) => volunteer.id !== leadId);
 }
 
 function VolunteersTab({ id, onAuthError }) {
   const [data, setData] = useState(null);
-  const [volunteers, setVolunteers] = useState(null); // כל המתנדבים הפעילים (לשיבוץ ידני)
+  const [volunteers, setVolunteers] = useState(null); // כל המתנדבים הפעילים (לדריסה)
   const [busy, setBusy] = useState(false);
-  const [assigningTask, setAssigningTask] = useState(null); // task_id שנפתח לשיבוץ
+  const [assigningTask, setAssigningTask] = useState(null); // task_id שנפתח לדריסה
 
   const load = useCallback(() => {
     Promise.all([api.shabbatVolunteers(id), api.volunteers('?active=true')])
@@ -643,61 +641,46 @@ function VolunteersTab({ id, onAuthError }) {
 
   useEffect(() => { load(); }, [load]);
 
-  async function autoAssign() {
+  async function refresh() {
     setBusy(true);
-    try {
-      const r = await api.shabbatVolunteerAutoAssign(id);
-      load();
-      alert(`השיבוץ רוענן מהתבנית (${r.refreshed ?? 0} משימות בתיק השבת).`);
-    } catch (e) { alert(e.message); }
+    try { await api.shabbatVolunteerAutoAssign(id); load(); }
+    catch (e) { alert(e.message); }
     finally { setBusy(false); }
   }
 
-  async function assign(task, volunteerId, assignmentKind = 'lead') {
+  // דריסת האחראי הקבוע למשימה זו בשבת הנוכחית
+  async function override(task, volunteerId) {
     setBusy(true);
     try {
-      await api.shabbatVolunteerAssign(id, {
-        task_id: task.task_id,
-        shabbat_task_id: task.shabbat_task_id,
-        volunteer_id: volunteerId,
-        assignment_kind: assignmentKind,
-      });
+      await api.shabbatVolunteerAssign(id, { task_id: task.task_id, volunteer_id: volunteerId });
       setAssigningTask(null);
       load();
     } catch (e) { alert(e.message); }
     finally { setBusy(false); }
   }
 
+  // הסרת דריסה — חזרה לאחראי הקבוע מהתבנית
   async function resetLead(task) {
     setBusy(true);
-    try { await api.shabbatVolunteerReset(id, task.shabbat_task_id); setAssigningTask(null); load(); }
+    try { await api.shabbatVolunteerReset(id, task.task_id); setAssigningTask(null); load(); }
     catch (e) { alert(e.message); }
-    finally { setBusy(false); }
-  }
-
-  async function unassign(assignmentId) {
-    setBusy(true);
-    try {
-      await api.shabbatVolunteerUnassign(id, assignmentId);
-      load();
-    } catch (e) { alert(e.message); }
     finally { setBusy(false); }
   }
 
   if (!data) return <p>טוען...</p>;
   if (!data.tasks.length) {
     return <div className="card text-center py-8 text-brand-burgundy/60">
-      אין משימות קבועות מוגדרות. יש להגדיר משימות בניהול המתנדבים.
+      אין משימות רלוונטיות לשבת זו. יש להגדיר משימות בניהול המתנדבים.
     </div>;
   }
 
-  // קיבוץ משימות לפי תחום
-  const byCategory = {};
+  // קיבוץ משימות לפי תחום (data.tasks כבר ממוין לפי סדר התחומים)
+  const byArea = {};
   for (const task of data.tasks) {
-    const key = `${task.parent_category_name || ''}::${task.category_name || 'לא מסווג'}`;
-    (byCategory[key] ||= []).push(task);
+    const key = task.area_id || '—';
+    (byArea[key] ||= []).push(task);
   }
-  const categoryGroups = Object.entries(byCategory);
+  const areaGroups = Object.values(byArea);
 
   return (
     <div className="space-y-5">
@@ -707,19 +690,19 @@ function VolunteersTab({ id, onAuthError }) {
             {data.unassigned_count}
           </span>
         </div>
-        <button onClick={autoAssign} disabled={busy} className="btn-secondary text-sm">
-          רענון מהתבנית
+        <button onClick={refresh} disabled={busy} className="btn-secondary text-sm">
+          רענון
         </button>
       </div>
 
-      {categoryGroups.map(([categoryKey, categoryTasks]) => (
-        <div key={categoryKey} className="card">
+      {areaGroups.map((areaTasks) => (
+        <div key={areaTasks[0].area_id || '—'} className="card">
           <h3 className="font-bold text-brand-burgundy text-lg mb-3 pb-2 border-b border-brand-cream-dark">
-            {[categoryTasks[0].parent_category_name, categoryTasks[0].category_name].filter(Boolean).join(' / ')}
+            {areaTasks[0].area_name || 'ללא תחום'}
           </h3>
           <div className="space-y-3">
-            {categoryTasks.map((t) => (
-              <div key={t.shabbat_task_id || t.task_id} className={`rounded-lg p-3 ${t.is_unassigned ? 'bg-red-50/60' : 'bg-brand-cream/30'}`}>
+            {areaTasks.map((t) => (
+              <div key={t.task_id} className={`rounded-lg p-3 ${t.is_unassigned ? 'bg-red-50/60' : 'bg-brand-cream/30'}`}>
                 <div className="flex items-baseline justify-between flex-wrap gap-1">
                   <div className="font-medium text-brand-burgundy">
                     {t.name}
@@ -733,61 +716,48 @@ function VolunteersTab({ id, onAuthError }) {
                       <span className="text-xs text-red-700 mr-2 font-bold">· מוזמן בשבת, אין מתנדב</span>
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setAssigningTask(assigningTask === t.shabbat_task_id ? null : t.shabbat_task_id)}
-                      className="text-xs text-brand-burgundy/60 hover:text-brand-burgundy underline">החלפת אחראי</button>
-                    <button onClick={() => setAssigningTask(assigningTask === `support:${t.shabbat_task_id}` ? null : `support:${t.shabbat_task_id}`)}
-                      className="text-xs text-brand-burgundy/60 hover:text-brand-burgundy underline">+ תומך</button>
-                  </div>
+                  <button onClick={() => setAssigningTask(assigningTask === t.task_id ? null : t.task_id)}
+                    className="text-xs text-brand-burgundy/60 hover:text-brand-burgundy underline">החלפה לשבת זו</button>
                 </div>
 
-                {/* מתנדבים משובצים */}
-                {t.assigned.length > 0 ? (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {t.assigned.map((a) => (
-                      <span key={a.assignment_id}
-                        className="inline-flex items-center gap-1.5 bg-white border border-brand-cream-dark rounded-full px-3 py-1 text-sm">
-                        <span className="font-medium text-brand-burgundy">{a.volunteer_name}</span>
-                        {a.phone && <span className="text-brand-burgundy/50 text-xs" dir="ltr">{a.phone}</span>}
-                        {a.has_vehicle && <span className="text-xs" title="יש רכב">🚗</span>}
-                        {a.is_auto && <span className="text-[10px] text-brand-gold-dark" title="שובץ אוטומטית">אוטו׳</span>}
-                        {a.assignment_kind === 'support' && <span className="text-[10px] text-brand-burgundy/50">תומך</span>}
-                        <button onClick={() => unassign(a.assignment_id)} disabled={busy}
-                          className="text-red-600 hover:text-red-800 text-xs mr-1" title="ביטול שיבוץ">✕</button>
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-xs text-brand-burgundy/40 mt-1">ללא שיבוץ</div>
-                )}
-
-                {t.has_manual_override && (
-                  <button type="button" onClick={() => resetLead(t)} disabled={busy}
-                    className="mt-2 text-xs text-brand-gold-dark underline">החזרת האחראי מהתבנית</button>
-                )}
-
-                {/* בורר שיבוץ ידני */}
-                {assigningTask === t.shabbat_task_id && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {orderedVolunteerSuggestions(t, volunteers).map((v) => (
-                        <button key={v.id} onClick={() => assign(t, v.id, 'lead')} disabled={busy}
-                          className="text-sm bg-brand-burgundy/5 hover:bg-brand-gold/20 border border-brand-cream-dark rounded-full px-3 py-1">
-                          {v.full_name}{v.role === 'backup' ? ` · מחליף ${v.priority}` : v.role === 'candidate' ? ' · מועמד' : ''}{v.has_vehicle ? ' 🚗' : ''}
-                        </button>
-                      ))}
-                    {orderedVolunteerSuggestions(t, volunteers).length === 0 && (
-                      <span className="text-xs text-brand-burgundy/40">אין מתנדבים פנויים בתחום זה.</span>
+                {/* האחראי בפועל בשבת זו */}
+                {t.lead ? (
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span className="inline-flex items-center gap-1.5 bg-white border border-brand-cream-dark rounded-full px-3 py-1 text-sm">
+                      <span className="font-medium text-brand-burgundy">{t.lead.volunteer_name}</span>
+                      {t.lead.phone && <span className="text-brand-burgundy/50 text-xs" dir="ltr">{t.lead.phone}</span>}
+                      {t.lead.has_vehicle && <span className="text-xs" title="יש רכב">🚗</span>}
+                      {t.lead.source === 'override' && <span className="text-[10px] text-brand-gold-dark" title="הוחלף לשבת זו">דריסה</span>}
+                      {t.lead.source === 'meal' && <span className="text-[10px] text-brand-gold-dark" title="לפי שיוך מאכל">בישול</span>}
+                    </span>
+                    {t.is_override && (
+                      <button type="button" onClick={() => resetLead(t)} disabled={busy}
+                        className="text-xs text-brand-gold-dark underline">החזרת האחראי הקבוע</button>
                     )}
                   </div>
+                ) : (
+                  <div className="text-xs text-brand-burgundy/40 mt-1">ללא אחראי</div>
                 )}
-                {assigningTask === `support:${t.shabbat_task_id}` && (
+
+                {/* מחליפים (גיבוי) */}
+                {t.backups?.length > 0 && (
+                  <div className="text-xs text-brand-burgundy/50 mt-1">
+                    מחליפים: {t.backups.map((b) => b.volunteer_name).join(', ')}
+                  </div>
+                )}
+
+                {/* בורר דריסה ידנית */}
+                {assigningTask === t.task_id && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {orderedVolunteerSuggestions(t, volunteers).map((volunteer) => (
-                      <button key={volunteer.id} onClick={() => assign(t, volunteer.id, 'support')} disabled={busy}
+                    {overrideSuggestions(t, volunteers).map((v) => (
+                      <button key={v.id} onClick={() => override(t, v.id)} disabled={busy}
                         className="text-sm bg-brand-burgundy/5 hover:bg-brand-gold/20 border border-brand-cream-dark rounded-full px-3 py-1">
-                        {volunteer.full_name}
+                        {v.full_name}{v.priority ? ` · מחליף ${v.priority}` : ''}{v.has_vehicle ? ' 🚗' : ''}
                       </button>
                     ))}
+                    {overrideSuggestions(t, volunteers).length === 0 && (
+                      <span className="text-xs text-brand-burgundy/40">אין מתנדבים פנויים בתחום זה.</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -797,7 +767,7 @@ function VolunteersTab({ id, onAuthError }) {
       ))}
 
       <div className="text-xs text-brand-burgundy/40">
-        שיבוץ בישול נעשה אוטומטית לפי קישור המתנדב למאכל. שיבוץ שינוע ושאר התחומים — ידני.
+        האחראי הקבוע נקבע במסך "משימות קבועות". שיבוץ בישול מחושב אוטומטית לפי המאכל שהוזמן. אפשר להחליף אחראי לשבת בודדת בלי לשנות את הקבוע.
       </div>
     </div>
   );
@@ -1060,11 +1030,11 @@ function PrintTab({ id, onAuthError }) {
           {!vol?.tasks?.length ? (
             <p className="text-brand-burgundy/50 text-sm">אין משימות מוגדרות.</p>
           ) : (
-            <PrintTable head={['קטגוריה', 'מועד', 'משימה', 'מתנדבים משובצים']}>
+            <PrintTable head={['תחום', 'מועד', 'משימה', 'אחראי']}>
               {vol.tasks.map((t) => (
-                <tr key={t.shabbat_task_id || t.task_id}>
+                <tr key={t.task_id}>
                   <td className="border border-brand-cream-dark p-2 text-brand-burgundy/70">
-                    {[t.parent_category_name, t.category_name].filter(Boolean).join(' / ')}
+                    {t.area_name || '—'}
                   </td>
                   <td className="border border-brand-cream-dark p-2 text-brand-burgundy/70">
                     {DAY_LABELS[t.execution_day] || 'כללי'}{t.shift ? ` · ${SHIFT_LABELS[t.shift]}` : ''}{t.timing_note ? ` · ${t.timing_note}` : ''}
@@ -1074,13 +1044,14 @@ function PrintTab({ id, onAuthError }) {
                     {t.linked_meal_name && <span className="text-xs text-brand-burgundy/50 mr-1">({t.linked_meal_name})</span>}
                   </td>
                   <td className="border border-brand-cream-dark p-2">
-                    {t.assigned.length === 0
+                    {!t.lead
                       ? <span className="text-red-700 font-bold">ללא שיבוץ</span>
-                      : t.assigned.map((a) => (
-                          <span key={a.assignment_id} className="inline-block ml-3">
-                            {a.volunteer_name}{a.phone && <span className="text-brand-burgundy/50 text-xs mr-1" dir="ltr">{a.phone}</span>}{a.has_vehicle ? ' 🚗' : ''}
-                          </span>
-                        ))}
+                      : (
+                        <span className="inline-block ml-3">
+                          {t.lead.volunteer_name}{t.lead.phone && <span className="text-brand-burgundy/50 text-xs mr-1" dir="ltr">{t.lead.phone}</span>}{t.lead.has_vehicle ? ' 🚗' : ''}
+                          {t.is_override && <span className="text-[10px] text-brand-gold-dark mr-1">(דריסה)</span>}
+                        </span>
+                      )}
                   </td>
                 </tr>
               ))}
