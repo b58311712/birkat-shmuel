@@ -1,9 +1,12 @@
-import { Fragment, useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
+import { DataTable } from '../components/DataTable.jsx';
 import { ACTIVE_STATUS, Badge, SUPPLIER_CHANNEL, PO_STATUS } from '../lib/status.jsx';
+import PriceInput from '../components/PriceInput.jsx';
+import { formatWithVat } from '../lib/vat.js';
 
 // ניהול ספקים — כרטיס ספק מלא (סעיף 27.1) + מוצרים שהספק מספק (סעיף 25.3).
 // הזמנות רכש נמצאות במסך נפרד (/admin/purchase-orders).
@@ -20,7 +23,6 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
   const [list, setList] = useState(null);
   const [editing, setEditing] = useState(null);   // אובייקט ספק או {} = חדש
   const [detail, setDetail] = useState(null);      // ספק לפירוט (מוצרים + הזמנות)
-  const [filter, setFilter] = useState({ active: 'true' });
   const canDelete = currentAdmin?.role === 'developer';
 
   const handleErr = useCallback((e) => {
@@ -28,10 +30,10 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
     else alert(e.message);
   }, [onAuthError]);
 
+  // טוענים את כל הספקים; הסינון (כולל סטטוס פעיל) נעשה בזיכרון ב-DataTable.
   const load = useCallback(() => {
-    const q = filter.active ? `?active=${filter.active}` : '';
-    api.suppliers(q).then(setList).catch(handleErr);
-  }, [filter, handleErr]);
+    api.suppliers().then(setList).catch(handleErr);
+  }, [handleErr]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -63,20 +65,40 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
     catch (e) { handleErr(e); }
   }
 
-  if (!list) return <Page title="ניהול ספקים"><p>טוען...</p></Page>;
+  const columns = [
+    {
+      key: 'name',
+      label: 'שם ספק',
+      type: 'text',
+      className: 'font-medium',
+      render: (s) => (
+        <button onClick={() => openDetail(s)} className="text-brand-burgundy hover:underline">{s.name}</button>
+      ),
+    },
+    { key: 'contact_name', label: 'איש קשר', type: 'text' },
+    { key: 'phone', label: 'טלפון', type: 'text', dir: 'ltr' },
+    {
+      key: 'preferred_channel',
+      label: 'אמצעי הזמנה',
+      type: 'enum',
+      options: Object.entries(SUPPLIER_CHANNEL).map(([value, label]) => ({ value, label })),
+      render: (s) => SUPPLIER_CHANNEL[s.preferred_channel] || '—',
+    },
+    {
+      key: 'is_active',
+      label: 'סטטוס',
+      type: 'boolean',
+      trueLabel: 'פעיל',
+      falseLabel: 'לא פעיל',
+      render: (s) => <Badge map={ACTIVE_STATUS} value={s.is_active ? 'active' : 'inactive'} />,
+    },
+  ];
 
   return (
     <Page title="ניהול ספקים" subtitle="כרטיס ספק, פרטי קשר ומוצרים שהספק מספק">
-      <div className="flex flex-wrap items-end gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <button onClick={() => setEditing({})} className="btn-primary">+ ספק חדש</button>
-        <Field label="סטטוס">
-          <select value={filter.active} onChange={(e) => setFilter({ active: e.target.value })} className={inputCls}>
-            <option value="true">פעילים</option>
-            <option value="false">לא פעילים</option>
-            <option value="">הכל</option>
-          </select>
-        </Field>
-        <Link to="/admin/purchase-orders" className="btn-ghost pb-2">הזמנות רכש ←</Link>
+        <Link to="/admin/purchase-orders" className="btn-ghost">הזמנות רכש ←</Link>
       </div>
 
       {editing && !editing.id && (
@@ -86,60 +108,29 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
         <SupplierDetail data={detail} onClose={() => setDetail(null)} onErr={handleErr} onChanged={() => openDetail(detail.supplier)} />
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
-          <thead className="bg-brand-burgundy text-brand-cream text-sm">
-            <tr>
-              <th className="p-3 text-right">שם ספק</th>
-              <th className="p-3 text-right">איש קשר</th>
-              <th className="p-3 text-right">טלפון</th>
-              <th className="p-3 text-right">אמצעי הזמנה</th>
-              <th className="p-3 text-right">סטטוס</th>
-              <th className="p-3 text-right"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((s) => (
-              <Fragment key={s.id}>
-              <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!s.is_active ? 'opacity-50' : ''} ${editing?.id === s.id ? 'bg-brand-cream/40' : ''}`}>
-                <td className="p-3 font-medium">
-                  <button onClick={() => openDetail(s)} className="text-brand-burgundy hover:underline">{s.name}</button>
-                </td>
-                <td className="p-3 text-sm">{s.contact_name || '—'}</td>
-                <td className="p-3 text-sm" dir="ltr">{s.phone || '—'}</td>
-                <td className="p-3 text-sm">{SUPPLIER_CHANNEL[s.preferred_channel] || '—'}</td>
-                <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={s.is_active ? 'active' : 'inactive'} /></td>
-                <td className="p-3 text-sm whitespace-nowrap">
-                  <div className="flex flex-wrap gap-1">
-                  <ActionIconButton icon="view" label="פירוט" onClick={() => openDetail(s)} />
-                  <ActionIconButton icon={editing?.id === s.id ? 'cancel' : 'edit'} label={editing?.id === s.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === s.id ? null : s)} />
-                  <ActionIconButton
-                    icon={s.is_active ? 'deactivate' : 'activate'}
-                    label={s.is_active ? 'השבתה' : 'הפעלה'}
-                    tone="muted"
-                    onClick={() => toggleActive(s)}
-                  />
-                  {canDelete && (
-                    <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteSupplier(s)} />
-                  )}
-                  </div>
-                </td>
-              </tr>
-              {editing?.id === s.id && (
-                <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
-                  <td colSpan={6} className="p-3 sm:p-4">
-                    <SupplierForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />
-                  </td>
-                </tr>
-              )}
-              </Fragment>
-            ))}
-            {list.length === 0 && (
-              <tr><td colSpan={6} className="p-6 text-center text-brand-burgundy/50">אין ספקים עדיין.</td></tr>
+      <DataTable
+        columns={columns}
+        rows={list}
+        empty="אין ספקים עדיין."
+        expandedId={editing?.id}
+        rowClassName={(s) => `${!s.is_active ? 'opacity-50' : ''} ${editing?.id === s.id ? 'bg-brand-cream/40' : ''}`}
+        renderExpanded={() => <SupplierForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
+        actions={(s) => (
+          <>
+            <ActionIconButton icon="view" label="פירוט" onClick={() => openDetail(s)} />
+            <ActionIconButton icon={editing?.id === s.id ? 'cancel' : 'edit'} label={editing?.id === s.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === s.id ? null : s)} />
+            <ActionIconButton
+              icon={s.is_active ? 'deactivate' : 'activate'}
+              label={s.is_active ? 'השבתה' : 'הפעלה'}
+              tone="muted"
+              onClick={() => toggleActive(s)}
+            />
+            {canDelete && (
+              <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteSupplier(s)} />
             )}
-          </tbody>
-        </table>
-      </div>
+          </>
+        )}
+      />
     </Page>
   );
 }
@@ -156,6 +147,7 @@ function SupplierForm({ initial, onSave, onCancel }) {
     email: initial.email || '',
     preferred_channel: initial.preferred_channel || '',
     order_notes: initial.order_notes || '',
+    default_price_includes_vat: initial.default_price_includes_vat || false,
   });
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
 
@@ -190,6 +182,10 @@ function SupplierForm({ initial, onSave, onCancel }) {
       <Field label="הערות הזמנה">
         <textarea value={f.order_notes} onChange={(e) => set('order_notes', e.target.value)} className={inputCls} rows={2} />
       </Field>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={f.default_price_includes_vat} onChange={(e) => set('default_price_includes_vat', e.target.checked)} />
+        הספק נוקב מחירים כולל מע"מ (ברירת מחדל להזנת מחיר)
+      </label>
       <div className="flex gap-2">
         <button type="submit" className="btn-primary">שמירה</button>
         <button type="button" onClick={onCancel} className="btn-ghost">ביטול</button>
@@ -263,34 +259,48 @@ function SupplierDetail({ data, onClose, onErr, onChanged }) {
           ) : (
             <table className="w-full text-sm">
               <thead className="text-brand-burgundy/60 border-b border-brand-cream-dark">
-                <tr><th className="p-2 text-right">מוצר</th><th className="p-2 text-right">יחידה</th><th className="p-2 text-right">מחיר קנייה אחרון</th></tr>
+                <tr><th className="p-2 text-right">מוצר</th><th className="p-2 text-right">יחידה</th><th className="p-2 text-right">מחיר קנייה אחרון (כולל מע"מ)</th></tr>
               </thead>
               <tbody>
                 {items.map((it) => (
                   <tr key={it.item_id} className="border-b border-brand-cream-dark/50">
                     <td className="p-2">{it.name}{!it.is_active && <span className="text-xs text-brand-burgundy/40 mr-1">(לא פעיל)</span>}</td>
                     <td className="p-2">{it.unit}</td>
-                    <td className="p-2" dir="ltr">{it.last_purchase_price != null ? `₪${it.last_purchase_price}` : '—'}</td>
+                    <td className="p-2" dir="ltr">
+                      {formatWithVat(it.last_purchase_price, { exempt: it.vat_exempt })}
+                      {it.vat_exempt && <span className="text-xs text-brand-burgundy/40 mr-1">(פטור)</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )
         ) : !allItems ? <p className="text-sm">טוען מוצרים...</p> : (
-          <div className="space-y-2">
-            {rows.map((r, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
+          <div className="space-y-3">
+            {rows.map((r, idx) => {
+              const rowItem = allItems.find((i) => i.id === r.inventory_item_id);
+              return (
+              <div key={idx} className="flex gap-2 items-start">
                 <select value={r.inventory_item_id} onChange={(e) => setRow(idx, { inventory_item_id: e.target.value })} className={`${inputCls} flex-1`}>
                   <option value="">— בחר מוצר —</option>
                   {allItems
                     .filter((i) => i.id === r.inventory_item_id || !chosen.has(i.id))
                     .map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
                 </select>
-                <input type="number" step="any" value={r.last_purchase_price} placeholder="מחיר"
-                  onChange={(e) => setRow(idx, { last_purchase_price: e.target.value })} className={`${inputCls} w-28`} dir="ltr" />
-                <button type="button" onClick={() => removeRow(idx)} className="text-red-600 hover:underline text-sm px-1">הסר</button>
+                <div className="w-40">
+                  <PriceInput
+                    value={r.last_purchase_price}
+                    onChange={(base) => setRow(idx, { last_purchase_price: base ?? '' })}
+                    exempt={rowItem?.vat_exempt || false}
+                    defaultIncludesVat={supplier.default_price_includes_vat || false}
+                    className={inputCls}
+                    placeholder="מחיר"
+                  />
+                </div>
+                <button type="button" onClick={() => removeRow(idx)} className="text-red-600 hover:underline text-sm px-1 pt-2">הסר</button>
               </div>
-            ))}
+            );
+            })}
             <button type="button" onClick={addRow} className="btn-ghost text-sm">+ הוסף מוצר</button>
             <div className="flex gap-2 pt-1">
               <button type="button" onClick={saveItems} className="btn-primary">שמירת מוצרים</button>

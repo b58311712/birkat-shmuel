@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
+import { DataTable } from '../components/DataTable.jsx';
 
 export default function AdminRegistrations({ onAuthError }) {
   const [searchParams] = useSearchParams();
@@ -56,6 +57,14 @@ export default function AdminRegistrations({ onAuthError }) {
     }
   }
 
+  const columns = [
+    { key: 'full_name', label: 'שם', type: 'text', className: 'font-medium text-brand-burgundy' },
+    { key: 'phone', label: 'טלפון', type: 'text', dir: 'ltr' },
+    { key: 'email', label: 'מייל', type: 'text', dir: 'ltr', render: (r) => r.email || '-' },
+    { key: 'address', label: 'כתובת', type: 'text', render: (r) => r.address || '-' },
+    { key: 'created_at', label: 'נשלח', type: 'date', dir: 'ltr', render: (r) => formatDate(r.created_at) },
+  ];
+
   return (
     <Page title="אישור רישום לקוחות" subtitle="בקשות רישום חדשות שממתינות להפיכתן ללקוחות פעילים">
       <div className="space-y-4">
@@ -65,62 +74,30 @@ export default function AdminRegistrations({ onAuthError }) {
           </div>
         )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
-            <thead className="bg-brand-burgundy text-brand-cream text-sm">
-              <tr>
-                <th className="p-3 text-right">שם</th>
-                <th className="p-3 text-right">טלפון</th>
-                <th className="p-3 text-right">מייל</th>
-                <th className="p-3 text-right">כתובת</th>
-                <th className="p-3 text-right">נשלח</th>
-                <th className="p-3 text-right"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {!requests ? (
-                <tr><td colSpan={6} className="p-6 text-center text-brand-burgundy/50">טוען...</td></tr>
-              ) : requests.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-brand-burgundy/60">
-                    אין כרגע בקשות רישום ממתינות.
-                  </td>
-                </tr>
-              ) : requests.map((request) => (
-                <tr
-                  key={request.id}
-                  className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${
-                    highlightedId === request.id ? 'bg-amber-50 ring-2 ring-inset ring-amber-300' : ''
-                  }`}
-                >
-                  <td className="p-3 font-medium text-brand-burgundy">{request.full_name}</td>
-                  <td className="p-3 text-sm" dir="ltr">{request.phone}</td>
-                  <td className="p-3 text-sm" dir="ltr">{request.email || '-'}</td>
-                  <td className="p-3 text-sm">{request.address || '-'}</td>
-                  <td className="p-3 text-sm" dir="ltr">{formatDate(request.created_at)}</td>
-                  <td className="p-3 text-sm whitespace-nowrap">
-                    <div className="flex flex-wrap gap-1">
-                    <ActionIconButton
-                      icon="approve"
-                      label={busy === request.id ? 'מאשר...' : 'אישור רישום'}
-                      tone="success"
-                      onClick={() => approve(request)}
-                      disabled={busy === request.id}
-                    />
-                    <ActionIconButton
-                      icon="cancel"
-                      label="דחיית רישום"
-                      tone="danger"
-                      onClick={() => reject(request)}
-                      disabled={busy === request.id}
-                    />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          rows={requests}
+          empty="אין כרגע בקשות רישום ממתינות."
+          rowClassName={(request) => (highlightedId === request.id ? 'bg-amber-50 ring-2 ring-inset ring-amber-300' : '')}
+          actions={(request) => (
+            <>
+              <ActionIconButton
+                icon="approve"
+                label={busy === request.id ? 'מאשר...' : 'אישור רישום'}
+                tone="success"
+                onClick={() => approve(request)}
+                disabled={busy === request.id}
+              />
+              <ActionIconButton
+                icon="cancel"
+                label="דחיית רישום"
+                tone="danger"
+                onClick={() => reject(request)}
+                disabled={busy === request.id}
+              />
+            </>
+          )}
+        />
 
         <div className="flex gap-2">
           <button onClick={load} className="btn-ghost">רענון</button>

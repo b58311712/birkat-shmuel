@@ -92,7 +92,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   // מוצרים שהספק מספק (סעיף 25.3, 27.1) — שילוב item_suppliers + פריטים שהספק שלהם ברירת מחדל
   const { data: links, error: lErr } = await supabase
     .from('item_suppliers')
-    .select('inventory_item_id, last_purchase_price, inventory_items:inventory_item_id (id, name, unit, is_active)')
+    .select('inventory_item_id, last_purchase_price, inventory_items:inventory_item_id (id, name, unit, is_active, vat_exempt)')
     .eq('supplier_id', req.params.id);
   if (lErr) throw lErr;
 
@@ -103,7 +103,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
       name: l.inventory_items.name,
       unit: l.inventory_items.unit,
       is_active: l.inventory_items.is_active,
-      last_purchase_price: l.last_purchase_price,
+      vat_exempt: l.inventory_items.vat_exempt,
+      last_purchase_price: l.last_purchase_price, // מחיר בסיס (לפני מע"מ)
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'he'));
 
@@ -120,7 +121,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // POST /api/admin/suppliers — יצירת ספק
 router.post('/', asyncHandler(async (req, res) => {
-  const { name, contact_name, phone, email, preferred_channel, order_notes } = req.body || {};
+  const { name, contact_name, phone, email, preferred_channel, order_notes, default_price_includes_vat } = req.body || {};
   if (!name?.trim()) return fail(res, 400, 'חובה להזין שם ספק.');
   if (preferred_channel && !CHANNELS.includes(preferred_channel))
     return fail(res, 400, 'אמצעי הזמנה לא תקין.');
@@ -131,6 +132,7 @@ router.post('/', asyncHandler(async (req, res) => {
     email: email?.trim() || null,
     preferred_channel: preferred_channel || null,
     order_notes: order_notes?.trim() || null,
+    default_price_includes_vat: !!default_price_includes_vat, // ברירת מחדל למתג "לפני/כולל" בהזנה
   }).select('*').single();
   if (error) throw error;
   res.json({ ok: true, supplier: data });
@@ -138,7 +140,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // PATCH /api/admin/suppliers/:id — עדכון/השבתת ספק
 router.patch('/:id', asyncHandler(async (req, res) => {
-  const allowed = ['name', 'contact_name', 'phone', 'email', 'preferred_channel', 'order_notes', 'is_active'];
+  const allowed = ['name', 'contact_name', 'phone', 'email', 'preferred_channel', 'order_notes', 'default_price_includes_vat', 'is_active'];
   const patch = {};
   for (const k of allowed) if (k in (req.body || {})) patch[k] = req.body[k];
   if ('name' in patch && !patch.name?.trim()) return fail(res, 400, 'שם ספק לא יכול להיות ריק.');
@@ -150,6 +152,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   }
   if ('name' in patch) patch.name = patch.name.trim();
   if ('preferred_channel' in patch) patch.preferred_channel = patch.preferred_channel || null;
+  if ('default_price_includes_vat' in patch) patch.default_price_includes_vat = !!patch.default_price_includes_vat;
   if (Object.keys(patch).length === 0) return fail(res, 400, 'אין שדות לעדכון.');
   const { data, error } = await supabase.from('suppliers')
     .update(patch).eq('id', req.params.id).select('*').maybeSingle();
@@ -224,14 +227,14 @@ router.get('/purchase-orders/list', asyncHandler(async (req, res) => {
 router.get('/purchase-orders/:id', asyncHandler(async (req, res) => {
   const { data: po, error } = await supabase
     .from('purchase_orders')
-    .select('*, supplier:supplier_id (id, name, phone, email, preferred_channel), creator:created_by (id, full_name)')
+    .select('*, supplier:supplier_id (id, name, phone, email, preferred_channel, default_price_includes_vat), creator:created_by (id, full_name)')
     .eq('id', req.params.id).maybeSingle();
   if (error) throw error;
   if (!po) return fail(res, 404, 'הזמנת רכש לא נמצאה.');
 
   const { data: lines, error: lErr } = await supabase
     .from('purchase_order_lines')
-    .select('*, item:inventory_item_id (id, name, unit)')
+    .select('*, item:inventory_item_id (id, name, unit, vat_exempt)')
     .eq('purchase_order_id', req.params.id)
     .order('created_at');
   if (lErr) throw lErr;

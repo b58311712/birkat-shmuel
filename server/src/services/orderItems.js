@@ -2,6 +2,7 @@
 // כל המחירים מחושבים בשרת מהמחירון הפעיל הנוכחי ונשמרים "קפואים" (סעיף 15.3).
 import { supabase } from '../lib/supabase.js';
 import { calcBase, suggestExtraQuantity, calcFinal, round2 } from './pricing.js';
+import { fetchSlotSplits, percentFor } from './categorySplits.js';
 import { roundUp } from '../lib/helpers.js';
 
 // טווח המנות הסטנדרטי לסעודה. כמות מחוץ לטווח מותרת רק כ"בקשת חריג" (סעיף 12.2)
@@ -76,9 +77,11 @@ export async function buildOrderItems(input) {
   // --- מאכלים: snapshot של שם + תוספת מחיר אם דורש (סעיף 13.5) ---
   // בקטגוריות עם חלוקת מנות לכל מאכל כמות מנות משלו (order_meals.portions):
   //   - equal:    הלקוח מזין כמות לכל מאכל, וסך הכמויות = מנות הסעודה (100 = 60+40).
-  //   - additive: חלוקה אוטומטית — דג מרכזי מקבל primary_percent, דג משני (is_secondary)
-  //               מקבל תוספת של secondary_percent; דג יחיד מקבל 100% (כל מנות הסעודה).
-  //               לא ניתן לבחור שני דגים מרכזיים (סעיף 13).
+  //   - additive: חלוקה אוטומטית — מאכל עיקרי מקבל primary_percent, מאכל משני (is_secondary)
+  //               מקבל תוספת של secondary_percent; מאכל יחיד מקבל 100% (כל מנות הסעודה).
+  //               האחוזים ניתנים לדריסה פר-סעודה (category_slot_splits): למשל בלילה
+  //               80%+50% ובבוקר 50%+50%. אין דריסה → האחוז ברמת הקטגוריה.
+  //               לא ניתן לבחור שני מאכלים עיקריים (סעיף 13).
   const mealsInput = Array.isArray(input.meals) ? input.meals : [];
   let mealExtraCharges = 0;
   const mealRows = [];
@@ -89,15 +92,20 @@ export async function buildOrderItems(input) {
       .in('id', mealIds);
     const byId = Object.fromEntries((mealsData || []).map((m) => [m.id, m]));
 
-    // מצב החלוקה + האחוזים לכל קטגוריה מעורבת
+    // מצב החלוקה + האחוזים לכל קטגוריה מעורבת, ודריסות האחוזים פר-סעודה
     const catIds = [...new Set((mealsData || []).map((m) => m.category_id).filter(Boolean))];
     const catById = {}; // catId -> { split_mode, primary_percent, secondary_percent }
+    let splitOverrides = {}; // `${catId}:${slotId}` -> { primary_percent, secondary_percent }
     if (catIds.length > 0) {
-      const { data: cats } = await supabase
-        .from('categories')
-        .select('id, split_mode, primary_percent, secondary_percent')
-        .in('id', catIds);
+      const [{ data: cats }, overrides] = await Promise.all([
+        supabase
+          .from('categories')
+          .select('id, split_mode, primary_percent, secondary_percent')
+          .in('id', catIds),
+        fetchSlotSplits(catIds),
+      ]);
       for (const c of cats || []) catById[c.id] = c;
+      splitOverrides = overrides;
     }
     const splitModeOf = (catId) => catById[catId]?.split_mode || 'none';
     const portionsBySlot = Object.fromEntries(slots.map((s) => [s.meal_slot_id, Number(s.portions)]));
@@ -125,10 +133,10 @@ export async function buildOrderItems(input) {
     for (const entry of Object.values(splitTotals)) {
       const slotPortions = portionsBySlot[entry.slotId] || 0;
       if (entry.mode === 'additive') {
-        // לכל היותר דג מרכזי אחד; ולפחות דג אחד (מובטח כי הקבוצה קיימת).
+        // לכל היותר מאכל עיקרי אחד; ולפחות מאכל אחד (מובטח כי הקבוצה קיימת).
         if (entry.primaryCount > 1) {
-          const err = new Error('too-many-primary-fish');
-          err.userMessage = 'ניתן לבחור רק דג עיקרי אחד בקטגוריה. הדג הנוסף חייב להיות מסומן כדג משני/זול.';
+          const err = new Error('too-many-primary-meals');
+          err.userMessage = 'ניתן לבחור רק מאכל עיקרי אחד בקטגוריה. המאכל הנוסף חייב להיות מסומן כמאכל משני.';
           throw err;
         }
         continue;
@@ -163,10 +171,8 @@ export async function buildOrderItems(input) {
         if (group?.count === 1) {
           mealPortions = slotPortions;                     // סוג יחיד → כל המנות (100%)
         } else if (mode === 'additive') {
-          const cat = catById[meal.category_id] || {};
-          const pct = meal.is_secondary
-            ? Number(cat.secondary_percent ?? 50)
-            : Number(cat.primary_percent ?? 80);
+          const cat = catById[meal.category_id] || { id: meal.category_id };
+          const pct = percentFor(splitOverrides, cat, m.meal_slot_id, meal.is_secondary);
           mealPortions = roundUp(slotPortions * pct / 100); // אוטומטי, עיגול כלפי מעלה
         } else {
           mealPortions = Number(m.portions);               // equal — כבר אומת למעלה
@@ -189,9 +195,18 @@ export async function buildOrderItems(input) {
   const extraRows = [];
   if (extrasInput.length > 0) {
     const extraIds = [...new Set(extrasInput.map((e) => e.extra_id))];
-    const { data: extrasData } = await supabase
-      .from('extras').select('*').in('id', extraIds);
+    const [{ data: extrasData }, { data: extraMealLinks }] = await Promise.all([
+      supabase.from('extras').select('*').in('id', extraIds),
+      supabase.from('extra_meal_requirements').select('extra_id, meal_id').in('extra_id', extraIds),
+    ]);
     const byId = Object.fromEntries((extrasData || []).map((e) => [e.id, e]));
+
+    // התניית תוספת במאכל (סעיף 14): תוספת מקושרת נכללת רק אם נבחר לפחות אחד
+    // מהמאכלים המקושרים אליה. ללא קישורים = ללא התניה.
+    const requiredMealsByExtra = {};
+    for (const row of extraMealLinks || []) (requiredMealsByExtra[row.extra_id] ||= []).push(row.meal_id);
+    const selectedMealIds = new Set(mealsInput.map((m) => m.meal_id));
+
     const ctx = {
       totalPortions: base.totalPortions,
       portionsPerSlotSum: base.totalPortions,
@@ -199,6 +214,12 @@ export async function buildOrderItems(input) {
     for (const e of extrasInput) {
       const extra = byId[e.extra_id];
       if (!extra) continue;
+      const required = requiredMealsByExtra[extra.id];
+      if (required && !required.some((id) => selectedMealIds.has(id))) {
+        const err = new Error('extra-requires-meal');
+        err.userMessage = `התוספת "${extra.name}" זמינה רק בהזמנה שכוללת את המאכל שהיא מותנית בו.`;
+        throw err;
+      }
       const suggested = suggestExtraQuantity(extra, ctx);
       const actual = e.actual_quantity != null ? Number(e.actual_quantity) : suggested;
       const lineTotal = round2(actual * Number(extra.unit_price));

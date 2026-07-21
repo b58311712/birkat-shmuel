@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
@@ -11,6 +11,33 @@ const filters = [
   { key: 'cancelled', label: 'מבוטלות' },
 ];
 
+// סינון פר-שדה בזיכרון (בנוסף לחיפוש החופשי ולטאבי הסטטוס). כל שדה לפי טיפוסו.
+const EMPTY_COL_FILTERS = { order_number: '', customer: '', shabbat: '', amountMin: '', amountMax: '', order_status: '', payment_status: '' };
+
+function matchesColFilters(order, f) {
+  const has = (v, term) => String(v ?? '').toLocaleLowerCase('he-IL').includes(term.toLocaleLowerCase('he-IL'));
+  if (f.order_number && !has(order.order_number, f.order_number)) return false;
+  if (f.customer && !(has(order.customers?.full_name, f.customer) || has(order.customers?.phone, f.customer))) return false;
+  if (f.shabbat && !has(order.shabbatot?.parasha, f.shabbat)) return false;
+  if (f.order_status && order.order_status !== f.order_status) return false;
+  if (f.payment_status && order.payment_status !== f.payment_status) return false;
+  const amount = Number(order.final_amount || 0);
+  if (f.amountMin !== '' && amount < Number(f.amountMin)) return false;
+  if (f.amountMax !== '' && amount > Number(f.amountMax)) return false;
+  return true;
+}
+
+function countActiveColFilters(f) {
+  let n = 0;
+  if (f.order_number) n += 1;
+  if (f.customer) n += 1;
+  if (f.shabbat) n += 1;
+  if (f.order_status) n += 1;
+  if (f.payment_status) n += 1;
+  if (f.amountMin !== '' || f.amountMax !== '') n += 1;
+  return n;
+}
+
 export default function AdminOrders({ onAuthError, currentAdmin }) {
   const [sp, setSp] = useSearchParams();
   const nav = useNavigate();
@@ -18,9 +45,13 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
   const shabbatFilter = sp.get('shabbat_id') || '';
   const [orders, setOrders] = useState([]);
   const [search, setSearch] = useState('');
+  const [colFilters, setColFilters] = useState(EMPTY_COL_FILTERS);
+  const [showColFilters, setShowColFilters] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const canDelete = currentAdmin?.role === 'developer';
+  const setCol = (key, value) => setColFilters((f) => ({ ...f, [key]: value }));
+  const activeColFilters = countActiveColFilters(colFilters);
 
   function handleErr(error) {
     if (error.name === 'AdminAuthError') { onAuthError?.(); return true; }
@@ -57,10 +88,14 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
   }
 
   const normalizedSearch = search.trim().toLocaleLowerCase('he-IL');
-  const visibleOrders = normalizedSearch
-    ? orders.filter((order) => [order.order_number, order.customers?.full_name, order.customers?.phone, order.shabbatot?.parasha]
-      .some((value) => String(value || '').toLocaleLowerCase('he-IL').includes(normalizedSearch)))
-    : orders;
+  const visibleOrders = useMemo(() => {
+    return orders.filter((order) => {
+      if (normalizedSearch && ![order.order_number, order.customers?.full_name, order.customers?.phone, order.shabbatot?.parasha]
+        .some((value) => String(value || '').toLocaleLowerCase('he-IL').includes(normalizedSearch))) return false;
+      if (activeColFilters && !matchesColFilters(order, colFilters)) return false;
+      return true;
+    });
+  }, [orders, normalizedSearch, colFilters, activeColFilters]);
   const totalAmount = visibleOrders.reduce((sum, order) => sum + Number(order.final_amount || 0), 0);
   const pendingCount = visibleOrders.filter((order) => order.order_status === 'pending_approval').length;
   const unpaidCount = visibleOrders.filter((order) => order.payment_status !== 'paid' && order.order_status !== 'cancelled').length;
@@ -127,10 +162,64 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
             ))}
             </div>
           </div>
-          {!loading && <div className="mt-3 flex items-center justify-between gap-3 text-xs font-semibold text-[#91878a]"><span>{visibleOrders.length} תוצאות</span><span>{unpaidCount > 0 ? `${unpaidCount} הזמנות עם תשלום פתוח` : 'אין תשלומים פתוחים בתצוגה'}</span></div>}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowColFilters((s) => !s)}
+              aria-expanded={showColFilters}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#81777a] transition hover:text-brand-burgundy"
+            >
+              <FilterIcon />
+              {showColFilters ? 'הסתרת סינון' : 'סינון מתקדם'}
+              {activeColFilters > 0 && (
+                <span className="inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-brand-gold px-1 text-[10px] font-extrabold text-brand-burgundy-dark">{activeColFilters}</span>
+              )}
+            </button>
+            {activeColFilters > 0 && (
+              <button type="button" onClick={() => setColFilters(EMPTY_COL_FILTERS)} className="text-xs font-semibold text-[#a49b9e] hover:underline">ניקוי סינון</button>
+            )}
+            {!loading && (
+              <div className="mr-auto flex items-center gap-3 text-xs font-semibold text-[#91878a]">
+                <span>{visibleOrders.length} תוצאות</span>
+                <span>{unpaidCount > 0 ? `${unpaidCount} הזמנות עם תשלום פתוח` : 'אין תשלומים פתוחים בתצוגה'}</span>
+              </div>
+            )}
+          </div>
+
+          {showColFilters && (
+            <div className="mt-3 grid gap-3 rounded-xl border border-black/[0.06] bg-[#faf9f8] p-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ColField label="מס׳ הזמנה">
+                <input value={colFilters.order_number} onChange={(e) => setCol('order_number', e.target.value)} className={colInputCls} placeholder="חיפוש" />
+              </ColField>
+              <ColField label="לקוח / טלפון">
+                <input value={colFilters.customer} onChange={(e) => setCol('customer', e.target.value)} className={colInputCls} placeholder="חיפוש" />
+              </ColField>
+              <ColField label="שבת">
+                <input value={colFilters.shabbat} onChange={(e) => setCol('shabbat', e.target.value)} className={colInputCls} placeholder="פרשה" />
+              </ColField>
+              <ColField label="סכום (₪)">
+                <div className="flex gap-1" dir="ltr">
+                  <input type="number" step="any" value={colFilters.amountMin} onChange={(e) => setCol('amountMin', e.target.value)} className={colInputCls} placeholder="מ־" />
+                  <input type="number" step="any" value={colFilters.amountMax} onChange={(e) => setCol('amountMax', e.target.value)} className={colInputCls} placeholder="עד" />
+                </div>
+              </ColField>
+              <ColField label="סטטוס">
+                <select value={colFilters.order_status} onChange={(e) => setCol('order_status', e.target.value)} className={colInputCls}>
+                  <option value="">הכל</option>
+                  {Object.entries(ORDER_STATUS).map(([value, def]) => <option key={value} value={value}>{def.label}</option>)}
+                </select>
+              </ColField>
+              <ColField label="תשלום">
+                <select value={colFilters.payment_status} onChange={(e) => setCol('payment_status', e.target.value)} className={colInputCls}>
+                  <option value="">הכל</option>
+                  {Object.entries(PAYMENT_STATUS).map(([value, def]) => <option key={value} value={value}>{def.label}</option>)}
+                </select>
+              </ColField>
+            </div>
+          )}
         </div>
 
-        {loading ? <OrdersSkeleton /> : visibleOrders.length === 0 ? <EmptyState searching={Boolean(normalizedSearch)} /> : (
+        {loading ? <OrdersSkeleton /> : visibleOrders.length === 0 ? <EmptyState searching={Boolean(normalizedSearch) || activeColFilters > 0} /> : (
           <>
             <div className="hidden overflow-x-auto md:block">
               <table className="pilot-table w-full bg-white">
@@ -184,6 +273,21 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
 
 function SummaryCard({ label, value, warning }) {
   return <div className="pilot-panel min-w-0 p-3.5 sm:p-5"><p className="truncate text-[11px] font-bold text-[#8b8084] sm:text-sm">{label}</p><p className={`mt-1 truncate text-lg font-extrabold tabular-nums sm:text-2xl ${warning ? 'text-amber-700' : 'text-[#33272b]'}`}>{value}</p></div>;
+}
+
+const colInputCls = 'w-full rounded-lg border border-black/10 bg-white px-2.5 py-2 text-sm text-[#3b3033] outline-none transition focus:border-brand-gold/55';
+
+function ColField({ label, children }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-bold text-[#8b8084]">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function FilterIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4-2v-4Z" /></svg>;
 }
 
 function OrdersSkeleton() {

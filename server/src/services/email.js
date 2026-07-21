@@ -156,6 +156,18 @@ export async function sendTemplateEmail({ code, to, vars = {}, orderId = null })
   }
 }
 
+// --- עוזר: בניית ערכי placeholder לבקשת רישום לקוח (סעיף 7) ---
+// משמש גם להתראת המשרד וגם למייל החוזר ללקוח. reason רלוונטי רק בדחייה.
+export function registrationVars({ registration, reason = '' }) {
+  return {
+    full_name: registration?.full_name || '',
+    phone: registration?.phone || '',
+    email: registration?.email || '',
+    address: registration?.address || '',
+    reject_reason: reason || '',
+  };
+}
+
 // --- עוזר: בניית ערכי placeholder נפוצים מהזמנה+לקוח+שבת ---
 export function orderVars({ order, customer, shabbat }) {
   return {

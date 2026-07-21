@@ -1,16 +1,10 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { ActionIconButton, ActionIconLink } from '../components/ActionIcon.jsx';
+import { DataTable } from '../components/DataTable.jsx';
 import { Badge, CUSTOMER_STATUS, ORDER_STATUS, PAYMENT_STATUS } from '../lib/status.jsx';
-
-const STATUSES = [
-  { value: 'active', label: 'פעילים' },
-  { value: 'pending_approval', label: 'ממתינים לאישור' },
-  { value: 'inactive', label: 'לא פעילים' },
-  { value: 'blocked', label: 'חסומים' },
-];
 
 const HEADER_ALIASES = {
   givenName: ['given name', 'first name', 'שם פרטי'],
@@ -99,12 +93,13 @@ function parseCsv(text) {
 }
 
 export default function AdminCustomers({ onAuthError, currentAdmin }) {
+  // דיפ-לינק מהחיפוש הגלובלי (Ctrl+K): ?search= ממלא את סינון השם בטבלה
+  const urlSearch = new URLSearchParams(window.location.search).get('search') || '';
   const [customers, setCustomers] = useState(null);
   const [editing, setEditing] = useState(null);
   const [detail, setDetail] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
-  const [filter, setFilter] = useState({ search: '', status: 'active' });
   const canDelete = currentAdmin?.role === 'developer';
 
   const handleErr = useCallback((e) => {
@@ -112,17 +107,10 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
     else alert(e.message);
   }, [onAuthError]);
 
-  const query = useMemo(() => {
-    const params = new URLSearchParams();
-    if (filter.search.trim()) params.set('search', filter.search.trim());
-    if (filter.status) params.set('status', filter.status);
-    const q = params.toString();
-    return q ? `?${q}` : '';
-  }, [filter]);
-
+  // טוענים את כל הלקוחות; הסינון (חיפוש + סטטוס) נעשה בזיכרון ב-DataTable.
   const load = useCallback(() => {
-    api.adminCustomers(query).then(setCustomers).catch(handleErr);
-  }, [query, handleErr]);
+    api.adminCustomers().then(setCustomers).catch(handleErr);
+  }, [handleErr]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -176,6 +164,34 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
     }
   }
 
+  const columns = [
+    {
+      key: 'full_name',
+      label: 'שם',
+      type: 'text',
+      className: 'font-medium',
+      render: (customer) => (
+        <>
+          <button onClick={() => openDetail(customer)} className="text-brand-burgundy hover:underline">
+            {customer.full_name}
+          </button>
+          {customer.internal_notes && <div className="text-xs text-brand-burgundy/50 mt-1">{customer.internal_notes}</div>}
+        </>
+      ),
+    },
+    { key: 'phone', label: 'טלפון', type: 'text', dir: 'ltr', render: (c) => c.phone || '-' },
+    { key: 'email', label: 'מייל', type: 'text', dir: 'ltr', render: (c) => c.email || '-' },
+    { key: 'address', label: 'כתובת', type: 'text', render: (c) => c.address || '-' },
+    {
+      key: 'status',
+      label: 'סטטוס',
+      type: 'enum',
+      map: CUSTOMER_STATUS,
+      render: (c) => <Badge map={CUSTOMER_STATUS} value={c.status} />,
+    },
+    { key: 'created_at', label: 'נוצר', type: 'date', dir: 'ltr', render: (c) => formatDate(c.created_at) },
+  ];
+
   return (
     <Page title="לקוחות" subtitle="כרטיסי לקוח, פרטי קשר, סטטוס והיסטוריית הזמנות">
       <div className="space-y-4">
@@ -192,20 +208,6 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
               }}
               className="block w-full text-sm text-brand-burgundy file:ml-3 file:rounded-lg file:border-0 file:bg-brand-burgundy file:px-3 file:py-2 file:text-brand-cream hover:file:bg-brand-burgundy/90 disabled:opacity-60"
             />
-          </Field>
-          <Field label="חיפוש">
-            <input
-              value={filter.search}
-              onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
-              className={inputCls}
-              placeholder="שם, טלפון, מייל או כתובת"
-            />
-          </Field>
-          <Field label="סטטוס">
-            <select value={filter.status} onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value }))} className={inputCls}>
-              <option value="">הכל</option>
-              {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
           </Field>
         </div>
 
@@ -224,66 +226,30 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
           />
         )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
-            <thead className="bg-brand-burgundy text-brand-cream text-sm">
-              <tr>
-                <th className="p-3 text-right">שם</th>
-                <th className="p-3 text-right">טלפון</th>
-                <th className="p-3 text-right">מייל</th>
-                <th className="p-3 text-right">כתובת</th>
-                <th className="p-3 text-right">סטטוס</th>
-                <th className="p-3 text-right">נוצר</th>
-                <th className="p-3 text-right"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {!customers ? (
-                <tr><td colSpan={7} className="p-6 text-center text-brand-burgundy/50">טוען...</td></tr>
-              ) : customers.length === 0 ? (
-                <tr><td colSpan={7} className="p-6 text-center text-brand-burgundy/50">לא נמצאו לקוחות.</td></tr>
-              ) : customers.map((customer) => (
-                <Fragment key={customer.id}>
-                <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${customer.status !== 'active' ? 'opacity-70' : ''} ${editing?.id === customer.id ? 'bg-brand-cream/40' : ''}`}>
-                  <td className="p-3 font-medium">
-                    <button onClick={() => openDetail(customer)} className="text-brand-burgundy hover:underline">
-                      {customer.full_name}
-                    </button>
-                    {customer.internal_notes && <div className="text-xs text-brand-burgundy/50 mt-1">{customer.internal_notes}</div>}
-                  </td>
-                  <td className="p-3 text-sm" dir="ltr">{customer.phone}</td>
-                  <td className="p-3 text-sm" dir="ltr">{customer.email || '-'}</td>
-                  <td className="p-3 text-sm">{customer.address || '-'}</td>
-                  <td className="p-3 text-sm"><Badge map={CUSTOMER_STATUS} value={customer.status} /></td>
-                  <td className="p-3 text-sm" dir="ltr">{formatDate(customer.created_at)}</td>
-                  <td className="p-3 text-sm whitespace-nowrap">
-                    <div className="flex flex-wrap gap-1">
-                    <ActionIconButton icon="view" label="צפייה" onClick={() => openDetail(customer)} />
-                    <ActionIconButton icon={editing?.id === customer.id ? 'cancel' : 'edit'} label={editing?.id === customer.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === customer.id ? null : customer)} />
-                    <ActionIconButton
-                      icon={customer.status === 'active' ? 'deactivate' : 'activate'}
-                      label={customer.status === 'active' ? 'השבתה' : 'הפעלה'}
-                      tone="muted"
-                      onClick={() => setStatus(customer, customer.status === 'active' ? 'inactive' : 'active')}
-                    />
-                    {canDelete && (
-                      <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteCustomer(customer)} />
-                    )}
-                    </div>
-                  </td>
-                </tr>
-                {editing?.id === customer.id && (
-                  <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
-                    <td colSpan={7} className="p-3 sm:p-4">
-                      <CustomerForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />
-                    </td>
-                  </tr>
-                )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          rows={customers}
+          initialFilters={urlSearch ? { full_name: { term: urlSearch } } : undefined}
+          empty="לא נמצאו לקוחות."
+          expandedId={editing?.id}
+          rowClassName={(c) => `${c.status !== 'active' ? 'opacity-70' : ''} ${editing?.id === c.id ? 'bg-brand-cream/40' : ''}`}
+          renderExpanded={() => <CustomerForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
+          actions={(customer) => (
+            <>
+              <ActionIconButton icon="view" label="צפייה" onClick={() => openDetail(customer)} />
+              <ActionIconButton icon={editing?.id === customer.id ? 'cancel' : 'edit'} label={editing?.id === customer.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === customer.id ? null : customer)} />
+              <ActionIconButton
+                icon={customer.status === 'active' ? 'deactivate' : 'activate'}
+                label={customer.status === 'active' ? 'השבתה' : 'הפעלה'}
+                tone="muted"
+                onClick={() => setStatus(customer, customer.status === 'active' ? 'inactive' : 'active')}
+              />
+              {canDelete && (
+                <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteCustomer(customer)} />
+              )}
+            </>
+          )}
+        />
       </div>
     </Page>
   );

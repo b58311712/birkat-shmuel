@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import { normalizePhone, isValidPhone, asyncHandler, fail } from '../lib/helpers.js';
 import { verifyPassword, signToken } from '../lib/auth.js';
 import { createAdminNotification } from '../services/adminNotifications.js';
+import { sendTemplateEmail, registrationVars, officeEmail } from '../services/email.js';
 
 const router = Router();
 
@@ -76,7 +77,7 @@ router.post('/register', asyncHandler(async (req, res) => {
     phone_normalized: normalized,
     email: email || null,
     address: address || null,
-  }).select('id, full_name').single();
+  }).select('id, full_name, phone, email, address').single();
   if (error) throw error;
 
   await createAdminNotification({
@@ -88,7 +89,15 @@ router.post('/register', asyncHandler(async (req, res) => {
     link_path: `/admin/registrations?highlight=${registration.id}`,
   });
 
-  return res.json({ ok: true, message: 'בקשת הרישום נשלחה. לאחר אישור מנהל תוכל/י להזמין.' });
+  res.json({ ok: true, message: 'בקשת הרישום נשלחה. לאחר אישור מנהל תוכל/י להזמין.' });
+
+  // סעיף 18 — התראת מייל למשרד על בקשת הרישום. ברקע, אחרי התשובה: המייל הוא
+  // תופעת-לוואי ושליחת SMTP איטית/תקועה לא צריכה לעכב את הלקוח או להפיל את הבקשה.
+  sendTemplateEmail({
+    code: 'new_registration_manager_alert',
+    to: officeEmail(),
+    vars: registrationVars({ registration }),
+  }).catch((e) => console.warn('registration alert email failed:', e.message));
 }));
 
 // POST /api/auth/admin-login  { email, password }

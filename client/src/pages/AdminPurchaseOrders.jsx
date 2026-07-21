@@ -3,25 +3,18 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
+import { DataTable } from '../components/DataTable.jsx';
 import { Badge, PO_STATUS } from '../lib/status.jsx';
+import PriceInput from '../components/PriceInput.jsx';
+import { withVat } from '../lib/vat.js';
 
 // הזמנות רכש (סעיף 27.2-27.3): רשימה, סינון ויצירת הזמנה חדשה (טיוטה).
 // פירוט/קבלת סחורה/תשלום נמצאים במסך הפירוט (/admin/purchase-orders/:id).
-
-const STATUS_FILTERS = [
-  { value: '', label: 'כל הסטטוסים' },
-  { value: 'draft', label: 'טיוטה' },
-  { value: 'sent', label: 'נשלחה לספק' },
-  { value: 'partially_received', label: 'התקבלה חלקית' },
-  { value: 'received', label: 'התקבלה במלואה' },
-  { value: 'cancelled', label: 'בוטלה' },
-];
 
 export default function AdminPurchaseOrders({ onAuthError, currentAdmin }) {
   const [list, setList] = useState(null);
   const [suppliers, setSuppliers] = useState([]);
   const [creating, setCreating] = useState(false);
-  const [filter, setFilter] = useState({ supplier_id: '', status: '' });
   const canDelete = currentAdmin?.role === 'developer';
 
   const handleErr = useCallback((e) => {
@@ -29,13 +22,10 @@ export default function AdminPurchaseOrders({ onAuthError, currentAdmin }) {
     else alert(e.message);
   }, [onAuthError]);
 
+  // טוענים את כל הזמנות הרכש; הסינון (ספק/סטטוס) נעשה בזיכרון ב-DataTable.
   const load = useCallback(() => {
-    const params = new URLSearchParams();
-    if (filter.supplier_id) params.set('supplier_id', filter.supplier_id);
-    if (filter.status) params.set('status', filter.status);
-    const q = params.toString();
-    api.purchaseOrders(q ? `?${q}` : '').then(setList).catch(handleErr);
-  }, [filter, handleErr]);
+    api.purchaseOrders('').then(setList).catch(handleErr);
+  }, [handleErr]);
 
   useEffect(() => {
     api.suppliers('?active=true').then(setSuppliers).catch(() => {});
@@ -53,69 +43,56 @@ export default function AdminPurchaseOrders({ onAuthError, currentAdmin }) {
     catch (e) { handleErr(e); }
   }
 
-  if (!list) return <Page title="הזמנות רכש"><p>טוען...</p></Page>;
+  const columns = [
+    {
+      key: 'po_number',
+      label: 'מס׳',
+      type: 'text',
+      className: 'font-medium',
+      render: (po) => (
+        <Link to={`/admin/purchase-orders/${po.id}`} className="text-brand-burgundy hover:underline">{po.po_number}</Link>
+      ),
+    },
+    {
+      key: 'supplier',
+      label: 'ספק',
+      type: 'enum',
+      value: (po) => po.supplier_id || '',
+      options: suppliers.map((s) => ({ value: s.id, label: s.name })),
+      render: (po) => po.supplier?.name || '—',
+    },
+    {
+      key: 'status',
+      label: 'סטטוס',
+      type: 'enum',
+      map: PO_STATUS,
+      render: (po) => <Badge map={PO_STATUS} value={po.status} />,
+    },
+    { key: 'expected_delivery_date', label: 'אספקה צפויה', type: 'date', dir: 'ltr', render: (po) => po.expected_delivery_date || '—' },
+    { key: 'estimated_amount', label: 'משוער (לפני מע"מ)', type: 'number', dir: 'ltr', render: (po) => (po.estimated_amount != null ? `₪${po.estimated_amount}` : '—') },
+    { key: 'actual_amount', label: 'בפועל (לפני מע"מ)', type: 'number', dir: 'ltr', render: (po) => (po.actual_amount != null ? `₪${po.actual_amount}` : '—') },
+    { key: 'created_at', label: 'נוצרה', type: 'date', dir: 'ltr', className: 'text-brand-burgundy/60', render: (po) => new Date(po.created_at).toLocaleDateString('he-IL') },
+  ];
 
   return (
     <Page title="הזמנות רכש" subtitle="יצירת הזמנות לספקים, קבלת סחורה למלאי ותשלום">
-      <div className="flex flex-wrap items-end gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <button onClick={() => setCreating(true)} className="btn-primary">+ הזמנת רכש חדשה</button>
-        <Field label="ספק">
-          <select value={filter.supplier_id} onChange={(e) => setFilter((f) => ({ ...f, supplier_id: e.target.value }))} className={inputCls}>
-            <option value="">— כל הספקים —</option>
-            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </Field>
-        <Field label="סטטוס">
-          <select value={filter.status} onChange={(e) => setFilter((f) => ({ ...f, status: e.target.value }))} className={inputCls}>
-            {STATUS_FILTERS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-        </Field>
-        <Link to="/admin/suppliers" className="btn-ghost pb-2">→ ניהול ספקים</Link>
+        <Link to="/admin/suppliers" className="btn-ghost">→ ניהול ספקים</Link>
       </div>
 
       {creating && (
         <CreatePurchaseOrder suppliers={suppliers} onCreated={onCreated} onCancel={() => setCreating(false)} onErr={handleErr} />
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
-          <thead className="bg-brand-burgundy text-brand-cream text-sm">
-            <tr>
-              <th className="p-3 text-right">מס׳</th>
-              <th className="p-3 text-right">ספק</th>
-              <th className="p-3 text-right">סטטוס</th>
-              <th className="p-3 text-right">אספקה צפויה</th>
-              <th className="p-3 text-right">משוער</th>
-              <th className="p-3 text-right">בפועל</th>
-              <th className="p-3 text-right">נוצרה</th>
-              {canDelete && <th className="p-3 text-right"></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((po) => (
-              <tr key={po.id} className="border-b border-brand-cream-dark hover:bg-brand-cream/30 cursor-pointer">
-                <td className="p-3 font-medium">
-                  <Link to={`/admin/purchase-orders/${po.id}`} className="text-brand-burgundy hover:underline">{po.po_number}</Link>
-                </td>
-                <td className="p-3 text-sm">{po.supplier?.name || '—'}</td>
-                <td className="p-3 text-sm"><Badge map={PO_STATUS} value={po.status} /></td>
-                <td className="p-3 text-sm" dir="ltr">{po.expected_delivery_date || '—'}</td>
-                <td className="p-3 text-sm" dir="ltr">{po.estimated_amount != null ? `₪${po.estimated_amount}` : '—'}</td>
-                <td className="p-3 text-sm" dir="ltr">{po.actual_amount != null ? `₪${po.actual_amount}` : '—'}</td>
-                <td className="p-3 text-sm text-brand-burgundy/60" dir="ltr">{new Date(po.created_at).toLocaleDateString('he-IL')}</td>
-                {canDelete && (
-                  <td className="p-3 text-sm" onClick={(e) => e.stopPropagation()}>
-                    <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deletePurchaseOrder(po)} />
-                  </td>
-                )}
-              </tr>
-            ))}
-            {list.length === 0 && (
-              <tr><td colSpan={canDelete ? 8 : 7} className="p-6 text-center text-brand-burgundy/50">אין הזמנות רכש.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={list}
+        empty="אין הזמנות רכש."
+        actions={canDelete ? (po) => (
+          <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deletePurchaseOrder(po)} />
+        ) : undefined}
+      />
     </Page>
   );
 }
@@ -134,13 +111,16 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
   useEffect(() => { api.invItems('?active=true').then(setAllItems).catch(onErr); }, [onErr]);
 
   // כשבוחרים ספק — טוענים מחיר קנייה אחרון פר מוצר לספק (לברירת מחדל של מחיר משוער)
-  const [supplierPrices, setSupplierPrices] = useState({}); // item_id -> price
+  // וגם את ברירת המחדל של המתג "לפני/כולל מע"מ" של הספק.
+  const [supplierPrices, setSupplierPrices] = useState({}); // item_id -> price (בסיס)
+  const [supplierIncludesVat, setSupplierIncludesVat] = useState(false);
   useEffect(() => {
-    if (!supplierId) { setSupplierPrices({}); return; }
+    if (!supplierId) { setSupplierPrices({}); setSupplierIncludesVat(false); return; }
     api.supplier(supplierId).then((d) => {
       const map = {};
       for (const it of d.items || []) if (it.last_purchase_price != null) map[it.item_id] = it.last_purchase_price;
       setSupplierPrices(map);
+      setSupplierIncludesVat(d.supplier?.default_price_includes_vat || false);
     }).catch(() => {});
   }, [supplierId]);
 
@@ -157,9 +137,15 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
     setLine(idx, patch);
   }
 
+  // סה"כ כולל מע"מ: מחשבים פר-שורה כי כל פריט יכול להיות חייב או פטור בנפרד.
+  // estimated_price מאוחסן כמחיר בסיס (לפני מע"מ) → מוסיפים מע"מ אלא אם הפריט פטור.
   const total = lines.reduce((sum, l) => {
-    const q = Number(l.quantity), p = Number(l.estimated_price);
-    return sum + (Number.isFinite(q) && Number.isFinite(p) ? q * p : 0);
+    const q = Number(l.quantity);
+    const base = Number(l.estimated_price);
+    if (!Number.isFinite(q) || !Number.isFinite(base) || l.estimated_price === '') return sum;
+    const item = allItems?.find((i) => i.id === l.inventory_item_id);
+    const withVatPrice = withVat(base, { exempt: item?.vat_exempt || false });
+    return sum + q * (withVatPrice ?? base);
   }, 0);
 
   async function submit(e) {
@@ -208,6 +194,7 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
             <div className="hidden sm:grid grid-cols-12 gap-2 text-xs text-brand-burgundy/50 px-1">
               <div className="col-span-6">מוצר</div><div className="col-span-2">כמות</div><div className="col-span-3">מחיר משוער ליח׳</div><div className="col-span-1"></div>
             </div>
+            <p className="text-xs text-brand-burgundy/50 px-1">הזינו את המחיר כפי שמופיע בחשבונית הספק; המתג "לפני/כולל מע"מ" קובע את הפרשנות. הערך נשמר תמיד כמחיר לפני מע"מ.</p>
             {lines.map((l, idx) => {
               const item = allItems.find((i) => i.id === l.inventory_item_id);
               return (
@@ -220,8 +207,16 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
                   </select>
                   <input type="number" step="any" min="0" placeholder="כמות" value={l.quantity}
                     onChange={(e) => setLine(idx, { quantity: e.target.value })} className={`${inputCls} col-span-5 sm:col-span-2`} dir="ltr" />
-                  <input type="number" step="any" min="0" placeholder="מחיר" value={l.estimated_price}
-                    onChange={(e) => setLine(idx, { estimated_price: e.target.value })} className={`${inputCls} col-span-5 sm:col-span-3`} dir="ltr" />
+                  <div className="col-span-5 sm:col-span-3">
+                    <PriceInput
+                      value={l.estimated_price}
+                      onChange={(base) => setLine(idx, { estimated_price: base ?? '' })}
+                      exempt={item?.vat_exempt || false}
+                      defaultIncludesVat={supplierIncludesVat}
+                      className={inputCls}
+                      placeholder="מחיר"
+                    />
+                  </div>
                   <button type="button" onClick={() => removeLine(idx)} className="col-span-2 sm:col-span-1 text-red-600 hover:underline text-sm">הסר</button>
                   {item && <div className="col-span-12 sm:hidden text-xs text-brand-burgundy/50">יחידה: {item.unit}</div>}
                 </div>
@@ -237,7 +232,7 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
       </Field>
 
       <div className="flex items-center justify-between border-t border-brand-cream-dark pt-3">
-        <div className="font-semibold text-brand-burgundy">מחיר משוער כולל: ₪{total.toFixed(2)}</div>
+        <div className="font-semibold text-brand-burgundy">מחיר משוער כולל (כולל מע"מ): ₪{total.toFixed(2)}</div>
         <div className="flex gap-2">
           <button type="submit" disabled={busy} className="btn-primary disabled:opacity-50">{busy ? 'יוצר...' : 'יצירת הזמנה'}</button>
           <button type="button" onClick={onCancel} className="btn-ghost">ביטול</button>

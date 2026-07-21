@@ -5,7 +5,7 @@ import { asyncHandler, fail } from '../lib/helpers.js';
 import { buildOrderItems } from '../services/orderItems.js';
 import { normalizePhone, isValidPhone } from '../lib/helpers.js';
 import { hashPassword, requireRole } from '../lib/auth.js';
-import { sendTemplateEmail, orderVars } from '../services/email.js';
+import { sendTemplateEmail, orderVars, registrationVars } from '../services/email.js';
 import { createAdminNotification } from '../services/adminNotifications.js';
 
 const router = Router();
@@ -1057,7 +1057,9 @@ router.post('/registrations/:id/approve', asyncHandler(async (req, res) => {
       })
       .eq('id', req.params.id);
     await markEntityNotificationsRead('customer_registration_requests', req.params.id);
-    return res.json({ ok: true, customer: existing });
+    res.json({ ok: true, customer: existing });
+    sendRegistrationReply('registration_approved', reqRow);
+    return;
   }
 
   const { data: customer, error: cErr } = await supabase.from('customers').insert({
@@ -1081,7 +1083,19 @@ router.post('/registrations/:id/approve', asyncHandler(async (req, res) => {
 
   await markEntityNotificationsRead('customer_registration_requests', req.params.id);
   res.json({ ok: true, customer });
+  sendRegistrationReply('registration_approved', reqRow);
 }));
+
+// מייל חוזר ללקוח על החלטת המנהל בבקשת הרישום (אישור/דחייה, סעיף 18).
+// ברקע ואחרי התשובה — תופעת-לוואי שלא מעכבת את המנהל ולא מפילה את הבקשה.
+// אם ללקוח אין מייל, sendTemplateEmail מדלג בשקט.
+function sendRegistrationReply(code, reqRow, reason = '') {
+  sendTemplateEmail({
+    code,
+    to: reqRow.email,
+    vars: registrationVars({ registration: reqRow, reason }),
+  }).catch((e) => console.warn(`registration reply email (${code}) failed:`, e.message));
+}
 
 // POST /api/admin/registrations/:id/reject — דחיית רישום -> יוצר/מעדכן לקוח חסום עם סיבה
 router.post('/registrations/:id/reject', asyncHandler(async (req, res) => {
@@ -1137,6 +1151,7 @@ router.post('/registrations/:id/reject', asyncHandler(async (req, res) => {
 
   await markEntityNotificationsRead('customer_registration_requests', req.params.id);
   res.json({ ok: true, customer });
+  sendRegistrationReply('registration_rejected', reqRow, reason);
 }));
 
 // DELETE /api/admin/registrations/:id -- developer hard delete.

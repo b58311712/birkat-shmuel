@@ -3,6 +3,8 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { Badge, PO_STATUS, SUPPLIER_PAYMENT_STATUS, SUPPLIER_CHANNEL } from '../lib/status.jsx';
+import PriceInput from '../components/PriceInput.jsx';
+import { formatWithVat } from '../lib/vat.js';
 
 // פירוט הזמנת רכש (סעיף 27.2): שורות, קבלת סחורה למלאי (27.3) ותשלום לספק (28.1).
 
@@ -77,8 +79,8 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
               <Info label="תאריך יצירה" value={new Date(po.created_at).toLocaleDateString('he-IL')} ltr />
               <Info label="אספקה צפויה" value={po.expected_delivery_date} ltr />
               <Info label="נוצר ע״י" value={po.creator?.full_name} />
-              <Info label="מחיר משוער" value={po.estimated_amount != null ? `₪${po.estimated_amount}` : null} ltr />
-              <Info label="מחיר בפועל" value={po.actual_amount != null ? `₪${po.actual_amount}` : null} ltr />
+              <Info label='מחיר משוער (לפני מע"מ)' value={po.estimated_amount != null ? `₪${po.estimated_amount}` : null} ltr />
+              <Info label='מחיר בפועל (לפני מע"מ)' value={po.actual_amount != null ? `₪${po.actual_amount}` : null} ltr />
             </div>
             {po.notes && <div className="text-sm text-brand-burgundy/70 border-t border-brand-cream-dark pt-2">הערות: {po.notes}</div>}
           </div>
@@ -93,8 +95,8 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
                     <th className="p-2 text-right">מוצר</th>
                     <th className="p-2 text-right">הוזמן</th>
                     <th className="p-2 text-right">התקבל</th>
-                    <th className="p-2 text-right">מחיר משוער</th>
-                    <th className="p-2 text-right">מחיר בפועל</th>
+                    <th className="p-2 text-right">מחיר משוער (כולל מע"מ)</th>
+                    <th className="p-2 text-right">מחיר בפועל (כולל מע"מ)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -108,8 +110,8 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
                         <td className={`p-2 font-medium ${full ? 'text-green-700' : partial ? 'text-amber-700' : 'text-brand-burgundy/50'}`} dir="ltr">
                           {fmt(l.quantity_received)}
                         </td>
-                        <td className="p-2" dir="ltr">{l.estimated_price != null ? `₪${l.estimated_price}` : '—'}</td>
-                        <td className="p-2" dir="ltr">{l.actual_price != null ? `₪${l.actual_price}` : '—'}</td>
+                        <td className="p-2" dir="ltr">{formatWithVat(l.estimated_price, { exempt: l.item?.vat_exempt })}</td>
+                        <td className="p-2" dir="ltr">{formatWithVat(l.actual_price, { exempt: l.item?.vat_exempt })}</td>
                       </tr>
                     );
                   })}
@@ -119,7 +121,7 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
           </div>
 
           {mode === 'receive' && (
-            <ReceivePanel lines={lines} onCancel={() => setMode(null)} onDone={() => { setMode(null); load(); }} poId={id} onErr={handleErr} />
+            <ReceivePanel lines={lines} supplierIncludesVat={po.supplier?.default_price_includes_vat || false} onCancel={() => setMode(null)} onDone={() => { setMode(null); load(); }} poId={id} onErr={handleErr} />
           )}
           {mode === 'payment' && (
             <PaymentPanel po={po} payment={payment} onCancel={() => setMode(null)} onDone={() => { setMode(null); load(); }} onErr={handleErr} />
@@ -181,15 +183,17 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
 // quantity_received בכל שורה = הכמות המצטברת הכוללת שהתקבלה (כולל קודמות).
 // ברירת מחדל: מלוא הכמות שהוזמנה.
 // ---------------------------------------------------------------------------
-function ReceivePanel({ lines, poId, onCancel, onDone, onErr }) {
+function ReceivePanel({ lines, supplierIncludesVat, poId, onCancel, onDone, onErr }) {
   const [rows, setRows] = useState(() =>
     lines.map((l) => ({
       line_id: l.id,
       name: l.item?.name,
       unit: l.item?.unit,
+      vat_exempt: l.item?.vat_exempt || false,
       ordered: Number(l.quantity),
       alreadyReceived: Number(l.quantity_received),
       quantity_received: Number(l.quantity), // ברירת מחדל: התקבל הכל
+      // מחיר בפועל מאוחסן כמחיר בסיס (לפני מע"מ); ברירת מחדל מהמשוער/בפועל הקודם
       actual_price: l.actual_price ?? l.estimated_price ?? '',
     })));
   const [busy, setBusy] = useState(false);
@@ -225,7 +229,7 @@ function ReceivePanel({ lines, poId, onCancel, onDone, onErr }) {
               <th className="p-2 text-right">הוזמן</th>
               <th className="p-2 text-right">כבר נקלט</th>
               <th className="p-2 text-right">התקבל בסה״כ</th>
-              <th className="p-2 text-right">מחיר בפועל ליח׳</th>
+              <th className="p-2 text-right">מחיר בפועל ליח׳ (מהחשבונית)</th>
             </tr>
           </thead>
           <tbody>
@@ -240,9 +244,16 @@ function ReceivePanel({ lines, poId, onCancel, onDone, onErr }) {
                     className={`${inputCls} w-24`} dir="ltr" />
                 </td>
                 <td className="p-2">
-                  <input type="number" step="any" min="0" value={r.actual_price} placeholder="₪"
-                    onChange={(e) => setRow(idx, { actual_price: e.target.value })}
-                    className={`${inputCls} w-24`} dir="ltr" />
+                  <div className="w-40">
+                    <PriceInput
+                      value={r.actual_price}
+                      onChange={(base) => setRow(idx, { actual_price: base ?? '' })}
+                      exempt={r.vat_exempt}
+                      defaultIncludesVat={supplierIncludesVat}
+                      className={`${inputCls} w-full`}
+                      placeholder="₪"
+                    />
+                  </div>
                 </td>
               </tr>
             ))}
@@ -309,7 +320,7 @@ function PaymentPanel({ po, payment, onCancel, onDone, onErr }) {
         <Field label="מספר חשבונית / קבלה">
           <input value={f.invoice_number} onChange={(e) => set('invoice_number', e.target.value)} className={inputCls} />
         </Field>
-        <Field label="סכום חשבונית (₪)">
+        <Field label="סכום חשבונית (₪, כפי שמופיע בחשבונית)">
           <input type="number" step="any" value={f.invoice_amount} onChange={(e) => set('invoice_amount', e.target.value)} className={inputCls} dir="ltr" />
         </Field>
         <Field label="סכום ששולם (₪)">

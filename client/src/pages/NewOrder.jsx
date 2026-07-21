@@ -5,6 +5,7 @@ import { Page } from '../components/Layout.jsx';
 import { MealCategoryPicker } from '../components/MealCategoryPicker.jsx';
 import { formatGregorianDate, formatShabbatHebrewDate, formatShabbatTitle } from '../lib/dates.js';
 import { slotComboKey } from '../lib/pricing.js';
+import { splitPercentsFor } from '../lib/splitPercents.js';
 import { PAYMENT_METHOD } from '../lib/status.jsx';
 
 // טווח מנות סטנדרטי. כמות מחוץ לטווח מותרת כ"בקשת חריג" הממתינה לאישור מנהל (סעיף 12.2).
@@ -63,6 +64,37 @@ export default function NewOrder({ customer }) {
     () => shabbatot.find((s) => s.id === shabbatId),
     [shabbatId, shabbatot]
   );
+
+  // מזהי המאכלים שנבחרו בכל הסעודות (מפתח הבחירה הוא `slotId:mealId`).
+  const selectedMealIds = useMemo(
+    () => new Set(Object.keys(meals).map((key) => key.split(':')[1])),
+    [meals]
+  );
+
+  // תוספות שמותנות בהזמנת מאכל מסוים (סעיף 14) מוצגות רק כשנבחר לפחות
+  // אחד מהמאכלים המקושרים. תוספת בלי קישור מוצגת תמיד.
+  const visibleExtras = useMemo(() => {
+    if (!catalog) return [];
+    return catalog.extras.filter((e) => {
+      const required = e.required_meal_ids || [];
+      return required.length === 0 || required.some((id) => selectedMealIds.has(id));
+    });
+  }, [catalog, selectedMealIds]);
+
+  // המאכל שהתנה תוספת בוטל -> מנקים את הכמות שהוזנה לה, כדי שלא תיחשב במחיר ובהזמנה.
+  useEffect(() => {
+    if (!catalog) return;
+    const visibleIds = new Set(visibleExtras.map((e) => e.id));
+    setExtras((prev) => {
+      const next = {};
+      let changed = false;
+      for (const [id, qty] of Object.entries(prev)) {
+        if (visibleIds.has(id)) next[id] = qty;
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [catalog, visibleExtras]);
 
   const priceEstimate = useMemo(() => {
     if (!catalog) return { base: 0, extras: 0, total: 0, noMatch: false };
@@ -162,7 +194,7 @@ export default function NewOrder({ customer }) {
     return {
       slots: selectedSlots.map(({ meal_slot_id, portions }) => {
         const slot = catalog.meal_slots.find((s) => s.id === meal_slot_id);
-        // כמה מאכלים נבחרו בכל קטגוריה בסעודה זו — לחישוב "דג יחיד → 100%" ב-additive.
+        // כמה מאכלים נבחרו בכל קטגוריה בסעודה זו — לחישוב "מאכל יחיד → 100%" ב-additive.
         const countByCategory = {};
         for (const key of Object.keys(meals)) {
           if (!key.startsWith(`${meal_slot_id}:`)) continue;
@@ -180,11 +212,10 @@ export default function NewOrder({ customer }) {
             let mealPortions = typeof value === 'number' ? value : null;
             if (mode === 'additive' && meal) {
               if ((countByCategory[meal.category_id] || 0) < 2) {
-                mealPortions = portions;                               // דג יחיד → 100%
+                mealPortions = portions;                               // מאכל יחיד → 100%
               } else {
-                const pct = meal.is_secondary
-                  ? Number(category?.secondary_percent ?? 50)
-                  : Number(category?.primary_percent ?? 80);
+                const pcts = splitPercentsFor(category, meal_slot_id);
+                const pct = meal.is_secondary ? pcts.secondary : pcts.primary;
                 mealPortions = Math.ceil((portions * pct) / 100);
               }
             }
@@ -243,7 +274,7 @@ export default function NewOrder({ customer }) {
 
   // ולידציה לקטגוריות מחלקות:
   //   equal    — בכל קבוצה עם 2+ מאכלים, סך הכמויות = מנות הסעודה.
-  //   additive — לכל היותר דג עיקרי אחד (לא-משני) בקבוצה.
+  //   additive — לכל היותר מאכל עיקרי אחד (לא-משני) בקבוצה.
   const splitErrors = useMemo(() => {
     if (!catalog) return [];
     const portionsBySlot = Object.fromEntries(selectedSlots.map((s) => [s.meal_slot_id, s.portions]));
@@ -268,7 +299,7 @@ export default function NewOrder({ customer }) {
       const label = `${slot?.name || 'סעודה'} · ${cat?.name || 'קטגוריה'}`;
       if (g.mode === 'additive') {
         if (g.primaryCount > 1) {
-          errs.push(`${label}: ניתן לבחור רק דג עיקרי אחד (הדג הנוסף חייב להיות מסומן כדג משני/זול).`);
+          errs.push(`${label}: ניתן לבחור רק מאכל עיקרי אחד (המאכל הנוסף חייב להיות מסומן כמאכל משני).`);
         }
         continue;
       }
@@ -470,8 +501,13 @@ export default function NewOrder({ customer }) {
         <>
           <section className="card mb-5">
             <h2 className="font-bold text-brand-burgundy mb-3">4. תוספות בתשלום</h2>
+            {visibleExtras.length === 0 && (
+              <p className="text-sm text-brand-burgundy/60">
+                אין תוספות זמינות לבחירת המאכלים הנוכחית.
+              </p>
+            )}
             <div className="space-y-2">
-              {catalog.extras.map((e) => (
+              {visibleExtras.map((e) => (
                 <div key={e.id} className="flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-brand-cream/40">
                   <div>
                     <span className="font-medium">{e.name}</span>

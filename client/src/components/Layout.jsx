@@ -102,7 +102,7 @@ export function Header({ customer, onLogout, admin, onAdminLogout }) {
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-brand-cream-dark bg-white/95 text-brand-burgundy-dark shadow-card backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-surface-line bg-white/95 text-ink backdrop-blur">
       <div ref={navRef} className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <Link to={isAdmin ? '/admin' : '/'} className="flex min-w-0 shrink-0 items-center gap-3">
           <img src="/logo.png" alt="מטבח החסד" className="h-14 w-14 object-contain" />
@@ -188,13 +188,13 @@ export function AdminAccountMenu({ admin, open, onToggle, onLogout }) {
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        className={`h-10 rounded-lg border px-3 transition-colors inline-flex items-center gap-2 ${
+        className={`h-9 rounded-lg border px-2.5 transition-colors inline-flex items-center gap-2 ${
           open
-            ? 'border-brand-gold bg-brand-gold/15 text-brand-burgundy-dark'
-            : 'border-transparent text-brand-burgundy/75 hover:border-brand-cream-dark hover:bg-brand-cream'
+            ? 'border-surface-line-strong bg-surface-canvas text-ink'
+            : 'border-transparent text-surface-body hover:border-surface-line hover:bg-surface-canvas'
         }`}
       >
-        <span className="h-7 w-7 rounded-lg bg-brand-cream flex items-center justify-center text-brand-burgundy">
+        <span className="h-7 w-7 rounded-full bg-[#F7EEF1] p-1 flex items-center justify-center text-brand-burgundy">
           <UserIcon />
         </span>
         <span className="max-w-32 truncate text-sm font-semibold">{displayName}</span>
@@ -202,16 +202,16 @@ export function AdminAccountMenu({ admin, open, onToggle, onLogout }) {
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-2 min-w-48 rounded-lg border border-brand-cream-dark bg-white py-2 text-brand-burgundy-dark shadow-card">
-          <div className="px-4 pb-2 pt-1 border-b border-brand-cream-dark">
+        <div className="absolute left-0 top-full z-30 mt-2 min-w-48 rounded-xl border border-surface-line bg-white py-2 text-ink shadow-menu">
+          <div className="px-4 pb-2 pt-1 border-b border-surface-line">
             <div className="text-sm font-bold truncate">{displayName}</div>
-            {admin.role && <div className="text-xs text-brand-burgundy/55">{admin.role}</div>}
+            {admin.role && <div className="text-xs text-surface-muted">{admin.role}</div>}
           </div>
           {onLogout && (
             <button
               type="button"
               onClick={onLogout}
-              className="w-full px-4 py-2 text-right text-sm font-medium transition-colors hover:bg-brand-cream"
+              className="w-full px-4 py-2 text-right text-sm font-medium transition-colors hover:bg-surface-canvas"
             >
               יציאה
             </button>
@@ -240,32 +240,32 @@ export function AdminNotificationsBell({ notifications, open, onToggle, onClose,
         onClick={onToggle}
         aria-label="התראות"
         aria-expanded={open}
-        className={`relative h-10 w-10 rounded-lg border transition-colors flex items-center justify-center ${
+        className={`relative h-9 w-9 rounded-lg border transition-colors flex items-center justify-center ${
           open
-            ? 'border-brand-gold bg-brand-gold/15 text-brand-burgundy-dark'
-            : 'border-transparent text-brand-burgundy/75 hover:border-brand-cream-dark hover:bg-brand-cream'
+            ? 'border-surface-line-strong bg-surface-canvas text-ink'
+            : 'border-transparent text-surface-body hover:border-surface-line hover:bg-surface-canvas'
         }`}
       >
         <BellIcon />
         {hasNotifications && (
-          <span className="absolute -left-1 -top-1 min-w-5 h-5 px-1 rounded-full bg-red-600 text-white text-[11px] font-extrabold leading-5 ring-2 ring-brand-burgundy text-center">
+          <span className="absolute -left-1 -top-1 min-w-5 h-5 px-1 rounded-full bg-red-600 text-white text-[11px] font-bold leading-5 ring-2 ring-white text-center tabular-nums">
             {total > 99 ? '99+' : total}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-brand-cream-dark bg-white py-2 text-brand-burgundy-dark shadow-card">
-          <div className="px-4 pb-2 pt-1 border-b border-brand-cream-dark">
+        <div className="absolute left-0 top-full z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-surface-line bg-white py-2 text-ink shadow-menu">
+          <div className="px-4 pb-2 pt-1 border-b border-surface-line">
             <div className="font-bold">התראות</div>
-            <div className="text-xs text-brand-burgundy/60">
+            <div className="text-xs text-surface-muted">
               {hasNotifications ? `${total} פריטים ממתינים לטיפול` : 'אין כרגע התראות חדשות'}
             </div>
           </div>
 
           <div className="py-1">
             {items.length === 0 ? (
-              <div className="px-4 py-5 text-sm text-brand-burgundy/60 text-center">
+              <div className="px-4 py-5 text-sm text-surface-muted text-center">
                 אין התראות חדשות.
               </div>
             ) : items.map((item) => (
@@ -273,11 +273,11 @@ export function AdminNotificationsBell({ notifications, open, onToggle, onClose,
                 key={item.id}
                 to={item.link_path}
                 onClick={() => openNotification(item)}
-                className="block px-4 py-3 text-sm transition-colors hover:bg-brand-cream"
+                className="block px-4 py-3 text-sm transition-colors hover:bg-surface-canvas"
               >
                 <div className="font-bold leading-snug">{item.title}</div>
-                {item.body && <div className="text-xs text-brand-burgundy/65 mt-0.5">{item.body}</div>}
-                <div className="text-[11px] text-brand-burgundy/45 mt-1" dir="ltr">{formatNotificationTime(item.created_at)}</div>
+                {item.body && <div className="text-xs text-surface-muted mt-0.5">{item.body}</div>}
+                <div className="text-[11px] text-surface-muted/80 mt-1" dir="ltr">{formatNotificationTime(item.created_at)}</div>
               </Link>
             ))}
           </div>
@@ -326,8 +326,8 @@ function NavLink({ to, label, exact = false, onClick }) {
       onClick={onClick}
       className={`px-3 py-2 rounded-lg border text-sm font-semibold transition-colors whitespace-nowrap ${
         active
-          ? 'border-brand-gold bg-brand-gold/15 text-brand-burgundy-dark'
-          : 'border-transparent text-brand-burgundy/70 hover:border-brand-cream-dark hover:bg-brand-cream hover:text-brand-burgundy-dark'
+          ? 'border-transparent bg-[#F7EEF1] text-brand-burgundy'
+          : 'border-transparent text-surface-body hover:bg-surface-canvas hover:text-ink'
       }`}
     >
       {label}
@@ -347,8 +347,8 @@ function NavMenu({ label, items, open, onToggle, onClose }) {
         aria-expanded={open}
         className={`px-3 py-2 rounded-lg border text-sm font-semibold transition-colors whitespace-nowrap inline-flex items-center gap-1 ${
           active || open
-            ? 'border-brand-gold bg-brand-gold/15 text-brand-burgundy-dark'
-            : 'border-transparent text-brand-burgundy/70 hover:border-brand-cream-dark hover:bg-brand-cream hover:text-brand-burgundy-dark'
+            ? 'border-transparent bg-[#F7EEF1] text-brand-burgundy'
+            : 'border-transparent text-surface-body hover:bg-surface-canvas hover:text-ink'
         }`}
       >
         <span>{label}</span>
@@ -356,7 +356,7 @@ function NavMenu({ label, items, open, onToggle, onClose }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-2 min-w-44 rounded-lg border border-brand-cream-dark bg-white py-2 text-brand-burgundy-dark shadow-card">
+        <div className="absolute right-0 top-full z-30 mt-2 min-w-44 rounded-xl border border-surface-line bg-white py-2 text-ink shadow-menu">
           {items.map((item) => {
             const itemActive = isRouteActive(loc.pathname, item.to);
 
@@ -366,7 +366,7 @@ function NavMenu({ label, items, open, onToggle, onClose }) {
                 to={item.to}
                 onClick={onClose}
                 className={`block px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
-                  itemActive ? 'bg-brand-cream-dark text-brand-burgundy-dark' : 'hover:bg-brand-cream'
+                  itemActive ? 'bg-[#F7EEF1] text-brand-burgundy' : 'hover:bg-surface-canvas'
                 }`}
               >
                 {item.label}
@@ -389,10 +389,8 @@ export function Page({ title, children, subtitle }) {
     <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
       {title && (
         <div className="mb-6">
-          <h1 className="text-2xl font-extrabold tracking-tight text-brand-burgundy sm:text-3xl">{title}</h1>
-          {/* מבטא-זהב דק מתחת לכותרת — עקבי עם שפת העיצוב של הדשבורד */}
-          <div aria-hidden="true" className="mt-3 h-0.5 w-16 rounded-full bg-gradient-to-l from-brand-gold via-brand-gold-light to-transparent" />
-          {subtitle && <p className="mt-3 max-w-2xl leading-relaxed text-brand-burgundy/70">{subtitle}</p>}
+          <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-[26px]">{title}</h1>
+          {subtitle && <p className="mt-2 max-w-2xl leading-relaxed text-surface-muted">{subtitle}</p>}
         </div>
       )}
       {children}

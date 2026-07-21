@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { asyncHandler, fail } from '../lib/helpers.js';
 import { requireRole } from '../lib/auth.js';
+import { fetchSlotSplitsByCategory, replaceSlotSplits } from '../services/categorySplits.js';
 
 const router = Router();
 
@@ -82,7 +83,7 @@ function normalizeCategory(body, { partial = false } = {}) {
   if (patch.recommended_min != null && patch.max_allowed != null && patch.recommended_min > patch.max_allowed) {
     return { error: 'המינימום המומלץ לא יכול להיות גדול מהמקסימום המותר.' };
   }
-  for (const [field, label] of [['primary_percent', 'אחוז הדג העיקרי'], ['secondary_percent', 'אחוז הדג המשני']]) {
+  for (const [field, label] of [['primary_percent', 'אחוז המאכל העיקרי'], ['secondary_percent', 'אחוז המאכל המשני']]) {
     if (patch[field] != null && (patch[field] < 1 || patch[field] > 100)) {
       return { error: `${label} חייב להיות בין 1 ל-100.` };
     }
@@ -208,7 +209,22 @@ function normalizePriceTrack(body, { partial = false } = {}) {
   return { patch };
 }
 
-function normalizeRecipeLines(body) {
+// פותר unit_id: מעדיף id מפורש; אחרת פותר משם-יחידה (טקסט) — מוצא קיים
+// (case-insensitive) או יוצר יחידה. תאימות-לאחור לשורות ששולחות רק unit טקסט.
+async function resolveUnitId(unitId, unitText) {
+  if (unitId) return unitId;
+  const name = String(unitText || '').trim();
+  if (!name) return null;
+  const { data: existing } = await supabase
+    .from('units').select('id').ilike('name', name).maybeSingle();
+  if (existing) return existing.id;
+  const { data: created, error } = await supabase
+    .from('units').insert({ name, kind: 'other' }).select('id').single();
+  if (error) throw error;
+  return created.id;
+}
+
+async function normalizeRecipeLines(body) {
   const portions = num(body.recipe_portions, 1);
   if (portions === null || portions <= 0) return { error: 'מספר המנות במתכון חייב להיות גדול מאפס.' };
 
@@ -221,16 +237,20 @@ function normalizeRecipeLines(body) {
     const quantityForRecipe = num(raw.quantity_for_recipe ?? raw.quantity);
 
     if (!ingredientName && raw.inventory_item_id) return { error: 'יש להזין שם רכיב לכל שורת מתכון.' };
-    if (!ingredientName && quantityForRecipe == null && !unit) continue;
+    if (!ingredientName && quantityForRecipe == null && !unit && !raw.unit_id) continue;
     if (!ingredientName) return { error: 'יש להזין שם רכיב לכל שורת מתכון.' };
     if (quantityForRecipe === null || quantityForRecipe <= 0) return { error: `הכמות עבור ${ingredientName} חייבת להיות גדולה מאפס.` };
-    if (!unit) return { error: `יש להזין יחידת מידה עבור ${ingredientName}.` };
+
+    // יחידת המתכון: unit_id מפורש או פתרון משם-יחידה (תאימות). הטריגר ב-DB
+    // ממלא את עמודת unit הטקסטואלית מ-unit_id, אז שולחים רק unit_id.
+    const unitId = await resolveUnitId(raw.unit_id, unit);
+    if (!unitId) return { error: `יש להזין יחידת מידה עבור ${ingredientName}.` };
 
     rows.push({
       inventory_item_id: raw.inventory_item_id || null,
       ingredient_name: ingredientName,
       quantity_per_portion: Number((quantityForRecipe / portions).toFixed(4)),
-      unit,
+      unit_id: unitId,
       notes: raw.notes ? String(raw.notes).trim() : null,
     });
   }
@@ -270,15 +290,22 @@ async function categoriesWithSlots(data) {
   const ids = (data || []).map((c) => c.id);
   if (ids.length === 0) return data || [];
 
-  const { data: links, error } = await supabase
-    .from('category_meal_slots')
-    .select('category_id, meal_slot_id')
-    .in('category_id', ids);
+  const [{ data: links, error }, splitsByCategory] = await Promise.all([
+    supabase
+      .from('category_meal_slots')
+      .select('category_id, meal_slot_id')
+      .in('category_id', ids),
+    fetchSlotSplitsByCategory(ids), // דריסות אחוזי החלוקה האוטומטית פר-סעודה
+  ]);
   if (error) throw error;
 
   const byCategory = {};
   for (const row of links || []) (byCategory[row.category_id] ||= []).push(row.meal_slot_id);
-  return data.map((c) => ({ ...c, meal_slot_ids: byCategory[c.id] || [] }));
+  return data.map((c) => ({
+    ...c,
+    meal_slot_ids: byCategory[c.id] || [],
+    slot_splits: splitsByCategory[c.id] || {},
+  }));
 }
 
 async function mealsWithSlots(data) {
@@ -307,6 +334,26 @@ async function replaceCategorySlots(categoryId, slotIds) {
   if (error) throw error;
 }
 
+// דריסות אחוזי חלוקה פר-סעודה. הקלט: { [slotId]: { primary_percent, secondary_percent } }
+// ערך ריק/NULL בשדה = "לפי ברירת המחדל של הקטגוריה"; שורה שכל שדותיה ריקים לא נשמרת.
+// מחזיר { error } כשאחוז מחוץ ל-1..100.
+function normalizeSlotSplits(raw) {
+  const rows = [];
+  for (const [slotId, value] of Object.entries(raw || {})) {
+    if (!slotId || !value) continue;
+    const primary = intOrNull(value.primary_percent);
+    const secondary = intOrNull(value.secondary_percent);
+    for (const [pct, label] of [[primary, 'אחוז המאכל העיקרי'], [secondary, 'אחוז המאכל המשני']]) {
+      if (pct != null && (pct < 1 || pct > 100)) {
+        return { error: `${label} בחלוקה פר-סעודה חייב להיות בין 1 ל-100.` };
+      }
+    }
+    if (primary == null && secondary == null) continue;
+    rows.push({ meal_slot_id: slotId, primary_percent: primary, secondary_percent: secondary });
+  }
+  return { rows };
+}
+
 async function replaceMealSlots(mealId, slotIds) {
   const del = await supabase.from('meal_available_slots').delete().eq('meal_id', mealId);
   if (del.error) throw del.error;
@@ -315,6 +362,33 @@ async function replaceMealSlots(mealId, slotIds) {
   const { error } = await supabase
     .from('meal_available_slots')
     .insert(clean.map((meal_slot_id) => ({ meal_id: mealId, meal_slot_id })));
+  if (error) throw error;
+}
+
+// התניית תוספת במאכלים (סעיף 14): רשימה ריקה = ללא התניה, מוצגת תמיד.
+async function extrasWithRequiredMeals(data) {
+  const ids = (data || []).map((e) => e.id);
+  if (ids.length === 0) return data || [];
+
+  const { data: links, error } = await supabase
+    .from('extra_meal_requirements')
+    .select('extra_id, meal_id')
+    .in('extra_id', ids);
+  if (error) throw error;
+
+  const byExtra = {};
+  for (const row of links || []) (byExtra[row.extra_id] ||= []).push(row.meal_id);
+  return data.map((e) => ({ ...e, required_meal_ids: byExtra[e.id] || [] }));
+}
+
+async function replaceExtraMeals(extraId, mealIds) {
+  const del = await supabase.from('extra_meal_requirements').delete().eq('extra_id', extraId);
+  if (del.error) throw del.error;
+  const clean = [...new Set(Array.isArray(mealIds) ? mealIds.filter(Boolean) : [])];
+  if (!clean.length) return;
+  const { error } = await supabase
+    .from('extra_meal_requirements')
+    .insert(clean.map((meal_id) => ({ extra_id: extraId, meal_id })));
   if (error) throw error;
 }
 
@@ -402,6 +476,8 @@ router.get('/categories', asyncHandler(async (req, res) => {
 router.post('/categories', asyncHandler(async (req, res) => {
   const cleaned = normalizeCategory(req.body || {});
   if (cleaned.error) return fail(res, 400, cleaned.error);
+  const splits = normalizeSlotSplits(req.body?.slot_splits);
+  if (splits.error) return fail(res, 400, splits.error);
 
   const { data, error } = await supabase
     .from('categories')
@@ -411,6 +487,13 @@ router.post('/categories', asyncHandler(async (req, res) => {
   if (error) throw error;
 
   await replaceCategorySlots(data.id, req.body.meal_slot_ids);
+  try {
+    await replaceSlotSplits(data.id, splits.rows);
+  } catch (e) {
+    // מיגרציה 39 טרם הורצה — הקטגוריה נשמרה, רק הדריסות פר-סעודה לא.
+    if (e.userMessage) return fail(res, 400, e.userMessage);
+    throw e;
+  }
   const [category] = await categoriesWithSlots([data]);
   res.json({ ok: true, category });
 }));
@@ -418,6 +501,8 @@ router.post('/categories', asyncHandler(async (req, res) => {
 router.patch('/categories/:id', asyncHandler(async (req, res) => {
   const cleaned = normalizeCategory(req.body || {}, { partial: true });
   if (cleaned.error) return fail(res, 400, cleaned.error);
+  const splits = req.body?.slot_splits !== undefined ? normalizeSlotSplits(req.body.slot_splits) : null;
+  if (splits?.error) return fail(res, 400, splits.error);
 
   let category;
   if (Object.keys(cleaned.patch).length > 0) {
@@ -438,6 +523,15 @@ router.patch('/categories/:id', asyncHandler(async (req, res) => {
   }
 
   if (req.body.meal_slot_ids !== undefined) await replaceCategorySlots(req.params.id, req.body.meal_slot_ids);
+  if (splits) {
+    try {
+      await replaceSlotSplits(req.params.id, splits.rows);
+    } catch (e) {
+      // מיגרציה 39 טרם הורצה — שאר שדות הקטגוריה כבר נשמרו.
+      if (e.userMessage) return fail(res, 400, e.userMessage);
+      throw e;
+    }
+  }
   const [withSlots] = await categoriesWithSlots([category]);
   res.json({ ok: true, category: withSlots });
 }));
@@ -544,7 +638,7 @@ router.get('/meals/:id/recipe', asyncHandler(async (req, res) => {
 
   const { data, error } = await supabase
     .from('recipe_lines')
-    .select('id, meal_id, inventory_item_id, ingredient_name, quantity_per_portion, unit, notes, inventory_item:inventory_item_id (id, name, unit)')
+    .select('id, meal_id, inventory_item_id, ingredient_name, quantity_per_portion, unit, unit_id, notes, unit_ref:unit_id (id, name), inventory_item:inventory_item_id (id, name, unit, unit_id)')
     .eq('meal_id', req.params.id)
     .order('ingredient_name');
   if (error) throw error;
@@ -572,7 +666,7 @@ router.put('/meals/:id/recipe', asyncHandler(async (req, res) => {
   if (mealErr) throw mealErr;
   if (!meal) return fail(res, 404, 'מאכל לא נמצא.');
 
-  const cleaned = normalizeRecipeLines(req.body || {});
+  const cleaned = await normalizeRecipeLines(req.body || {});
   if (cleaned.error) return fail(res, 400, cleaned.error);
 
   // שומרים את מספר המנות המקורי על המאכל כדי שנוכל לשחזר את המתכון השלם בקריאה.
@@ -658,7 +752,7 @@ router.get('/extras', asyncHandler(async (req, res) => {
 
   const { data, error } = await q;
   if (error) throw error;
-  res.json(data);
+  res.json(await extrasWithRequiredMeals(data));
 }));
 
 router.post('/extras', asyncHandler(async (req, res) => {
@@ -671,7 +765,9 @@ router.post('/extras', asyncHandler(async (req, res) => {
     .select(EXTRA_SELECT)
     .single();
   if (error) throw error;
-  res.json({ ok: true, extra: data });
+  await replaceExtraMeals(data.id, req.body.required_meal_ids);
+  const [extra] = await extrasWithRequiredMeals([data]);
+  res.json({ ok: true, extra });
 }));
 
 router.patch('/extras/:id', asyncHandler(async (req, res) => {
@@ -682,7 +778,9 @@ router.patch('/extras/:id', asyncHandler(async (req, res) => {
     const { data, error } = await supabase.from('extras').select(EXTRA_SELECT).eq('id', req.params.id).maybeSingle();
     if (error) throw error;
     if (!data) return fail(res, 404, 'תוספת לא נמצאה.');
-    return res.json({ ok: true, extra: data });
+    if (req.body.required_meal_ids !== undefined) await replaceExtraMeals(req.params.id, req.body.required_meal_ids);
+    const [extra] = await extrasWithRequiredMeals([data]);
+    return res.json({ ok: true, extra });
   }
 
   const { data, error } = await supabase
@@ -693,7 +791,9 @@ router.patch('/extras/:id', asyncHandler(async (req, res) => {
     .maybeSingle();
   if (error) throw error;
   if (!data) return fail(res, 404, 'תוספת לא נמצאה.');
-  res.json({ ok: true, extra: data });
+  if (req.body.required_meal_ids !== undefined) await replaceExtraMeals(req.params.id, req.body.required_meal_ids);
+  const [extra] = await extrasWithRequiredMeals([data]);
+  res.json({ ok: true, extra });
 }));
 
 router.delete('/extras/:id', requireRole('developer'), asyncHandler(async (req, res) => {

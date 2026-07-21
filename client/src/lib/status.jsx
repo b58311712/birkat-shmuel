@@ -81,7 +81,9 @@ export function Badge({ map, value }) {
 
   return (
     <span className={`badge ${isPayment ? 'badge-payment' : ''} ${s.cls}`}>
-      {isPayment && <span className="badge-payment-mark" aria-hidden="true">₪</span>}
+      {isPayment
+        ? <span className="badge-payment-mark" aria-hidden="true">₪</span>
+        : <span className="badge-dot" aria-hidden="true" />}
       {s.label}
     </span>
   );

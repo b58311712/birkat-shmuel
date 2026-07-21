@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { AdminAccountMenu, AdminNotificationsBell, adminMenuGroups } from './Layout.jsx';
+import CommandPalette from './CommandPalette.jsx';
 
 export default function AdminDashboardShell({ admin, onAdminLogout, children }) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifications, setNotifications] = useState(null);
@@ -58,16 +60,32 @@ export default function AdminDashboardShell({ admin, onAdminLogout, children }) 
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [mobileOpen]);
 
-  const displayName = admin?.full_name || admin?.email || 'מנהל';
+  // Ctrl+K / Cmd+K פותח את החיפוש הגלובלי מכל מקום באזור הניהול
+  useEffect(() => {
+    function onKeyDown(event) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setPaletteOpen((value) => !value);
+      }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  // מונים חיים ליד פריטי ניווט - נמשכים מנתוני הדשבורד
+  const navCounts = {
+    '/admin/orders': dashboard?.orders?.pending_approval || 0,
+    '/admin/registrations': dashboard?.registrations?.pending || 0,
+  };
 
   return (
-    <div className="admin-pilot min-h-screen bg-[#f1f2f4] text-[#2b2024]" dir="rtl">
-      <a href="#admin-main-content" className="sr-only focus:not-sr-only focus:fixed focus:right-4 focus:top-4 focus:z-[80] focus:rounded-xl focus:bg-white focus:px-4 focus:py-2 focus:shadow-lg">
+    <div className="admin-pilot min-h-screen bg-surface-canvas text-ink" dir="rtl">
+      <a href="#admin-main-content" className="sr-only focus:not-sr-only focus:fixed focus:right-4 focus:top-4 focus:z-[80] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:shadow-menu">
         דילוג לתוכן
       </a>
 
-      <header className="fixed inset-x-0 top-0 z-50 h-[72px] border-b border-black/[0.06] bg-white/90 backdrop-blur-xl lg:right-[92px]">
-        <div className="flex h-full items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+      <header className="fixed inset-x-0 top-0 z-50 h-[60px] border-b border-surface-line bg-white/95 backdrop-blur-sm lg:right-[236px]">
+        <div className="flex h-full items-center justify-between gap-3 px-4 sm:px-6 lg:px-7">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
@@ -78,20 +96,28 @@ export default function AdminDashboardShell({ admin, onAdminLogout, children }) 
             >
               <MenuIcon />
             </button>
-            <div className="min-w-0">
-              <p className="truncate text-[11px] font-bold tracking-wide text-brand-gold-dark">מרכז הניהול</p>
-              <p className="truncate text-sm font-extrabold text-brand-burgundy sm:text-base">שלום, {displayName}</p>
-            </div>
+            <Breadcrumb pathname={location.pathname} />
           </div>
+
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="flex shrink-0 items-center gap-2 rounded-lg border border-surface-line bg-surface-canvas px-2.5 py-1.5 text-[13px] text-surface-muted transition-colors hover:border-surface-line-strong hover:text-surface-body"
+            aria-label="חיפוש גלובלי (Ctrl+K)"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+            <span className="hidden md:inline">חיפוש</span>
+            <kbd className="hidden rounded border border-surface-line bg-white px-1.5 font-sans text-[10px] font-semibold md:inline" dir="ltr">Ctrl K</kbd>
+          </button>
 
           <NextShabbatSummary dashboard={dashboard} />
 
           <div ref={controlsRef} className="flex items-center gap-1.5 sm:gap-2">
-            <Link to="/admin/orders" className="hidden rounded-xl border border-black/[0.06] bg-white px-4 py-2.5 text-sm font-bold text-brand-burgundy shadow-[0_4px_16px_rgba(42,31,36,0.05)] transition hover:border-brand-gold/40 hover:bg-brand-cream/35 xl:inline-flex">
-              כל ההזמנות
-            </Link>
-            <Link to="/admin/orders?status=pending_approval" className="hidden rounded-xl bg-brand-burgundy px-4 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(92,26,46,0.18)] transition hover:bg-brand-burgundy-light xl:inline-flex">
+            <Link to="/admin/orders?status=pending_approval" className="btn-primary hidden !min-h-[2.25rem] whitespace-nowrap !px-3.5 !text-[13px] xl:inline-flex">
               טיפול בהזמנות
+              {navCounts['/admin/orders'] > 0 && (
+                <span className="rounded bg-white/15 px-1.5 text-[11px] font-bold tabular-nums">{navCounts['/admin/orders']}</span>
+              )}
             </Link>
             <AdminNotificationsBell
               notifications={notifications}
@@ -110,25 +136,62 @@ export default function AdminDashboardShell({ admin, onAdminLogout, children }) 
         </div>
       </header>
 
-      <DesktopSidebar />
+      <DesktopSidebar admin={admin} navCounts={navCounts} />
 
       {mobileOpen && (
         <div className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true" aria-label="תפריט ניווט">
-          <button type="button" className="absolute inset-0 bg-[#2b2024]/35 backdrop-blur-sm" onClick={() => setMobileOpen(false)} aria-label="סגירת התפריט" />
-          <aside className="absolute inset-y-0 right-0 w-[min(86vw,320px)] overflow-y-auto rounded-l-[28px] bg-white p-4 shadow-2xl">
-            <div className="mb-5 flex items-center justify-between">
-              <BrandMark expanded />
+          <button type="button" className="absolute inset-0 bg-ink/35 backdrop-blur-sm" onClick={() => setMobileOpen(false)} aria-label="סגירת התפריט" />
+          <aside className="absolute inset-y-0 right-0 w-[min(86vw,300px)] overflow-y-auto rounded-l-2xl bg-white p-4 shadow-dialog">
+            <div className="mb-4 flex items-center justify-between border-b border-surface-line pb-4">
+              <BrandMark />
               <button type="button" className="pilot-icon-button" onClick={() => setMobileOpen(false)} aria-label="סגירת התפריט"><CloseIcon /></button>
             </div>
-            <MobileNavigation onNavigate={() => setMobileOpen(false)} />
+            <SidebarNavigation navCounts={navCounts} onNavigate={() => setMobileOpen(false)} />
           </aside>
         </div>
       )}
 
-      <div id="admin-main-content" className="pt-[72px] lg:pr-[92px]">
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+
+      <div id="admin-main-content" className="pt-[60px] lg:pr-[236px]">
         {children}
       </div>
     </div>
+  );
+}
+
+/* פירורי לחם: ראשי / קבוצה / מסך נוכחי - נגזרים מתפריט האדמין */
+function Breadcrumb({ pathname }) {
+  let group = null;
+  let label = pathname === '/admin' ? 'דשבורד' : null;
+
+  if (!label) {
+    for (const menuGroup of adminMenuGroups) {
+      const item = menuGroup.items.find((entry) => pathname === entry.to || pathname.startsWith(`${entry.to}/`));
+      if (item) {
+        group = menuGroup.label;
+        label = item.label;
+        break;
+      }
+    }
+  }
+
+  return (
+    <nav aria-label="מיקום במערכת" className="flex min-w-0 items-center gap-1.5 text-[13px]">
+      <Link to="/admin" className="shrink-0 text-surface-muted transition-colors hover:text-brand-burgundy">ראשי</Link>
+      {group && (
+        <>
+          <span aria-hidden="true" className="text-surface-line-strong">/</span>
+          <span className="hidden shrink-0 text-surface-muted sm:inline">{group}</span>
+        </>
+      )}
+      {label && (
+        <>
+          <span aria-hidden="true" className="text-surface-line-strong">/</span>
+          <span className="truncate font-bold text-ink">{label}</span>
+        </>
+      )}
+    </nav>
   );
 }
 
@@ -140,7 +203,7 @@ function NextShabbatSummary({ dashboard }) {
   return (
     <Link
       to={to}
-      className="group hidden min-w-0 items-center gap-2 rounded-xl border border-brand-gold/20 bg-brand-cream/30 px-3 py-2 text-sm transition hover:border-brand-gold/45 hover:bg-brand-cream/50 md:flex"
+      className="group hidden min-w-0 items-center gap-2 rounded-lg border border-brand-gold/25 bg-white px-3 py-1.5 text-[13px] transition-colors hover:border-brand-gold/50 hover:bg-brand-cream/25 md:flex"
       aria-label="השבת הקרובה"
     >
       <span className="shrink-0 text-brand-gold-dark"><CandleIcon /></span>
@@ -148,18 +211,18 @@ function NextShabbatSummary({ dashboard }) {
         <span className="h-4 w-48 animate-pulse rounded bg-brand-gold/10" />
       ) : shabbat ? (
         <span className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-          <strong className="text-brand-burgundy">פרשת {shabbat.parasha}</strong>
-          {hebrewDate && <span className="text-[#756a6e]">{hebrewDate}</span>}
-          {shabbat.gregorian_date && <span className="hidden tabular-nums text-[#91868a] xl:inline" dir="ltr">{shabbat.gregorian_date}</span>}
-          <span className="rounded-lg bg-white/80 px-2 py-0.5 font-bold text-brand-burgundy shadow-sm">
-            <span className="ml-1 tabular-nums text-brand-gold-dark">{dashboard.orders?.next_shabbat ?? 0}</span>
+          <strong className="font-bold text-ink">פרשת {shabbat.parasha}</strong>
+          {hebrewDate && <span className="text-brand-gold-dark">{hebrewDate}</span>}
+          {shabbat.gregorian_date && <span className="hidden tabular-nums text-surface-muted xl:inline" dir="ltr">{shabbat.gregorian_date}</span>}
+          <span className="rounded bg-surface-canvas px-1.5 py-0.5 text-[12px] font-bold text-surface-body">
+            <span className="ml-1 tabular-nums text-brand-burgundy">{dashboard.orders?.next_shabbat ?? 0}</span>
             הזמנות
           </span>
         </span>
       ) : (
-        <strong className="text-brand-burgundy">תיקי שבת</strong>
+        <strong className="font-bold text-ink">תיקי שבת</strong>
       )}
-      <span className="text-brand-gold-dark transition group-hover:-translate-x-0.5" aria-hidden="true">←</span>
+      <span className="text-brand-gold-dark transition-transform group-hover:-translate-x-0.5" aria-hidden="true">←</span>
     </Link>
   );
 }
@@ -196,74 +259,56 @@ function toHebrewNumeral(number) {
   return result.length === 1 ? `${result}׳` : `${result.slice(0, -1)}״${result.slice(-1)}`;
 }
 
-function DesktopSidebar() {
-  const location = useLocation();
+function DesktopSidebar({ admin, navCounts }) {
+  const displayName = admin?.full_name || admin?.email || 'מנהל';
+
   return (
-    <aside className="fixed inset-y-0 right-0 z-[55] hidden w-[92px] flex-col items-center border-l border-black/[0.06] bg-white px-3 py-3 lg:flex">
-      <BrandMark />
-      <nav className="mt-7 flex w-full flex-1 flex-col items-center gap-2 overflow-visible" aria-label="ניווט ראשי">
-        <SideLink to="/admin" label="דשבורד" icon="dashboard" active={location.pathname === '/admin'} />
-        {adminMenuGroups.map((group) => (
-          <DesktopNavGroup key={group.id} group={group} pathname={location.pathname} />
-        ))}
-      </nav>
+    <aside className="fixed inset-y-0 right-0 z-[55] hidden w-[236px] flex-col border-l border-surface-line bg-white lg:flex">
+      <div className="border-b border-surface-line px-4 py-3.5">
+        <BrandMark />
+      </div>
+      <div className="flex-1 overflow-y-auto px-3 py-3">
+        <SidebarNavigation navCounts={navCounts} />
+      </div>
+      <div className="flex items-center gap-2.5 border-t border-surface-line px-4 py-3">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#F7EEF1] text-[13px] font-bold text-brand-burgundy" aria-hidden="true">
+          {displayName.trim().charAt(0)}
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-[13px] font-bold text-ink">{displayName}</span>
+          {admin?.email && <span className="block truncate text-[11px] text-surface-muted" dir="ltr">{admin.email}</span>}
+        </span>
+      </div>
     </aside>
   );
 }
 
-function DesktopNavGroup({ group, pathname }) {
-  const active = group.items.some((item) => pathname === item.to || pathname.startsWith(`${item.to}/`));
-
-  return (
-    <div className="group/nav relative flex w-full justify-center">
-      <button
-        type="button"
-        className={`pilot-side-link ${active ? 'pilot-side-link-active' : ''}`}
-        aria-label={group.label}
-        aria-haspopup="menu"
-      >
-        <NavIcon name={group.id} />
-      </button>
-      <div className="pointer-events-none invisible absolute right-full top-0 z-[70] w-64 pr-3 opacity-0 transition-all duration-150 group-hover/nav:pointer-events-auto group-hover/nav:visible group-hover/nav:opacity-100 group-focus-within/nav:pointer-events-auto group-focus-within/nav:visible group-focus-within/nav:opacity-100">
-        <div className="overflow-hidden rounded-2xl border border-black/[0.07] bg-white p-2 shadow-[0_18px_50px_rgba(42,31,36,0.14)]" role="menu">
-          <div className="border-b border-black/[0.055] px-3 pb-2.5 pt-1.5">
-            <p className="text-xs font-bold text-brand-gold-dark">{group.label}</p>
-          </div>
-          <div className="mt-1 space-y-1">
-            {group.items.map((item) => {
-              const itemActive = pathname === item.to || pathname.startsWith(`${item.to}/`);
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  role="menuitem"
-                  className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition ${itemActive ? 'bg-brand-burgundy text-white' : 'text-[#655a5e] hover:bg-[#f8f6f4] hover:text-brand-burgundy'}`}
-                >
-                  <span>{item.label}</span>
-                  <span aria-hidden="true" className={itemActive ? 'text-brand-gold-light' : 'text-[#b1a8aa]'}>←</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MobileNavigation({ onNavigate }) {
+/* ניווט משותף לסרגל הצד ולמגירה במובייל: תוויות מלאות, קבוצות ומונים */
+function SidebarNavigation({ navCounts, onNavigate }) {
   const location = useLocation();
+
   return (
-    <nav aria-label="ניווט ראשי" className="space-y-5">
-      <div>
-        <p className="mb-2 px-3 text-xs font-bold text-brand-gold-dark">ראשי</p>
-        <MobileLink to="/admin" label="דשבורד" icon="dashboard" onClick={onNavigate} active={location.pathname === '/admin'} />
-      </div>
+    <nav aria-label="ניווט ראשי">
+      <NavItem
+        to="/admin"
+        label="דשבורד"
+        active={location.pathname === '/admin'}
+        onClick={onNavigate}
+      />
       {adminMenuGroups.map((group) => (
         <div key={group.id}>
-          <p className="mb-2 px-3 text-xs font-bold text-brand-gold-dark">{group.label}</p>
-          <div className="space-y-1">
-            {group.items.map((item) => <MobileLink key={item.to} {...item} icon={group.id} onClick={onNavigate} active={location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)} />)}
+          <p className="side-nav-group">{group.label}</p>
+          <div className="space-y-0.5">
+            {group.items.map((item) => (
+              <NavItem
+                key={item.to}
+                to={item.to}
+                label={item.label}
+                count={navCounts?.[item.to] || 0}
+                active={location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)}
+                onClick={onNavigate}
+              />
+            ))}
           </div>
         </div>
       ))}
@@ -271,40 +316,57 @@ function MobileNavigation({ onNavigate }) {
   );
 }
 
-function BrandMark({ expanded = false }) {
+function NavItem({ to, label, count = 0, active, onClick }) {
   return (
-    <Link to="/admin" className={`flex items-center ${expanded ? 'gap-3' : ''}`} aria-label="מטבח החסד — דשבורד">
-      <span className="grid h-14 w-14 place-items-center rounded-2xl border border-brand-gold/20 bg-brand-cream/45 shadow-[0_7px_20px_rgba(66,18,31,0.08)]">
-        <img src="/logo.png" alt="" className="h-11 w-11 object-contain" />
+    <Link to={to} onClick={onClick} className={`side-nav-item ${active ? 'side-nav-item-active' : ''}`} aria-current={active ? 'page' : undefined}>
+      <span className={active ? 'text-brand-burgundy' : 'text-surface-muted'}><NavIcon route={to} /></span>
+      {label}
+      {count > 0 && <span className="side-nav-count">{count}</span>}
+    </Link>
+  );
+}
+
+function BrandMark() {
+  return (
+    <Link to="/admin" className="flex items-center gap-2.5" aria-label="מטבח החסד - דשבורד">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-surface-line bg-white">
+        <img src="/logo.png" alt="" className="h-8 w-8 object-contain" />
       </span>
-      {expanded && <span><strong className="block text-brand-burgundy">מטבח החסד</strong><small className="text-brand-gold-dark">ברכת שמואל</small></span>}
+      <span className="min-w-0 leading-tight">
+        <strong className="block truncate text-[14px] font-bold text-ink">מטבח החסד</strong>
+        <small className="text-[11px] font-semibold text-brand-gold-dark">ברכת שמואל</small>
+      </span>
     </Link>
   );
 }
 
-function SideLink({ to, label, icon, active }) {
-  return <Link to={to} className={`pilot-side-link ${active ? 'pilot-side-link-active' : ''}`} aria-label={label} title={label}><NavIcon name={icon} /></Link>;
-}
-
-function MobileLink({ to, label, icon, active, onClick }) {
-  return (
-    <Link to={to} onClick={onClick} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${active ? 'bg-brand-burgundy text-white' : 'text-brand-burgundy/75 hover:bg-brand-cream/60 hover:text-brand-burgundy'}`}>
-      <span className={active ? 'text-brand-gold-light' : 'text-brand-gold-dark'}><NavIcon name={icon} /></span>{label}
-    </Link>
-  );
-}
-
-function NavIcon({ name }) {
+/* אייקון פר-מסך: קו אחיד 1.8, בלי מילוי - סט עקבי אחד לכל הניווט */
+function NavIcon({ route }) {
   const paths = {
-    dashboard: <><rect x="3" y="3" width="7" height="7" rx="2" /><rect x="14" y="3" width="7" height="7" rx="2" /><rect x="3" y="14" width="7" height="7" rx="2" /><rect x="14" y="14" width="7" height="7" rx="2" /></>,
-    orders: <><path d="M9 5H7a2 2 0 0 0-2 2v12h14V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /><path d="M9 12h6M9 16h4" /></>,
-    community: <><circle cx="9" cy="8" r="3" /><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-3-5.2" /></>,
-    operations: <><path d="M21 8V6l-9-5-9 5v10l9 5 4-2.2" /><path d="m3.3 7 8.7 5 8.7-5M12 22V12" /><circle cx="19" cy="17" r="3" /></>,
-    system: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21H9.6v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.6-1H3v-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.5V3h4v.1A1.7 1.7 0 0 0 15 4.6" /></>,
+    '/admin': <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
+    '/admin/customers': <><circle cx="9" cy="8" r="3" /><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-3-5.2" /></>,
+    '/admin/registrations': <><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 7h8M8 11h8M8 15h5" /></>,
+    '/admin/volunteers': <path d="M12 21s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.4-7 10-7 10z" />,
+    '/admin/orders': <><path d="M9 5H7a2 2 0 0 0-2 2v12h14V7a2 2 0 0 0-2-2h-2" /><rect x="9" y="3" width="6" height="4" rx="1" /><path d="M9 12h6M9 16h4" /></>,
+    '/admin/shabbat': <><path d="M12 3c1.2 1 1.2 2.2.4 3.2M9 9h6v9a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1zM8 22h8" /></>,
+    '/admin/print-form': <><path d="M6 9V3h12v6" /><rect x="4" y="9" width="16" height="8" rx="1.5" /><path d="M7 17v4h10v-4" /></>,
+    '/admin/catalog': <><path d="M4 19V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2 2 2 0 0 0 2 2h13" /><path d="M9 7h6" /></>,
+    '/admin/inventory': <><path d="M21 8V6l-9-4-9 4v12l9 4 9-4v-2" /><path d="M3 7l9 4 9-4M12 22V11" /></>,
+    '/admin/suppliers': <><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7" /><circle cx="7" cy="18" r="1.6" /><circle cx="17" cy="18" r="1.6" /></>,
+    '/admin/purchase-orders': <><circle cx="9" cy="20" r="1.5" /><circle cx="17" cy="20" r="1.5" /><path d="M3 4h2l2.5 12h11L21 8H6" /></>,
+    '/admin/finance': <path d="M4 18V8M9 18V4M14 18v-7M19 18V7" />,
+    '/admin/petty-cash': <><rect x="3" y="7" width="18" height="12" rx="2" /><path d="M3 11h18M16 15h2" /></>,
+    '/admin/recurring-expenses': <><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v5h-5" /></>,
+    '/admin/email': <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>,
+    '/admin/users': <><circle cx="12" cy="8" r="3.5" /><path d="M5 21v-1a7 7 0 0 1 14 0v1" /></>,
   };
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">{paths[name] || paths.dashboard}</svg>;
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-[15px] w-[15px]" aria-hidden="true">
+      {paths[route] || paths['/admin']}
+    </svg>
+  );
 }
 
 function MenuIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>; }
 function CloseIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>; }
-function CandleIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true"><path d="M12 3c1.2 1 1.2 2.2.4 3.2M9 9h6v9a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1zM8 22h8" /></svg>; }
+function CandleIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-[17px] w-[17px]" aria-hidden="true"><path d="M12 3c1.2 1 1.2 2.2.4 3.2M9 9h6v9a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1zM8 22h8" /></svg>; }

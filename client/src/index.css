@@ -2,14 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================================
+   שפת "חדר מצב" - קונסולת ניהול שקטה:
+   קווים דקים במקום צללים, רדיוסים קטנים, מבטא בורדו לפעולות בלבד,
+   זהב טקסי (שבת, תאריך עברי), ספרות tabular במספרים.
+============================================================================ */
+
 @layer base {
   body {
-    @apply bg-brand-cream text-brand-burgundy-dark font-sans antialiased;
-    background: linear-gradient(180deg, #fbf8ef 0%, #f5efe0 100%);
+    @apply bg-surface-canvas text-surface-body font-sans antialiased;
+  }
+
+  h1, h2, h3, h4 {
+    @apply text-ink;
   }
 
   ::selection {
-    background: rgba(199, 154, 75, 0.28);
+    background: rgba(109, 33, 55, 0.16);
   }
 
   button,
@@ -19,80 +28,125 @@
   textarea {
     -webkit-tap-highlight-color: transparent;
   }
+
+  /* ספרות ברוחב אחיד בכל טבלה - סכומים ומספרים מיושרים */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* טבעת פוקוס אחידה לניווט מקלדת */
+  :where(a, button, [role='button'], summary):focus-visible {
+    outline: 2px solid #6d2137;
+    outline-offset: 2px;
+  }
 }
 
 @layer components {
-  /* כפתור ראשי — זהב. פינות רכות יותר, הרמה עדינה ב-hover, טבעת focus-visible חדה. */
+  /* כפתור ראשי - בורדו מלא. גובה קבוע, בלי צל ובלי קפיצה; hover מכהה בלבד. */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 bg-brand-gold text-brand-burgundy-dark font-bold px-5 py-2.5 rounded-xl
-           shadow-card transition-all duration-150
-           hover:bg-brand-gold-light hover:-translate-y-0.5 hover:shadow-card-hover active:translate-y-0
-           focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold focus-visible:ring-offset-2 focus-visible:ring-offset-brand-cream
-           disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-card disabled:hover:bg-brand-gold;
+    @apply inline-flex min-h-[2.25rem] items-center justify-center gap-2 rounded-lg bg-brand-burgundy px-4 py-2 text-sm font-semibold text-white
+           transition-colors duration-150
+           hover:bg-brand-burgundy-dark
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-burgundy focus-visible:ring-offset-2 focus-visible:ring-offset-surface-canvas
+           disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-brand-burgundy;
   }
-  /* כפתור משני — בורדו */
+  /* כפתור משני - לבן עם מסגרת. ההיררכיה מהצבע, לא מאפקטים. */
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 bg-brand-burgundy text-brand-cream font-bold px-5 py-2.5 rounded-xl
-           shadow-card transition-all duration-150
-           hover:bg-brand-burgundy-light hover:-translate-y-0.5 hover:shadow-card-hover active:translate-y-0
-           focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-burgundy focus-visible:ring-offset-2 focus-visible:ring-offset-brand-cream
-           disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-card disabled:hover:bg-brand-burgundy;
+    @apply inline-flex min-h-[2.25rem] items-center justify-center gap-2 rounded-lg border border-surface-line-strong bg-white px-4 py-2 text-sm font-semibold text-surface-body
+           transition-colors duration-150
+           hover:border-brand-burgundy/35 hover:bg-surface-canvas hover:text-brand-burgundy
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-burgundy focus-visible:ring-offset-2 focus-visible:ring-offset-surface-canvas
+           disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-surface-line-strong disabled:hover:bg-white;
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 text-brand-burgundy font-semibold px-4 py-2 rounded-xl border border-transparent
-           transition-all duration-150 hover:bg-brand-cream hover:border-brand-cream-dark
-           focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold focus-visible:ring-offset-2 focus-visible:ring-offset-brand-cream;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-transparent px-3.5 py-2 text-sm font-semibold text-brand-burgundy
+           transition-colors duration-150 hover:bg-brand-burgundy/[0.06]
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-burgundy focus-visible:ring-offset-2 focus-visible:ring-offset-surface-canvas;
   }
-  /* כרטיס בסיס — פינות רכות (2xl), מסגרת עדינה וצל רך. */
+  /* כרטיס בסיס - מסגרת דקה, רדיוס 10px, צל מתאר עדין בלבד. */
   .card {
-    @apply bg-white rounded-2xl shadow-card p-5 border border-brand-cream-dark;
+    @apply rounded-2xl border border-surface-line bg-white p-5 shadow-card;
   }
-  /* גרסת כרטיס אינטראקטיבי — הרמה עדינה ומבטא-זהב ב-hover (אופציונלי, לשימוש מפורש). */
+  /* כרטיס אינטראקטיבי - המסגרת מתחדדת ב-hover; שום דבר לא זז ממקומו. */
   .card-hover {
-    @apply transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-gold/50 hover:shadow-card-hover;
+    @apply transition-colors duration-150 hover:border-surface-line-strong;
   }
   .input {
-    @apply w-full px-4 py-2.5 rounded-xl border border-brand-cream-dark bg-brand-cream/35
-           focus:outline-none focus:ring-2 focus:ring-brand-gold focus:ring-offset-0 focus:border-brand-gold focus:bg-white text-base transition-all duration-150;
+    @apply w-full rounded-md border border-surface-line-strong bg-[#FBFAF9] px-3.5 py-2 text-base transition-colors duration-150
+           focus:border-brand-burgundy focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-burgundy/15;
   }
+  /* תג סטטוס - מלבני קטן, טקסט 12px; נקודת צבע נוספת דרך .badge-dot */
   .badge {
-    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-semibold ring-1 ring-inset ring-black/[0.04];
+    @apply inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold;
   }
-  /* Payment is a separate status dimension: keep the semantic hue, but use an
-     outlined badge and a currency marker so it cannot be mistaken for workflow status. */
+  .badge-dot {
+    @apply inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80;
+  }
+  /* תשלום הוא ממד סטטוס נפרד: תג עם מסגרת וסמן ₪, כדי שלא יתבלבל עם סטטוס עבודה */
   .badge-payment {
-    background-color: rgba(255, 255, 255, 0.82) !important;
-    @apply border border-current ring-0;
+    background-color: rgba(255, 255, 255, 0.85) !important;
+    @apply border border-current;
   }
   .badge-payment-mark {
     background-color: color-mix(in srgb, currentColor 10%, transparent);
     @apply inline-flex h-4 min-w-4 items-center justify-center rounded-full text-[0.65rem] leading-none;
   }
-  /* מבטא כותרת-קטע קטן (eyebrow) בזהב — קו-על אחיד למסכים. */
+  /* תווית-על קטנה (eyebrow) - זהב טקסי, קו-על אחיד למסכים */
   .section-title {
-    @apply text-xs font-bold uppercase tracking-wide text-brand-gold-dark;
+    @apply text-[11px] font-bold uppercase tracking-wide text-brand-gold-dark;
   }
 
   .pilot-panel {
-    @apply rounded-[22px] border border-black/[0.055] bg-white shadow-[0_10px_35px_rgba(42,31,36,0.055)];
+    @apply rounded-2xl border border-surface-line bg-white shadow-card;
   }
 
   .pilot-icon-button {
-    @apply inline-grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-black/[0.06] bg-white text-brand-burgundy transition-colors hover:border-brand-gold/35 hover:bg-brand-cream/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold;
+    @apply inline-grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-surface-line bg-white text-surface-body transition-colors hover:border-surface-line-strong hover:bg-surface-canvas hover:text-brand-burgundy focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-burgundy;
   }
 
-  .pilot-side-link {
-    @apply relative grid h-11 w-11 place-items-center rounded-xl text-[#8b8184] transition-all duration-150 hover:bg-brand-cream/50 hover:text-brand-burgundy focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold;
+  /* פריט ניווט בסרגל הצד - שורה עם תווית מלאה */
+  .side-nav-item {
+    @apply relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-surface-body transition-colors duration-150 hover:bg-surface-canvas hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-burgundy;
   }
-
-  .pilot-side-link-active {
-    @apply bg-brand-burgundy text-white shadow-[0_8px_18px_rgba(92,26,46,0.2)] hover:bg-brand-burgundy-light hover:text-white;
+  .side-nav-item-active {
+    @apply bg-[#F7EEF1] font-bold text-brand-burgundy hover:bg-[#F7EEF1] hover:text-brand-burgundy;
+  }
+  .side-nav-item-active::before {
+    content: '';
+    position: absolute;
+    right: -12px;
+    top: 6px;
+    bottom: 6px;
+    width: 3px;
+    border-radius: 3px;
+    background: #6d2137;
+  }
+  /* כותרת קבוצת ניווט */
+  .side-nav-group {
+    @apply px-3 pb-1 pt-4 text-[10.5px] font-bold tracking-wider text-surface-muted;
+  }
+  /* מונה חי ליד פריט ניווט */
+  .side-nav-count {
+    @apply mr-auto rounded bg-surface-canvas px-1.5 text-[11px] font-bold tabular-nums text-surface-muted;
+  }
+  .side-nav-item-active .side-nav-count {
+    @apply bg-white text-brand-burgundy;
   }
 }
 
+/* כניסת טוסט - החלקה עדינה מלמטה; מכובה למי שביקש פחות תנועה */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.toast-enter { animation: toast-in 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .toast-enter { animation: none; }
+}
+
 .admin-pilot header img[src="/logo.png"] {
-  height: 2.75rem;
-  width: 2.75rem;
+  height: 2.25rem;
+  width: 2.25rem;
   padding: 0;
   border: 0;
   background: transparent;
@@ -111,14 +165,14 @@
 }
 
 .admin-pilot .pilot-table thead {
-  color: #73696c;
-  border-bottom: 1px solid rgba(42, 31, 36, 0.055);
+  color: #8b7f83;
+  border-bottom: 1px solid #e7e2e0;
 }
 
 .admin-pilot .pilot-table th {
-  color: #73696c;
+  color: #8b7f83;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
@@ -126,24 +180,24 @@
   vertical-align: middle;
 }
 
-/* LTR keeps phone numbers, emails, dates and amounts readable, but table
-   values should still line up with their RTL column headings. */
+/* LTR שומר טלפונים, מיילים, תאריכים וסכומים קריאים, אבל ערכי טבלה
+   עדיין מיושרים לכותרות ה-RTL של העמודות. */
 .admin-pilot table td[dir="ltr"],
 .admin-pilot table th[dir="ltr"] {
   text-align: right;
 }
 
 .admin-pilot .pilot-table tbody tr + tr {
-  border-top: 1px solid rgba(42, 31, 36, 0.045);
+  border-top: 1px solid #f0ecea;
 }
 
 .admin-pilot .pilot-table tbody tr:hover {
-  background: #fbfaf8;
+  background: #faf9f8;
 }
 
-/* Keep entity-table headings visible while their rows scroll. Limiting only
-   direct table scrollers preserves horizontal scrolling on narrow screens and
-   gives sticky cells a reliable vertical scroll container. */
+/* כותרות טבלה נשארות גלויות בזמן גלילת השורות. הגבלה רק על מיכלי גלילה
+   ישירים של טבלה משמרת גלילה אופקית במסכים צרים ונותנת לתאים דביקים
+   מיכל גלילה אנכי אמין. */
 @media screen {
   .admin-pilot .overflow-x-auto:has(> table) {
     max-height: calc(100dvh - 7rem);
@@ -161,12 +215,12 @@
     position: sticky;
     top: 0;
     z-index: 21;
-    background-color: #f7f7f7;
-    box-shadow: inset 0 -1px 0 rgba(42, 31, 36, 0.055);
+    background-color: #faf9f8;
+    box-shadow: inset 0 -1px 0 #e7e2e0;
   }
 }
 
-/* Shared admin surface: carries the pilot language through legacy admin screens. */
+/* משטח אדמין משותף: מיישם את שפת הקונסולה גם על מסכי אדמין ותיקים. */
 @media screen {
   .admin-pilot main {
     width: 100%;
@@ -174,8 +228,8 @@
   }
 
   .admin-pilot main > .mb-6:first-child h1 {
-    color: #2b2024;
-    letter-spacing: -0.025em;
+    color: #2a1e23;
+    letter-spacing: -0.02em;
   }
 
   .admin-pilot main > .mb-6:first-child > .h-0\.5 {
@@ -183,10 +237,10 @@
   }
 
   .admin-pilot main > header.bg-brand-burgundy {
-    border: 1px solid rgba(42, 31, 36, 0.055);
+    border: 1px solid #e7e2e0;
     background: #fff !important;
-    color: #2b2024;
-    box-shadow: 0 10px 35px rgba(42, 31, 36, 0.055);
+    color: #2a1e23;
+    box-shadow: 0 1px 2px rgba(42, 30, 35, 0.05);
   }
 
   .admin-pilot main > header.bg-brand-burgundy > .pointer-events-none,
@@ -196,28 +250,20 @@
 
   .admin-pilot main > header.bg-brand-burgundy .bg-white\/10 {
     background: #faf9f8;
-    border-color: rgba(42, 31, 36, 0.06);
+    border-color: #e7e2e0;
   }
 
   .admin-pilot .card,
   .admin-pilot section.card {
-    border-color: rgba(42, 31, 36, 0.055);
-    border-radius: 22px;
+    border-color: #e7e2e0;
+    border-radius: 10px;
     background: #fff;
-    box-shadow: 0 10px 35px rgba(42, 31, 36, 0.055);
-  }
-
-  .admin-pilot .shadow-card {
-    box-shadow: 0 8px 28px rgba(42, 31, 36, 0.055);
-  }
-
-  .admin-pilot .shadow-card-hover {
-    box-shadow: 0 14px 38px rgba(42, 31, 36, 0.08);
+    box-shadow: 0 1px 2px rgba(42, 30, 35, 0.05);
   }
 
   .admin-pilot .rounded-2xl.border,
   .admin-pilot .rounded-xl.border {
-    border-color: rgba(42, 31, 36, 0.065);
+    border-color: #e7e2e0;
   }
 
   .admin-pilot table:not(.pilot-table) {
@@ -228,45 +274,57 @@
 
   .admin-pilot table:not(.pilot-table) thead,
   .admin-pilot table:not(.pilot-table) thead.bg-brand-burgundy {
-    background: #f7f7f7 !important;
-    color: #73696c !important;
-    border-bottom: 1px solid rgba(42, 31, 36, 0.055);
+    background: #faf9f8 !important;
+    color: #8b7f83 !important;
+    border-bottom: 1px solid #e7e2e0;
   }
 
   .admin-pilot table:not(.pilot-table) th {
-    color: #73696c !important;
-    font-size: 0.75rem;
+    color: #8b7f83 !important;
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0;
+    letter-spacing: 0.02em;
     white-space: nowrap;
   }
 
   .admin-pilot table:not(.pilot-table) td {
-    color: #4a3e42;
+    color: #4a3e43;
+  }
+
+  /* צפיפות מקצועית: שורות של כ-40px, טקסט נתונים 13px */
+  .admin-pilot table th {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .admin-pilot table td {
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+    font-size: 0.8125rem;
   }
 
   .admin-pilot table:not(.pilot-table) tbody tr + tr {
-    border-top: 1px solid rgba(42, 31, 36, 0.045);
+    border-top: 1px solid #f0ecea;
   }
 
   .admin-pilot table:not(.pilot-table) tbody tr:hover {
-    background: #fbfaf8;
+    background: #faf9f8;
   }
 
   .admin-pilot .overflow-x-auto.rounded-2xl {
     overflow: hidden auto;
-    border-color: rgba(42, 31, 36, 0.055);
-    border-radius: 22px;
+    border-color: #e7e2e0;
+    border-radius: 10px;
     background: #fff;
-    box-shadow: 0 10px 35px rgba(42, 31, 36, 0.05);
+    box-shadow: 0 1px 2px rgba(42, 30, 35, 0.05);
   }
 
   .admin-pilot input:not([type="checkbox"]):not([type="radio"]),
   .admin-pilot select,
   .admin-pilot textarea,
   .admin-pilot .input {
-    border-color: rgba(42, 31, 36, 0.09);
-    border-radius: 12px;
+    border-color: #d8d1ce;
+    border-radius: 6px;
     background-color: #fbfaf9;
     color: #3b3033;
     box-shadow: none;
@@ -276,53 +334,22 @@
   .admin-pilot select:focus,
   .admin-pilot textarea:focus,
   .admin-pilot .input:focus {
-    border-color: rgba(199, 154, 75, 0.65);
+    border-color: #6d2137;
     background: #fff;
-    box-shadow: 0 0 0 3px rgba(199, 154, 75, 0.13);
-  }
-
-  .admin-pilot .btn-primary,
-  .admin-pilot .btn-secondary {
-    min-height: 2.5rem;
-    border-radius: 12px;
-    box-shadow: 0 7px 18px rgba(92, 26, 46, 0.13);
-  }
-
-  .admin-pilot .btn-primary {
-    background: #5c1a2e;
-    color: #fff;
-  }
-
-  .admin-pilot .btn-primary:hover {
-    background: #6b1e2d;
-  }
-
-  .admin-pilot .btn-secondary {
-    background: #fff;
-    color: #5c1a2e;
-    border: 1px solid rgba(42, 31, 36, 0.075);
-  }
-
-  .admin-pilot .btn-secondary:hover {
-    background: rgba(245, 239, 224, 0.45);
-    border-color: rgba(199, 154, 75, 0.4);
-  }
-
-  .admin-pilot .btn-ghost {
-    border-radius: 12px;
+    box-shadow: 0 0 0 3px rgba(109, 33, 55, 0.12);
   }
 
   .admin-pilot .badge {
-    padding: 0.25rem 0.6rem;
-    border-radius: 8px;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     box-shadow: none;
   }
 
   .admin-pilot hr,
   .admin-pilot .border-brand-cream-dark {
-    border-color: rgba(42, 31, 36, 0.065);
+    border-color: #e7e2e0;
   }
 
   .admin-pilot .bg-brand-cream\/30,
@@ -345,9 +372,9 @@
   }
 }
 
-/* גוף טופס ההזמנה להדפסה — מופרד לפי סעודה (ליל שבת / יום שבת / סעודה שלישית).
+/* גוף טופס ההזמנה להדפסה - מופרד לפי סעודה (ליל שבת / יום שבת / סעודה שלישית).
    כל סעודה היא בלוק (.print-slot) עם כותרת ושדה מנות משלה, וקטגוריות הזמינות בה
-   בלבד. הקטגוריות בתוך כל סעודה זורמות בשתי עמודות (CSS columns) — כך התצוגה
+   בלבד. הקטגוריות בתוך כל סעודה זורמות בשתי עמודות (CSS columns) - כך התצוגה
    שעל המסך זהה לפריסת ההדפסה ומדידת ה-zoom מדויקת. */
 .print-slot { break-inside: avoid; margin-bottom: 0.9rem; }
 .print-slot-body {
@@ -385,7 +412,7 @@ header .text-brand-cream\/80 {
 }
 
 header .text-brand-gold-light {
-  color: #a67c34;
+  color: #9c7433;
 }
 
 header a:has(img[src="/logo.png"]) img {
@@ -396,22 +423,25 @@ header a:has(img[src="/logo.png"]) img {
   box-shadow: none;
 }
 
+/* מסך כניסת אדמין - רקע קנבס נייטרלי ולוגו נקי */
+.min-h-screen.bg-brand-cream {
+  background-color: #f6f5f4;
+}
+
 .min-h-screen.bg-brand-cream > .w-full.max-w-md > .text-center img[src="/logo.png"] {
   height: 7rem;
   width: 7rem;
   padding: 0.375rem;
   border-radius: 0.5rem;
   background: #fff;
-  border: 1px solid rgba(199, 154, 75, 0.35);
-  box-shadow: 0 2px 12px rgba(66, 18, 31, 0.08);
+  border: 1px solid #e7e2e0;
+  box-shadow: 0 1px 2px rgba(42, 30, 35, 0.05);
 }
 
-/* Customer ordering experience — aligned with the new light dashboard language. */
+/* חוויית ההזמנה של הלקוח - אותה שפה, טאץ' רך מעט יותר. */
 .customer-login,
 .customer-ui {
-  background:
-    radial-gradient(circle at 85% 5%, rgba(199, 154, 75, 0.12), transparent 24rem),
-    #f1f2f4;
+  background: #f6f5f4;
 }
 
 .customer-login img[src="/logo.png"],
@@ -424,17 +454,17 @@ header a:has(img[src="/logo.png"]) img {
 }
 
 .login-card {
-  border: 1px solid rgba(42, 31, 36, 0.06);
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #e7e2e0;
+  border-radius: 14px;
+  background: #fff;
   padding: clamp(1.5rem, 4vw, 2.5rem);
-  box-shadow: 0 24px 70px rgba(42, 31, 36, 0.09);
+  box-shadow: 0 8px 24px rgba(42, 30, 35, 0.07);
 }
 
 .customer-ui > header {
-  border-color: rgba(42, 31, 36, 0.055);
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 8px 28px rgba(42, 31, 36, 0.045);
+  border-color: #e7e2e0;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: none;
 }
 
 .customer-ui > header img[src="/logo.png"] {
@@ -447,8 +477,8 @@ header a:has(img[src="/logo.png"]) img {
 }
 
 .customer-ui main > .mb-6:first-child h1 {
-  color: #2b2024;
-  letter-spacing: -0.025em;
+  color: #2a1e23;
+  letter-spacing: -0.02em;
 }
 
 .customer-ui main > .mb-6:first-child > .h-0\.5 {
@@ -456,43 +486,35 @@ header a:has(img[src="/logo.png"]) img {
 }
 
 .customer-ui .card {
-  border-color: rgba(42, 31, 36, 0.06);
-  border-radius: 22px;
-  box-shadow: 0 10px 35px rgba(42, 31, 36, 0.055);
+  border-color: #e7e2e0;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(42, 30, 35, 0.05);
 }
 
 .customer-ui .card > h2 {
-  color: #2b2024;
+  color: #2a1e23;
   font-size: 1.05rem;
 }
 
 .customer-ui input:not([type="checkbox"]):not([type="radio"]),
 .customer-login input:not([type="checkbox"]):not([type="radio"]) {
-  border-color: rgba(42, 31, 36, 0.09);
-  border-radius: 12px;
-  background: #f8f8f7;
+  border-color: #d8d1ce;
+  border-radius: 6px;
+  background: #fbfaf9;
   box-shadow: none;
 }
 
 .customer-ui input:not([type="checkbox"]):not([type="radio"]):focus,
 .customer-login input:not([type="checkbox"]):not([type="radio"]):focus {
-  border-color: rgba(199, 154, 75, 0.7);
+  border-color: #6d2137;
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(199, 154, 75, 0.13);
+  box-shadow: 0 0 0 3px rgba(109, 33, 55, 0.12);
 }
 
 .customer-ui .btn-primary,
 .customer-login .btn-primary {
   min-height: 2.75rem;
-  border-radius: 12px;
-  background: #5c1a2e;
-  color: #fff;
-  box-shadow: 0 8px 20px rgba(92, 26, 46, 0.18);
-}
-
-.customer-ui .btn-primary:hover,
-.customer-login .btn-primary:hover {
-  background: #6b1e2d;
+  border-radius: 8px;
 }
 
 @media (max-width: 639px) {
@@ -519,7 +541,7 @@ header a:has(img[src="/logo.png"]) img {
 
   .customer-ui .card {
     padding: 1rem;
-    border-radius: 18px;
+    border-radius: 10px;
   }
 }
 
@@ -528,12 +550,12 @@ header a:has(img[src="/logo.png"]) img {
 }
 
 .min-h-screen.bg-brand-cream > .w-full.max-w-md > .text-center .text-brand-gold-light {
-  color: #a67c34;
+  color: #9c7433;
   font-weight: 700;
 }
 
 main {
-  color: #42121f;
+  color: #4a3e43;
 }
 
 label > span,
@@ -550,9 +572,9 @@ textarea {
 input:not([type="checkbox"]):not([type="radio"]),
 select,
 textarea {
-  border-radius: 0.5rem;
-  border-color: #eadfc8;
-  background-color: rgba(245, 239, 224, 0.35);
+  border-radius: 6px;
+  border-color: #d8d1ce;
+  background-color: #fbfaf9;
   transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
 
@@ -560,16 +582,16 @@ input:not([type="checkbox"]):not([type="radio"]):focus,
 select:focus,
 textarea:focus {
   background-color: #fff;
-  border-color: #c79a4b;
-  box-shadow: 0 0 0 3px rgba(199, 154, 75, 0.18);
+  border-color: #6d2137;
+  box-shadow: 0 0 0 3px rgba(109, 33, 55, 0.12);
 }
 
+/* כותרות טבלה - שקטות ונמוכות; הכותרת לא מתחרה בנתונים */
 thead.bg-brand-burgundy,
 table thead.bg-brand-burgundy {
-  /* כותרת טבלה בגוון קרם עשיר עם קו-הפרדה זהוב דק בתחתית — פרימיום ורגוע */
-  background-color: #f1e8d6 !important;
-  color: #42121f !important;
-  border-bottom: 1px solid rgba(199, 154, 75, 0.3);
+  background-color: #faf9f8 !important;
+  color: #8b7f83 !important;
+  border-bottom: 1px solid #e7e2e0;
 }
 
 table {
@@ -578,16 +600,17 @@ table {
 }
 
 table.rounded-2xl {
-  border-radius: 0.9rem !important;
-  border: 1px solid #eadfc8;
+  border-radius: 10px !important;
+  border: 1px solid #e7e2e0;
 }
 
 table th {
   font-weight: 700;
-  letter-spacing: 0.01em;
-  color: #5c1a2e;
-  padding-top: 0.7rem;
-  padding-bottom: 0.7rem;
+  letter-spacing: 0.02em;
+  color: #8b7f83;
+  font-size: 0.75rem;
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
 }
 
 table td,
@@ -595,17 +618,17 @@ table th {
   vertical-align: middle;
 }
 
-/* קווי-הפרדה עדינים בין שורות — קצב נקי ואוורירי */
+/* קווי-הפרדה עדינים בין שורות - קצב נקי */
 tbody tr + tr {
-  border-top: 1px solid rgba(234, 223, 200, 0.7);
+  border-top: 1px solid #f0ecea;
 }
 
 tbody tr {
-  transition: background-color 150ms ease, box-shadow 150ms ease;
+  transition: background-color 150ms ease;
 }
 
 tbody tr:hover {
-  background-color: rgba(245, 239, 224, 0.6);
+  background-color: #faf9f8;
 }
 
 /* הדפסת תיק עבודה (סעיף 33): בהדפסה מציגים רק את אזור המסמך (.print-area),
@@ -634,20 +657,20 @@ tbody tr:hover {
 }
 
 /* ---------------------------------------------------------------------------
-   דף הזמנה להדפסה (AdminPrintForm) — כוונון לדף דו-צדדי, עד 2 עמודי A4.
+   דף הזמנה להדפסה (AdminPrintForm) - כוונון לדף דו-צדדי, עד 2 עמודי A4.
    מחלקה .print-form ממוקדת רק לטופס הזה ואינה משפיעה על הדפסות אחרות.
    העיקרון: דחיסה אחידה (פונט/מרווחים/ריפוד) + זרימת הקטגוריות בעמודות כדי
    למלא את הדף ולצמצם עמודים, במקום רשת עם מרווחים גדולים.
 --------------------------------------------------------------------------- */
 @media print {
-  /* שוליים צרים יותר לטופס — יותר שטח שימושי, פחות עמודים.
-     פונט בסיס 13px (מסונכרן עם מדידת ה-zoom ב-AdminPrintForm.jsx) — גדול ככל
+  /* שוליים צרים יותר לטופס - יותר שטח שימושי, פחות עמודים.
+     פונט בסיס 13px (מסונכרן עם מדידת ה-zoom ב-AdminPrintForm.jsx) - גדול ככל
      האפשר לקריאה נוחה בטופס מודפס; ה-zoom האוטומטי מכווץ רק אם התוכן חורג מ-2
      עמודים, כך שברוב הקטלוגים הטקסט נשאר בגודל המלא. */
   .print-form { font-size: 13px; line-height: 1.32; }
   .print-form .max-w-4xl { padding: 0 !important; }
 
-  /* טקסט רץ שחור ומעט עבה יותר — קריאות מרבית בהדפסה */
+  /* טקסט רץ שחור ומעט עבה יותר - קריאות מרבית בהדפסה */
   .print-form li,
   .print-form .print-slot-body { color: #000 !important; }
   .print-form li .flex-1 { font-weight: 500; }
@@ -656,12 +679,12 @@ tbody tr:hover {
   .print-form h2 { font-size: 21px !important; }
   .print-form h3 { font-size: 13px !important; }
 
-  /* שדות הפרטים — פחות גובה */
+  /* שדות הפרטים - פחות גובה */
   .print-form .h-6 { height: 0.9rem !important; }
 
   /* גוף התפריט: זרימת עמודות דחוסה (balance) במקום grid עם פערים גדולים.
      column-fill: balance מפזר את הקטגוריות בין העמודות בגובה אחיד. */
-  /* גוף התפריט בהדפסה — אותה זרימת עמודות כמו במסך, רק צפוף יותר. */
+  /* גוף התפריט בהדפסה - אותה זרימת עמודות כמו במסך, רק צפוף יותר. */
   .print-slot { margin-bottom: 0.55rem; }
   .print-slot-body { column-gap: 0.8rem; }
   .print-slot-body > section,
@@ -672,7 +695,7 @@ tbody tr:hover {
   .print-form ul { padding-top: 0 !important; padding-bottom: 0 !important; }
   .print-form .h-4.w-4 { height: 0.7rem !important; width: 0.7rem !important; }
 
-  /* בלוק תוספות בתשלום — דחוס יותר (צרכן השטח הגדול בתחתית), ומותר להישבר
+  /* בלוק תוספות בתשלום - דחוס יותר (צרכן השטח הגדול בתחתית), ומותר להישבר
      בין עמודים כדי לא לבזבז שטח (כותרת לא מתייתמת, שורה לא נחתכת). */
   .print-form .print-extras li { padding-top: 0.08rem !important; padding-bottom: 0.08rem !important; break-inside: avoid; }
   .print-form .print-extras .block { line-height: 1.15 !important; }

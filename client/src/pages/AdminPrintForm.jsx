@@ -8,7 +8,7 @@
 // המבנה מופרד לפי סעודה בדיוק כמו במסך ההזמנה של הלקוח (ליל שבת / יום שבת /
 // סעודה שלישית): בכל סעודה מופיעות רק הקטגוריות והמאכלים הזמינים בה, והכללים
 // המיוחדים משתקפים דינמית מהקטלוג —
-//   • דגים (split_mode='additive'): תיוג דג עיקרי / דג נוסף + כלל האחוזים
+//   • חלוקה אוטומטית (split_mode='additive'): תיוג מאכל עיקרי / מאכל משני + כלל האחוזים
 //     (primary_percent / secondary_percent) בבחירת שני סוגים.
 //   • חלוקה ידנית (split_mode='equal'): הערה + שדה "מנות" לכל סוג.
 //   • ירושת סלטים (inherit_from_slot_id): הקטגוריה מוצגת פעם אחת בלבד בסעודת-האב
@@ -18,6 +18,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { PAYMENT_METHOD } from '../lib/status.jsx';
+import { splitPercentsFor } from '../lib/splitPercents.js';
 
 // מידות עמוד A4 להדפסה (ב-CSS px @96dpi) בניכוי שוליים 1.4cm מכל צד.
 // רוחב שימושי ≈ (21 - 2.8)ס"מ, גובה שימושי ≈ (29.7 - 2.8)ס"מ.
@@ -384,8 +385,8 @@ function SlotSection({ section }) {
 // בלוק קטגוריה בתוך סעודה: כותרת + כלל דינמי + רשימת מאכלים.
 function CategoryBlock({ block, slot }) {
   const { category, meals, mode, inheritTarget } = block;
-  const primaryPct = Number(category.primary_percent ?? 80);
-  const secondaryPct = Number(category.secondary_percent ?? 50);
+  // האחוזים נקבעים פר-סעודה (דריסה) ונופלים לברירת המחדל של הקטגוריה.
+  const { primary: primaryPct, secondary: secondaryPct } = splitPercentsFor(category, slot.id);
   const isEqual = mode === 'equal';
   const isAdditive = mode === 'additive';
   // קטגוריה יורשת עם סעודת-יעד: שני טורי סימון (הסעודה הנוכחית + היעד).
@@ -400,14 +401,14 @@ function CategoryBlock({ block, slot }) {
           <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-800">חלוקה ידנית</span>
         )}
         {isAdditive && (
-          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-800">דג עיקרי + דג נוסף</span>
+          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-800">מאכל עיקרי + מאכל משני</span>
         )}
       </h4>
 
       {/* כלל דינמי לפי מצב החלוקה */}
       {isAdditive && (
         <p className="border-b border-brand-cream-dark/70 bg-brand-gold/10 px-3 py-1 text-[11px] leading-snug text-brand-burgundy-dark">
-          בבחירת 2 סוגים: הדג העיקרי מיוצר לפי <b>{primaryPct}%</b> מהמנות, והדג הנוסף לפי <b>{secondaryPct}%</b> מהמנות.
+          בבחירת 2 סוגים: המאכל העיקרי מיוצר לפי <b>{primaryPct}%</b> מהמנות, והמאכל המשני לפי <b>{secondaryPct}%</b> מהמנות.
         </p>
       )}
       {isEqual && (
@@ -443,14 +444,14 @@ function CategoryBlock({ block, slot }) {
               )}
             </span>
 
-            {/* additive: תיוג דג עיקרי / דג נוסף */}
+            {/* additive: תיוג מאכל עיקרי / מאכל משני */}
             {isAdditive && (
               <span
                 className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-bold ${
                   meal.is_secondary ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
                 }`}
               >
-                {meal.is_secondary ? 'דג נוסף' : 'דג עיקרי'}
+                {meal.is_secondary ? 'מאכל משני' : 'מאכל עיקרי'}
               </span>
             )}
 

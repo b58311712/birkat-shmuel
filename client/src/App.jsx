@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Header } from './components/Layout.jsx';
 import AdminDashboardShell from './components/AdminDashboardShell.jsx';
+import Toaster from './components/Toaster.jsx';
 import { adminAuth } from './lib/api.js';
+import { loadVatRate } from './lib/vat.js';
 import Login from './pages/Login.jsx';
 import AdminLogin from './pages/AdminLogin.jsx';
 import NewOrder from './pages/NewOrder.jsx';
@@ -31,6 +33,10 @@ import AdminEmail from './pages/AdminEmail.jsx';
 
 const STORAGE_KEY = 'matbach_customer';
 const ADMIN_USER_KEY = 'matbach_admin_user';
+
+// טוענים את שיעור המע"מ פעם אחת בעליית האפליקציה (מטמון ב-vat.js). נכשל בשקט
+// לברירת מחדל 18% אם ההגדרה חסרה, כדי שחישובי המחיר כולל מע"מ יעבדו בכל מקרה.
+loadVatRate();
 
 export default function App() {
   const [customer, setCustomer] = useState(() => {
@@ -69,6 +75,8 @@ export default function App() {
   }
 
   return (
+    <>
+    <Toaster />
     <Routes>
       {/* אזור ניהול — מאחורי כניסת מנהל (סעיף 5) */}
       {!admin ? (
@@ -192,6 +200,7 @@ export default function App() {
         </>
       )}
     </Routes>
+    </>
   );
 }
 

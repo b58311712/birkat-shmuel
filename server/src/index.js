@@ -26,6 +26,7 @@ import pettyCashRoutes from './routes/pettyCash.js';
 import recurringExpensesRoutes from './routes/recurringExpenses.js';
 import cronRoutes from './routes/cron.js';
 import emailRoutes from './routes/email.js';
+import settingsRoutes from './routes/settings.js';
 import { requireAdmin } from './lib/auth.js';
 
 const app = express();
@@ -41,6 +42,7 @@ app.use('/api/cron', cronRoutes);
 // נתיבים
 app.use('/api/auth', authRoutes);
 app.use('/api/catalog', catalogRoutes);
+app.use('/api/settings', settingsRoutes);
 app.use('/api/shabbatot', shabbatotRoutes);
 app.use('/api/orders', ordersRoutes);
 // אזור הניהול — כל הקריאות מאחורי אימות מנהל (סעיף 5)

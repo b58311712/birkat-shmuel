@@ -105,7 +105,7 @@ export default function AdminDashboard({ onAuthError }) {
 function MetricCard({ label, value, to, icon, tone, loading }) {
   const active = !loading && Number(value) > 0;
   const colors = { red: 'bg-red-50 text-red-600', amber: 'bg-amber-50 text-amber-700', gold: 'bg-brand-gold/10 text-brand-gold-dark' };
-  return <Link to={to} className="pilot-panel group flex min-w-0 items-center gap-3 p-3.5 transition hover:-translate-y-0.5 hover:border-brand-gold/30 sm:gap-4 sm:p-5"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl sm:h-12 sm:w-12 ${active ? colors[tone] : 'bg-[#f4f2f2] text-[#9e9598]'}`}>{icon}</span><span className="min-w-0"><strong className="block text-xl font-extrabold tabular-nums text-[#2b2024] sm:text-2xl">{loading ? '–' : (value ?? 0)}</strong><span className="block truncate text-[11px] font-semibold text-[#83787c] sm:text-sm">{label}</span></span></Link>;
+  return <Link to={to} className="pilot-panel group flex min-w-0 items-center gap-3 p-3.5 transition-colors hover:border-surface-line-strong sm:gap-4 sm:p-5"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl sm:h-12 sm:w-12 ${active ? colors[tone] : 'bg-[#f4f2f2] text-[#9e9598]'}`}>{icon}</span><span className="min-w-0"><strong className="block text-xl font-extrabold tabular-nums text-[#2b2024] sm:text-2xl">{loading ? '–' : (value ?? 0)}</strong><span className="block truncate text-[11px] font-semibold text-[#83787c] sm:text-sm">{label}</span></span></Link>;
 }
 
 function AttentionSection({ title, icon, rows, loading, divided }) {

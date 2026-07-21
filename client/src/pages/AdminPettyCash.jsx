@@ -161,7 +161,7 @@ export default function AdminPettyCash({ onAuthError }) {
           <div className="flex items-end sm:col-span-2 lg:col-span-4">
             {formError && <p className="ml-auto self-center text-sm font-semibold text-red-600">{formError}</p>}
             <button type="submit" disabled={busy}
-              className="mr-auto rounded-xl bg-brand-burgundy px-5 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(92,26,46,0.16)] transition hover:bg-brand-burgundy-light disabled:opacity-60">
+              className="btn-primary mr-auto">
               {busy ? 'שומר…' : form.kind === 'expense' ? 'רישום הוצאה' : 'רישום הפקדה'}
             </button>
           </div>

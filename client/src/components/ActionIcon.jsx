@@ -81,6 +81,14 @@ const iconPaths = {
       <path d="M12 7v5l3 2" />
     </>
   ),
+  // [כלי מיזוג זמני] שני זרמים מתמזגים לאחד
+  merge: (
+    <>
+      <path d="M6 3v4a4 4 0 0 0 4 4h4a4 4 0 0 1 4 4v4" />
+      <path d="M15 8 18 5l3 3" />
+      <path d="M18 21v-4" />
+    </>
+  ),
 };
 
 const toneClasses = {

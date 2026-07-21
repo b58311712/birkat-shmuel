@@ -84,6 +84,37 @@ export default function AdminOrderEdit({ onAuthError }) {
     [selectedSlots]
   );
 
+  // מזהי המאכלים שנבחרו בכל הסעודות (מפתח הבחירה הוא `slotId:mealId`).
+  const selectedMealIds = useMemo(
+    () => new Set(Object.keys(meals).map((key) => key.split(':')[1])),
+    [meals]
+  );
+
+  // תוספות שמותנות בהזמנת מאכל מסוים (סעיף 14) מוצגות רק כשנבחר לפחות אחד
+  // מהמאכלים המקושרים; השרת חוסם שמירה של תוספת כזו בלי המאכל.
+  const visibleExtras = useMemo(() => {
+    if (!catalog) return [];
+    return catalog.extras.filter((e) => {
+      const required = e.required_meal_ids || [];
+      return required.length === 0 || required.some((id) => selectedMealIds.has(id));
+    });
+  }, [catalog, selectedMealIds]);
+
+  // המאכל שהתנה תוספת הוסר מההזמנה -> מנקים את הכמות שלה.
+  useEffect(() => {
+    if (!catalog) return;
+    const visibleIds = new Set(visibleExtras.map((e) => e.id));
+    setExtras((prev) => {
+      const next = {};
+      let changed = false;
+      for (const [eid, qty] of Object.entries(prev)) {
+        if (visibleIds.has(eid)) next[eid] = qty;
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [catalog, visibleExtras]);
+
   // אומדן מחיר בצד לקוח (השרת סמכותי) — בחירת מסלול לפי צירוף הסעודות המדויק (סעיף 15)
   const priceEstimate = useMemo(() => {
     if (!catalog) return { base: 0, extras: 0, total: 0, noMatch: false };
@@ -134,7 +165,7 @@ export default function AdminOrderEdit({ onAuthError }) {
 
   // ולידציה לקטגוריות מחלקות:
   //   equal    — בכל קבוצה עם 2+ מאכלים, סך הכמויות = מנות הסעודה.
-  //   additive — לכל היותר דג עיקרי אחד (לא-משני) בקבוצה.
+  //   additive — לכל היותר מאכל עיקרי אחד (לא-משני) בקבוצה.
   const splitErrors = useMemo(() => {
     if (!catalog) return [];
     const portionsBySlot = Object.fromEntries(selectedSlots.map((s) => [s.meal_slot_id, s.portions]));
@@ -159,7 +190,7 @@ export default function AdminOrderEdit({ onAuthError }) {
       const label = `${slot?.name || 'סעודה'} · ${cat?.name || 'קטגוריה'}`;
       if (g.mode === 'additive') {
         if (g.primaryCount > 1) {
-          errs.push(`${label}: ניתן לבחור רק דג עיקרי אחד (הדג הנוסף חייב להיות מסומן כדג משני/זול).`);
+          errs.push(`${label}: ניתן לבחור רק מאכל עיקרי אחד (המאכל הנוסף חייב להיות מסומן כמאכל משני).`);
         }
         continue;
       }
@@ -356,8 +387,11 @@ export default function AdminOrderEdit({ onAuthError }) {
       {/* תוספות */}
       <section className="card mb-5">
         <h2 className="font-bold text-brand-burgundy mb-3">תוספות בתשלום</h2>
+        {visibleExtras.length === 0 && (
+          <p className="text-sm text-brand-burgundy/60">אין תוספות זמינות לבחירת המאכלים הנוכחית.</p>
+        )}
         <div className="space-y-2">
-          {catalog.extras.map((e) => (
+          {visibleExtras.map((e) => (
             <div key={e.id} className="flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-brand-cream/40">
               <div>
                 <span className="font-medium">{e.name}</span>

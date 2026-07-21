@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { splitPercentsFor } from '../lib/splitPercents.js';
 
 const UNCATEGORIZED_ID = '__uncategorized__';
 
@@ -14,7 +15,7 @@ const activeCompletedTabStyle = {
   color: '#ffffff',
 };
 
-function categoryGroups(catalog, mealSlotId) {
+function categoryGroups(catalog, mealSlotId, selectedMeals = {}) {
   const categoriesById = new Map(catalog.categories.map((category) => [category.id, category]));
   const groupsById = new Map(
     catalog.categories.map((category) => [
@@ -24,11 +25,24 @@ function categoryGroups(catalog, mealSlotId) {
   );
   const uncategorized = { id: UNCATEGORIZED_ID, category: null, meals: [] };
 
-  for (const meal of catalog.meals.filter((m) => m.available_slot_ids.includes(mealSlotId))) {
+  // מאכל מוצג בסעודה אם הוא זמין בה כרגע, או שהוא כבר נבחר בהזמנה זו (גם אם זמינותו
+  // בקטלוג בוטלה מאז) — כדי שמאכל "יתום" מהזמנה ישנה יישאר גלוי וניתן להסרה בעריכה.
+  const shownMealIds = new Set(
+    catalog.meals.filter((m) => m.available_slot_ids.includes(mealSlotId)).map((m) => m.id)
+  );
+  for (const key of Object.keys(selectedMeals)) {
+    const [slotId, mealId] = key.split(':');
+    if (slotId === mealSlotId) shownMealIds.add(mealId);
+  }
+
+  for (const meal of catalog.meals) {
+    if (!shownMealIds.has(meal.id)) continue;
+    const unavailable = !meal.available_slot_ids.includes(mealSlotId);
+    const entry = { ...meal, unavailable_in_slot: unavailable };
     if (categoriesById.has(meal.category_id)) {
-      groupsById.get(meal.category_id).meals.push(meal);
+      groupsById.get(meal.category_id).meals.push(entry);
     } else {
-      uncategorized.meals.push(meal);
+      uncategorized.meals.push(entry);
     }
   }
 
@@ -93,7 +107,7 @@ function isGroupComplete(group, mealSlotId, selectedMeals, slotPortions, inherit
     return inherit.extraAllowed == null || inherit.manualCount >= inherit.extraAllowed;
   }
   const mode = splitModeOf(group.category);
-  // additive מושלם כשנבחר לפחות דג אחד ולא נבחר יותר מדג מרכזי אחד.
+  // additive מושלם כשנבחר לפחות מאכל אחד ולא נבחר יותר ממאכל עיקרי אחד.
   if (mode === 'additive') {
     if (selectedCount === 0) return false;
     return primarySelectedInGroup(group, mealSlotId, selectedMeals) <= 1;
@@ -122,7 +136,10 @@ function fullLimitText(category, selectedCount) {
 }
 
 export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, selectedMeals, onToggleMeal, onSetMealPortions, allowOverMax = false, inheritByCategory = {}, inheritedKeys = new Set() }) {
-  const groups = useMemo(() => categoryGroups(catalog, mealSlotId), [catalog, mealSlotId]);
+  const groups = useMemo(
+    () => categoryGroups(catalog, mealSlotId, selectedMeals),
+    [catalog, mealSlotId, selectedMeals]
+  );
   const [activeGroupId, setActiveGroupId] = useState('');
 
   if (groups.length === 0) {
@@ -153,10 +170,10 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
   const isEqualSplit = splitMode === 'equal';
   const isAdditive = splitMode === 'additive';
   const splitSum = isEqualSplit ? splitSumInGroup(activeGroup, mealSlotId, selectedMeals) : 0;
-  // additive: כשכבר נבחר דג מרכזי, אי-אפשר לבחור דג מרכזי נוסף (רק דג משני/זול).
+  // additive: כשכבר נבחר מאכל עיקרי, אי-אפשר לבחור עיקרי נוסף (רק מאכל משני).
   const primarySelected = isAdditive ? primarySelectedInGroup(activeGroup, mealSlotId, selectedMeals) : 0;
-  const primaryPct = Number(activeGroup.category?.primary_percent ?? 80);
-  const secondaryPct = Number(activeGroup.category?.secondary_percent ?? 50);
+  // האחוזים תלויי-סעודה: לכל סעודה אפשר לקבוע חלוקה משלה (ברירת מחדל = של הקטגוריה).
+  const { primary: primaryPct, secondary: secondaryPct } = splitPercentsFor(activeGroup.category, mealSlotId);
 
   return (
     <div className={`rounded-lg border bg-white overflow-hidden ${
@@ -255,7 +272,7 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
         <SplitPortionsBar sum={splitSum} target={slotPortions} count={activeSelectedCount} />
       )}
 
-      {/* additive: הסבר החלוקה האוטומטית (דג עיקרי + תוספת דג משני) */}
+      {/* additive: הסבר החלוקה האוטומטית (מאכל עיקרי + תוספת מאכל משני) */}
       {isAdditive && activeSelectedCount > 0 && (
         <AdditiveSplitBar
           slotPortions={slotPortions}
@@ -270,9 +287,12 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
           const key = `${mealSlotId}:${meal.id}`;
           const value = selectedMeals[key];
           const selected = Object.prototype.hasOwnProperty.call(selectedMeals, key);
+          // מאכל שכבר אינו זמין בסעודה בקטלוג, אך נבחר בהזמנה זו — "יתום". מוצג רק
+          // כשהוא נבחר, כדי שיהיה גלוי וניתן להסרה; לא ניתן לבחור מחדש לאחר הסרה.
+          if (meal.unavailable_in_slot && !selected) return null;
           // מאכל ירוש מהלילה: נבחר ונעול — לא ניתן לבטלו כאן.
           const inherited = value === 'inherited';
-          // additive: אי-אפשר לבחור דג מרכזי נוסף כשכבר נבחר אחד.
+          // additive: אי-אפשר לבחור מאכל עיקרי נוסף כשכבר נבחר אחד.
           const blockedPrimary = isAdditive && !selected && !meal.is_secondary && primarySelected >= 1;
           const disabled = inherited || (reachedLimit && !selected) || blockedPrimary;
 
@@ -282,7 +302,7 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
               type="button"
               onClick={() => onToggleMeal(mealSlotId, meal.id)}
               disabled={disabled}
-              title={inherited ? 'נבחר בליל שבת — משוכפל אוטומטית' : blockedPrimary ? 'ניתן לבחור רק דג עיקרי אחד' : undefined}
+              title={inherited ? 'נבחר בליל שבת — משוכפל אוטומטית' : blockedPrimary ? 'ניתן לבחור רק מאכל עיקרי אחד' : undefined}
               className={`relative min-h-10 rounded-lg border px-2.5 py-2 text-right text-sm leading-tight transition-colors ${
                 inherited
                   ? 'bg-brand-burgundy/70 text-brand-cream border-brand-burgundy/70 cursor-not-allowed'
@@ -294,13 +314,17 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
               }`}
             >
               <span className="block font-medium">{meal.name}</span>
+              {/* מאכל יתום — כבר אינו זמין בסעודה בקטלוג. לחיצה מסירה אותו מההזמנה. */}
+              {meal.unavailable_in_slot && (
+                <span className="block text-xs opacity-80 mt-0.5">⚠ הוסר מהקטלוג — לחצי להסרה</span>
+              )}
               {/* ירושה: תיוג "מהלילה" כדי שהלקוח יבין שהמאכל הגיע מבחירת ליל שבת */}
               {inherited && (
                 <span className="block text-xs opacity-80 mt-0.5">🔒 מהלילה</span>
               )}
-              {/* additive: תיוג דג משני/זול כדי שהלקוח יבין את החלוקה */}
+              {/* additive: תיוג המאכל המשני כדי שהלקוח יבין את החלוקה */}
               {isAdditive && meal.is_secondary && (
-                <span className="block text-xs opacity-70 mt-0.5">דג נוסף (זול)</span>
+                <span className="block text-xs opacity-70 mt-0.5">מאכל משני</span>
               )}
               {meal.requires_extra_charge && (
                 <span className="block text-xs opacity-70 mt-0.5">+ {meal.extra_charge_amount}</span>
@@ -351,11 +375,11 @@ function SplitPortionsBar({ sum, target, count }) {
 
 // מציג את החלוקה האוטומטית במצב additive (עיגול כלפי מעלה, זהה לשרת).
 function AdditiveSplitBar({ slotPortions, count, primaryPct, secondaryPct }) {
-  // דג יחיד מקבל 100% מהמנות; משנבחר דג נוסף, החלוקה לפי האחוזים.
+  // מאכל יחיד מקבל 100% מהמנות; משנבחר מאכל משני, החלוקה לפי האחוזים.
   if (count < 2) {
     return (
       <div className="mx-3 mt-1 mb-1 rounded-lg bg-brand-cream/50 px-3 py-1.5 text-sm font-medium text-brand-burgundy/70">
-        {`דג יחיד — יקבל את כל ${slotPortions} המנות. אפשר להוסיף דג נוסף (זול) לקבלת תוספת מנות.`}
+        {`מאכל יחיד — יקבל את כל ${slotPortions} המנות. אפשר להוסיף מאכל משני לקבלת תוספת מנות.`}
       </div>
     );
   }
@@ -363,7 +387,7 @@ function AdditiveSplitBar({ slotPortions, count, primaryPct, secondaryPct }) {
   const secondary = Math.ceil((slotPortions * secondaryPct) / 100);
   return (
     <div className="mx-3 mt-1 mb-1 rounded-lg bg-brand-gold/20 px-3 py-1.5 text-sm font-medium text-brand-burgundy-dark">
-      {`חלוקה אוטומטית: דג עיקרי ${primary} מנות (${primaryPct}%) · דג נוסף ${secondary} מנות (${secondaryPct}%) — סה"כ ${primary + secondary}`}
+      {`חלוקה אוטומטית: מאכל עיקרי ${primary} מנות (${primaryPct}%) · מאכל משני ${secondary} מנות (${secondaryPct}%) — סה"כ ${primary + secondary}`}
     </div>
   );
 }

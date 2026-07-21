@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
-import { DragHandle } from '../components/DragHandle.jsx';
+import { DataTable } from '../components/DataTable.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 // ניהול מתנדבים ומשימות קבועות (סעיף 24). מסך ניהול גלובלי.
@@ -91,7 +91,59 @@ function VolunteersManager({ meals, areas, onErr, canDelete }) {
     catch (e) { onErr(e); }
   }
 
-  if (!list) return <p>טוען...</p>;
+  const areaText = (v) => (v.area_ids || []).map((id) => areaName[id]).filter(Boolean).join(', ');
+  const mealsText = (v) => (v.linked_meals?.length
+    ? v.linked_meals.map((m) => m.name)
+    : (v.meals?.name ? [v.meals.name] : [])
+  ).join(', ');
+
+  const columns = [
+    { key: 'full_name', label: 'שם', type: 'text', className: 'font-medium' },
+    {
+      key: 'customer_id',
+      label: 'כרטיס לקוח',
+      type: 'boolean',
+      trueLabel: 'מקושר',
+      falseLabel: 'עצמאי',
+      className: 'text-brand-burgundy/60',
+      value: (v) => !!v.customer_id,
+      render: (v) => (v.customer_id ? 'מקושר' : 'עצמאי'),
+    },
+    { key: 'phone', label: 'טלפון', type: 'text', dir: 'ltr', render: (v) => v.phone || '—' },
+    { key: 'area', label: 'תחום', type: 'text', value: areaText, render: (v) => areaText(v) || '—' },
+    {
+      key: 'meals',
+      label: 'מאכלים',
+      type: 'text',
+      className: 'text-brand-burgundy/60',
+      value: mealsText,
+      render: (v) => mealsText(v) || '—',
+    },
+    {
+      key: 'has_vehicle',
+      label: 'רכב',
+      type: 'boolean',
+      trueLabel: 'עם רכב',
+      falseLabel: 'ללא',
+      className: 'text-center',
+      render: (v) => (v.has_vehicle ? '🚗' : '—'),
+    },
+    {
+      key: 'is_regular',
+      label: 'קבוע',
+      type: 'boolean',
+      className: 'text-center',
+      render: (v) => (v.is_regular ? '✓' : '—'),
+    },
+    {
+      key: 'is_active',
+      label: 'סטטוס',
+      type: 'boolean',
+      trueLabel: 'פעיל',
+      falseLabel: 'לא פעיל',
+      render: (v) => <Badge map={ACTIVE_STATUS} value={v.is_active ? 'active' : 'inactive'} />,
+    },
+  ];
 
   return (
     <div className="space-y-4">
@@ -108,71 +160,31 @@ function VolunteersManager({ meals, areas, onErr, canDelete }) {
         />
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
-          <thead className="bg-brand-burgundy text-brand-cream text-sm">
-            <tr>
-              <th className="p-3 text-right">שם</th>
-              <th className="p-3 text-right">כרטיס לקוח</th>
-              <th className="p-3 text-right">טלפון</th>
-              <th className="p-3 text-right">תחום</th>
-              <th className="p-3 text-right">מאכלים</th>
-              <th className="p-3 text-right">רכב</th>
-              <th className="p-3 text-right">קבוע</th>
-              <th className="p-3 text-right">סטטוס</th>
-              <th className="p-3 text-right"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((v) => (
-              <Fragment key={v.id}>
-              <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!v.is_active ? 'opacity-50' : ''} ${editing?.id === v.id ? 'bg-brand-cream/40' : ''}`}>
-                <td className="p-3 font-medium">{v.full_name}</td>
-                <td className="p-3 text-sm text-brand-burgundy/60">{v.customer_id ? 'מקושר' : 'עצמאי'}</td>
-                <td className="p-3 text-sm" dir="ltr">{v.phone || '—'}</td>
-                <td className="p-3 text-sm">
-                  {(v.area_ids || []).map((id) => areaName[id]).filter(Boolean).join(', ') || '—'}
-                </td>
-                <td className="p-3 text-sm text-brand-burgundy/60">
-                  {(v.linked_meals?.length
-                    ? v.linked_meals.map((m) => m.name)
-                    : (v.meals?.name ? [v.meals.name] : [])
-                  ).join(', ') || '—'}
-                </td>
-                <td className="p-3 text-center">{v.has_vehicle ? '🚗' : '—'}</td>
-                <td className="p-3 text-center">{v.is_regular ? '✓' : '—'}</td>
-                <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={v.is_active ? 'active' : 'inactive'} /></td>
-                <td className="p-3 text-sm whitespace-nowrap">
-                  <div className="flex flex-wrap gap-1">
-                  <ActionIconButton icon={editing?.id === v.id ? 'cancel' : 'edit'} label={editing?.id === v.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === v.id ? null : v)} />
-                  <ActionIconButton
-                    icon={v.is_active ? 'deactivate' : 'activate'}
-                    label={v.is_active ? 'השבתה' : 'הפעלה'}
-                    tone="muted"
-                    onClick={() => toggleActive(v)}
-                  />
-                  {canDelete && (
-                    <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteVolunteer(v)} />
-                  )}
-                  </div>
-                </td>
-              </tr>
-              {editing?.id === v.id && (
-                <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
-                  <td colSpan={9} className="p-3 sm:p-4">
-                    <VolunteerForm meals={meals} areas={areas} customers={customers} initial={editing}
-                      onSave={save} onCancel={() => setEditing(null)} />
-                  </td>
-                </tr>
-              )}
-              </Fragment>
-            ))}
-            {list.length === 0 && (
-              <tr><td colSpan={9} className="p-6 text-center text-brand-burgundy/50">אין מתנדבים עדיין.</td></tr>
+      <DataTable
+        columns={columns}
+        rows={list}
+        empty="אין מתנדבים עדיין."
+        expandedId={editing?.id}
+        rowClassName={(v) => `${!v.is_active ? 'opacity-50' : ''} ${editing?.id === v.id ? 'bg-brand-cream/40' : ''}`}
+        renderExpanded={() => (
+          <VolunteerForm meals={meals} areas={areas} customers={customers} initial={editing}
+            onSave={save} onCancel={() => setEditing(null)} />
+        )}
+        actions={(v) => (
+          <>
+            <ActionIconButton icon={editing?.id === v.id ? 'cancel' : 'edit'} label={editing?.id === v.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === v.id ? null : v)} />
+            <ActionIconButton
+              icon={v.is_active ? 'deactivate' : 'activate'}
+              label={v.is_active ? 'השבתה' : 'הפעלה'}
+              tone="muted"
+              onClick={() => toggleActive(v)}
+            />
+            {canDelete && (
+              <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteVolunteer(v)} />
             )}
-          </tbody>
-        </table>
-      </div>
+          </>
+        )}
+      />
     </div>
   );
 }
@@ -374,7 +386,6 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel }) {
 function TasksManager({ meals, areas, volunteers, onErr, canDelete }) {
   const [list, setList] = useState(null);
   const [editing, setEditing] = useState(null);
-  const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [savingOrder, setSavingOrder] = useState(false);
   const areaName = Object.fromEntries(areas.map((a) => [a.id, a.name]));
 
@@ -395,20 +406,10 @@ function TasksManager({ meals, areas, volunteers, onErr, canDelete }) {
     } catch (e) { onErr(e); }
   }
 
-  async function moveTask(targetTaskId) {
-    if (savingOrder || !draggedTaskId || draggedTaskId === targetTaskId) return;
+  async function handleReorder(reordered) {
     const previous = list;
-    const fromIndex = previous.findIndex((task) => task.id === draggedTaskId);
-    const toIndex = previous.findIndex((task) => task.id === targetTaskId);
-    if (fromIndex < 0 || toIndex < 0) return;
-
-    const reordered = [...previous];
-    const [moved] = reordered.splice(fromIndex, 1);
-    reordered.splice(toIndex, 0, moved);
     const normalized = reordered.map((task, index) => ({ ...task, display_order: index + 1 }));
-
     setList(normalized);
-    setDraggedTaskId(null);
     setSavingOrder(true);
     try {
       await Promise.all(normalized.map((task) =>
@@ -434,90 +435,80 @@ function TasksManager({ meals, areas, volunteers, onErr, canDelete }) {
 
   if (!list) return <p>טוען...</p>;
 
+  const areaText = (t) => t.area?.name || areaName[t.area_id] || '';
+  const columns = [
+    { key: 'name', label: 'משימה', type: 'text', className: 'font-medium' },
+    {
+      key: 'area',
+      label: 'תחום',
+      type: 'enum',
+      value: (t) => t.area_id || '',
+      options: areas.map((a) => ({ value: a.id, label: a.name })),
+      render: (t) => (
+        <>
+          <div>{areaText(t) || '—'}</div>
+          <div className="text-xs text-brand-burgundy/50">{DAYS.find(([value]) => value === t.execution_day)?.[1] || 'כללי'}</div>
+          <div className="text-xs text-brand-burgundy/60">אחראי: {t.primary_volunteer?.full_name || 'ללא'}</div>
+        </>
+      ),
+    },
+    {
+      key: 'meal',
+      label: 'מאכל',
+      type: 'text',
+      className: 'text-brand-burgundy/60',
+      value: (t) => t.meals?.name || '',
+      render: (t) => t.meals?.name || '—',
+    },
+    {
+      key: 'is_active',
+      label: 'סטטוס',
+      type: 'boolean',
+      trueLabel: 'פעיל',
+      falseLabel: 'לא פעיל',
+      render: (t) => <Badge map={ACTIVE_STATUS} value={t.is_active ? 'active' : 'inactive'} />,
+    },
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={() => setEditing({})} className="btn-primary">+ משימה חדשה</button>
-        <span className="text-xs text-brand-burgundy/55">
-          {savingOrder ? 'שומר את סדר המשימות...' : 'אפשר לגרור שורות כדי לקבוע את סדר המשימות'}
-        </span>
+        {savingOrder && <span className="text-xs text-brand-burgundy/55">שומר את סדר המשימות...</span>}
       </div>
 
       {editing && !editing.id && (
         <TaskForm meals={meals} areas={areas} volunteers={volunteers} initial={editing} onSave={save} onCancel={() => setEditing(null)} />
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
-          <thead className="bg-brand-burgundy text-brand-cream text-sm">
-            <tr>
-              <th className="p-3 text-right">סדר</th>
-              <th className="p-3 text-right">משימה</th>
-              <th className="p-3 text-right">תחום</th>
-              <th className="p-3 text-right">מאכל</th>
-              <th className="p-3 text-right">סטטוס</th>
-              <th className="p-3 text-right"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((t) => (
-              <Fragment key={t.id}>
-              <tr
-                draggable={!savingOrder && editing?.id !== t.id}
-                onDragStart={(e) => {
-                  setDraggedTaskId(t.id);
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/plain', t.id);
-                }}
-                onDragOver={(e) => {
-                  if (draggedTaskId && draggedTaskId !== t.id) {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                  }
-                }}
-                onDrop={(e) => { e.preventDefault(); moveTask(t.id); }}
-                onDragEnd={() => setDraggedTaskId(null)}
-                className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 cursor-grab active:cursor-grabbing ${draggedTaskId === t.id ? 'opacity-40' : ''} ${!t.is_active ? 'opacity-50' : ''}`}
-              >
-                <td className="p-3"><DragHandle label={`גרירת ${t.name}`} /></td>
-                <td className="p-3 font-medium">{t.name}</td>
-                <td className="p-3 text-sm">
-                  <div>{t.area?.name || areaName[t.area_id] || '—'}</div>
-                  <div className="text-xs text-brand-burgundy/50">{DAYS.find(([value]) => value === t.execution_day)?.[1] || 'כללי'}</div>
-                  <div className="text-xs text-brand-burgundy/60">אחראי: {t.primary_volunteer?.full_name || 'ללא'}</div>
-                </td>
-                <td className="p-3 text-sm text-brand-burgundy/60">{t.meals?.name || '—'}</td>
-                <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={t.is_active ? 'active' : 'inactive'} /></td>
-                <td className="p-3 text-sm whitespace-nowrap">
-                  <div className="flex flex-wrap gap-1">
-                  <ActionIconButton icon={editing?.id === t.id ? 'cancel' : 'edit'} label={editing?.id === t.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === t.id ? null : t)} />
-                  <ActionIconButton
-                    icon={t.is_active ? 'deactivate' : 'activate'}
-                    label={t.is_active ? 'השבתה' : 'הפעלה'}
-                    tone="muted"
-                    onClick={() => toggleActive(t)}
-                  />
-                  {canDelete && (
-                    <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteTask(t)} />
-                  )}
-                  </div>
-                </td>
-              </tr>
-              {editing?.id === t.id && (
-                <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
-                  <td colSpan={6} className="p-3 sm:p-4">
-                    <TaskForm meals={meals} areas={areas} volunteers={volunteers} initial={editing} onSave={save} onCancel={() => setEditing(null)} />
-                  </td>
-                </tr>
-              )}
-              </Fragment>
-            ))}
-            {list.length === 0 && (
-              <tr><td colSpan={6} className="p-6 text-center text-brand-burgundy/50">אין משימות עדיין.</td></tr>
+      <DataTable
+        columns={columns}
+        rows={list}
+        empty="אין משימות עדיין."
+        reorderable
+        onReorder={handleReorder}
+        reorderHint="אפשר לגרור שורות כדי לקבוע את סדר המשימות"
+        reorderDisabledHint="כדי לשנות סדר יש לנקות את הסינון"
+        expandedId={editing?.id}
+        rowClassName={(t) => `${!t.is_active ? 'opacity-50' : ''} ${editing?.id === t.id ? 'bg-brand-cream/40' : ''}`}
+        renderExpanded={() => (
+          <TaskForm meals={meals} areas={areas} volunteers={volunteers} initial={editing} onSave={save} onCancel={() => setEditing(null)} />
+        )}
+        actions={(t) => (
+          <>
+            <ActionIconButton icon={editing?.id === t.id ? 'cancel' : 'edit'} label={editing?.id === t.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === t.id ? null : t)} />
+            <ActionIconButton
+              icon={t.is_active ? 'deactivate' : 'activate'}
+              label={t.is_active ? 'השבתה' : 'הפעלה'}
+              tone="muted"
+              onClick={() => toggleActive(t)}
+            />
+            {canDelete && (
+              <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteTask(t)} />
             )}
-          </tbody>
-        </table>
-      </div>
+          </>
+        )}
+      />
     </div>
   );
 }

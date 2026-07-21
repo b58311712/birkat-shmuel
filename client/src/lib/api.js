@@ -79,6 +79,9 @@ export const api = {
   adminLogin: (email, password) =>
     request('/auth/admin-login', { method: 'POST', body: JSON.stringify({ email, password }) }),
 
+  // הגדרות ציבוריות (שיעור מע"מ וכו')
+  publicSettings: () => request('/settings/public'),
+
   // קטלוג ושבתות
   catalog: () => request('/catalog'),
   openShabbatot: () => request('/shabbatot/open'),
@@ -235,6 +238,22 @@ export const api = {
   invMovements: (q = '') => request(`/admin/inventory/movements${q}`),
   invDeductionPreview: (shabbatId) => request(`/admin/inventory/shabbat/${shabbatId}/deduction-preview`),
   invDeduct: (shabbatId, lines) => request(`/admin/inventory/shabbat/${shabbatId}/deduct`, { method: 'POST', body: JSON.stringify({ lines }) }),
+  // ניכוי מלאי אוטומטי מלא לפי מתכונים (המרת יחידות + עסקה אטומית)
+  invDeductAuto: (shabbatId) => request(`/admin/inventory/shabbat/${shabbatId}/deduct-auto`, { method: 'POST' }),
+
+  // יחידות מידה גלובליות (סעיף 25)
+  invUnits: (q = '') => request(`/admin/inventory/units${q}`),
+  createInvUnit: (payload) => request('/admin/inventory/units', { method: 'POST', body: JSON.stringify(payload) }),
+  updateInvUnit: (id, payload) => request(`/admin/inventory/units/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteInvUnit: (id) => request(`/admin/inventory/units/${id}`, { method: 'DELETE' }),
+  // [כלי מיזוג זמני] מיזוג יחידה (:id = מקור) ליחידת יעד
+  mergeInvUnit: (id, targetId) => request(`/admin/inventory/units/${id}/merge`, { method: 'POST', body: JSON.stringify({ target_id: targetId }) }),
+
+  // המרות יחידה פר-פריט (סעיף 25.4)
+  invItemConversions: (itemId) => request(`/admin/inventory/items/${itemId}/conversions`),
+  createInvConversion: (itemId, payload) => request(`/admin/inventory/items/${itemId}/conversions`, { method: 'POST', body: JSON.stringify(payload) }),
+  updateInvConversion: (id, payload) => request(`/admin/inventory/conversions/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteInvConversion: (id) => request(`/admin/inventory/conversions/${id}`, { method: 'DELETE' }),
 
   // ניהול ספקים (סעיף 27.1)
   suppliers: (q = '') => request(`/admin/suppliers${q}`),

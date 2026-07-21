@@ -195,7 +195,7 @@ export default function AdminRecurringExpenses({ onAuthError }) {
                 className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-gold" dir="ltr" />
             </Field>
             <button type="button" onClick={generate} disabled={genBusy || !genStatus?.pending_count}
-              className="rounded-xl bg-brand-burgundy px-5 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(92,26,46,0.16)] transition hover:bg-brand-burgundy-light disabled:opacity-50">
+              className="btn-primary">
               {genBusy ? 'מפיק…' : 'הפק לחודש זה'}
             </button>
           </div>
@@ -369,11 +369,10 @@ function RecurringExpenseForm({ form, setForm, suppliers, onSubmit, onCancel, bu
           {error && <p className="text-sm font-semibold text-red-600">{error}</p>}
           <div className="mr-auto flex gap-2">
             {isEditing && (
-              <button type="button" onClick={onCancel}
-                className="rounded-xl border border-black/[0.09] bg-white px-4 py-2.5 text-sm font-bold text-[#7c7175] transition hover:border-black/20">ביטול</button>
+              <button type="button" onClick={onCancel} className="btn-secondary">ביטול</button>
             )}
             <button type="submit" disabled={busy}
-              className="rounded-xl bg-brand-burgundy px-5 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(92,26,46,0.16)] transition hover:bg-brand-burgundy-light disabled:opacity-60">
+              className="btn-primary">
               {busy ? 'שומר…' : isEditing ? 'שמירת שינויים' : 'הוספת הוצאה קבועה'}
             </button>
           </div>

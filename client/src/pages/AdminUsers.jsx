@@ -1,7 +1,8 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
+import { DataTable } from '../components/DataTable.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 const ROLES = [
@@ -15,7 +16,6 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
   const [users, setUsers] = useState(null);
   const [editing, setEditing] = useState(null);
   const [passwordUser, setPasswordUser] = useState(null);
-  const [filter, setFilter] = useState({ search: '', role: '', active: 'true' });
 
   const canManage = currentAdmin?.role === 'developer' || currentAdmin?.role === 'manager';
   const canDelete = currentAdmin?.role === 'developer';
@@ -25,18 +25,10 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
     else alert(e.message);
   }, [onAuthError]);
 
-  const query = useMemo(() => {
-    const params = new URLSearchParams();
-    if (filter.search.trim()) params.set('search', filter.search.trim());
-    if (filter.role) params.set('role', filter.role);
-    if (filter.active) params.set('active', filter.active);
-    const q = params.toString();
-    return q ? `?${q}` : '';
-  }, [filter]);
-
+  // טוענים את כל המשתמשים; הסינון (חיפוש/תפקיד/סטטוס) נעשה בזיכרון ב-DataTable.
   const load = useCallback(() => {
-    api.adminUsers(query).then(setUsers).catch(handleErr);
-  }, [query, handleErr]);
+    api.adminUsers().then(setUsers).catch(handleErr);
+  }, [handleErr]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -87,32 +79,45 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
     );
   }
 
+  const columns = [
+    {
+      key: 'full_name',
+      label: 'שם',
+      type: 'text',
+      className: 'font-medium',
+      render: (user) => (
+        <>
+          {user.full_name}
+          {user.id === currentAdmin?.id && <span className="text-xs text-brand-burgundy/50 mr-1">(מחובר)</span>}
+          {user.notes && <div className="text-xs text-brand-burgundy/50 mt-1">{user.notes}</div>}
+        </>
+      ),
+    },
+    { key: 'email', label: 'אימייל', type: 'text', dir: 'ltr' },
+    { key: 'phone', label: 'טלפון', type: 'text', dir: 'ltr', render: (u) => u.phone || '-' },
+    {
+      key: 'role',
+      label: 'תפקיד',
+      type: 'enum',
+      options: ROLES,
+      render: (u) => ROLE_LABEL[u.role] || u.role,
+    },
+    {
+      key: 'is_active',
+      label: 'סטטוס',
+      type: 'boolean',
+      trueLabel: 'פעיל',
+      falseLabel: 'לא פעיל',
+      render: (u) => <Badge map={ACTIVE_STATUS} value={u.is_active ? 'active' : 'inactive'} />,
+    },
+    { key: 'last_login_at', label: 'כניסה אחרונה', type: 'date', dir: 'ltr', render: (u) => formatDate(u.last_login_at) },
+  ];
+
   return (
     <Page title="ניהול משתמשים" subtitle="משתמשי מערכת פנימיים, תפקידים, סטטוס ואיפוס סיסמה">
       <div className="space-y-4">
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button onClick={() => setEditing({})} className="btn-primary">+ משתמש חדש</button>
-          <Field label="חיפוש">
-            <input
-              value={filter.search}
-              onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
-              className={inputCls}
-              placeholder="שם, אימייל או טלפון"
-            />
-          </Field>
-          <Field label="תפקיד">
-            <select value={filter.role} onChange={(e) => setFilter((f) => ({ ...f, role: e.target.value }))} className={inputCls}>
-              <option value="">הכל</option>
-              {ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
-            </select>
-          </Field>
-          <Field label="סטטוס">
-            <select value={filter.active} onChange={(e) => setFilter((f) => ({ ...f, active: e.target.value }))} className={inputCls}>
-              <option value="true">פעילים</option>
-              <option value="false">לא פעילים</option>
-              <option value="">הכל</option>
-            </select>
-          </Field>
         </div>
 
         {editing && !editing.id && <UserForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
@@ -120,65 +125,29 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
           <PasswordForm user={passwordUser} onSave={resetPassword} onCancel={() => setPasswordUser(null)} />
         )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
-            <thead className="bg-brand-burgundy text-brand-cream text-sm">
-              <tr>
-                <th className="p-3 text-right">שם</th>
-                <th className="p-3 text-right">אימייל</th>
-                <th className="p-3 text-right">טלפון</th>
-                <th className="p-3 text-right">תפקיד</th>
-                <th className="p-3 text-right">סטטוס</th>
-                <th className="p-3 text-right">כניסה אחרונה</th>
-                <th className="p-3 text-right"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {!users ? (
-                <tr><td colSpan={7} className="p-6 text-center text-brand-burgundy/50">טוען...</td></tr>
-              ) : users.length === 0 ? (
-                <tr><td colSpan={7} className="p-6 text-center text-brand-burgundy/50">לא נמצאו משתמשים.</td></tr>
-              ) : users.map((user) => (
-                <Fragment key={user.id}>
-                <tr className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${!user.is_active ? 'opacity-50' : ''} ${editing?.id === user.id ? 'bg-brand-cream/40' : ''}`}>
-                  <td className="p-3 font-medium">
-                    {user.full_name}
-                    {user.id === currentAdmin?.id && <span className="text-xs text-brand-burgundy/50 mr-1">(מחובר)</span>}
-                    {user.notes && <div className="text-xs text-brand-burgundy/50 mt-1">{user.notes}</div>}
-                  </td>
-                  <td className="p-3 text-sm" dir="ltr">{user.email}</td>
-                  <td className="p-3 text-sm" dir="ltr">{user.phone || '-'}</td>
-                  <td className="p-3 text-sm">{ROLE_LABEL[user.role] || user.role}</td>
-                  <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={user.is_active ? 'active' : 'inactive'} /></td>
-                  <td className="p-3 text-sm" dir="ltr">{formatDate(user.last_login_at)}</td>
-                  <td className="p-3 text-sm whitespace-nowrap">
-                    <div className="flex flex-wrap gap-1">
-                    <ActionIconButton icon={editing?.id === user.id ? 'cancel' : 'edit'} label={editing?.id === user.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === user.id ? null : user)} />
-                    <ActionIconButton icon="password" label="איפוס סיסמה" onClick={() => setPasswordUser(user)} />
-                    <ActionIconButton
-                      icon={user.is_active ? 'deactivate' : 'activate'}
-                      label={user.is_active ? 'השבתה' : 'הפעלה'}
-                      tone="muted"
-                      onClick={() => toggleActive(user)}
-                    />
-                    {canDelete && user.id !== currentAdmin?.id && (
-                      <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteUser(user)} />
-                    )}
-                    </div>
-                  </td>
-                </tr>
-                {editing?.id === user.id && (
-                  <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
-                    <td colSpan={7} className="p-3 sm:p-4">
-                      <UserForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />
-                    </td>
-                  </tr>
-                )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          rows={users}
+          empty="לא נמצאו משתמשים."
+          expandedId={editing?.id}
+          rowClassName={(user) => `${!user.is_active ? 'opacity-50' : ''} ${editing?.id === user.id ? 'bg-brand-cream/40' : ''}`}
+          renderExpanded={() => <UserForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
+          actions={(user) => (
+            <>
+              <ActionIconButton icon={editing?.id === user.id ? 'cancel' : 'edit'} label={editing?.id === user.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === user.id ? null : user)} />
+              <ActionIconButton icon="password" label="איפוס סיסמה" onClick={() => setPasswordUser(user)} />
+              <ActionIconButton
+                icon={user.is_active ? 'deactivate' : 'activate'}
+                label={user.is_active ? 'השבתה' : 'הפעלה'}
+                tone="muted"
+                onClick={() => toggleActive(user)}
+              />
+              {canDelete && user.id !== currentAdmin?.id && (
+                <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteUser(user)} />
+              )}
+            </>
+          )}
+        />
       </div>
     </Page>
   );
