@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { DragHandle } from './DragHandle.jsx';
 
 // טבלה גנרית עם סינון פר-עמודה לפי טיפוס השדה. הסינון בזיכרון על השורות שנטענו.
@@ -126,6 +126,8 @@ export function DataTable({
   reorderHint = 'אפשר לגרור שורות כדי לשנות את הסדר',
   reorderDisabledHint = 'כדי לשנות סדר יש לנקות את הסינון',
   initialFilters,
+  onRowClick,          // לחיצה על שורה (מחוץ לפקדים אינטראקטיביים) — פותחת רשומה
+  onVisibleRowsChange, // נקרא עם השורות הגלויות (אחרי סינון+מיון) — לדפדוף בפאנל
 }) {
   const [filters, setFilters] = useState(initialFilters || {});
   const [showFilters, setShowFilters] = useState(!!initialFilters && Object.keys(initialFilters).length > 0);
@@ -205,6 +207,27 @@ export function DataTable({
       return compareCells(col, a, b) * mul;
     });
   }, [filtered, sort, columns]);
+
+  // חשיפת השורות הגלויות (אחרי סינון+מיון) לצורך דפדוף בין רשומות בפאנל.
+  // columns מוגדר אינליין בכל עמוד ולכן sorted מקבל reference חדש בכל רינדור;
+  // חתימה לפי מזהי-השורות מונעת קריאה מיותרת (ולולאת עדכון) כשהתוכן לא השתנה.
+  const visibleSigRef = useRef('');
+  useEffect(() => {
+    if (!onVisibleRowsChange) return;
+    const out = sorted || [];
+    const sig = out.map((r) => rowKey(r)).join(',');
+    if (sig !== visibleSigRef.current) {
+      visibleSigRef.current = sig;
+      onVisibleRowsChange(out);
+    }
+  });
+
+  // לחיצה על שורה פותחת רשומה, אך לא כשלוחצים על פקד אינטראקטיבי בתוך התא.
+  const handleRowClick = (row) => (e) => {
+    if (!onRowClick) return;
+    if (e.target.closest('button, a, input, select, textarea, label, [data-no-row-click]')) return;
+    onRowClick(row);
+  };
 
   // גרירה זמינה רק כשאין סינון או מיון פעילים ואין שורה בעריכה - אחרת אי-אפשר לגזור סדר גלובלי אמין.
   const canReorder = reorderable && !!onReorder && activeFilterCount === 0 && sort == null && expandedId == null;
@@ -334,7 +357,8 @@ export function DataTable({
                       } : undefined}
                       onDrop={canReorder ? (e) => { e.preventDefault(); handleDrop(key); } : undefined}
                       onDragEnd={canReorder ? () => setDraggingId(null) : undefined}
-                      className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${canReorder ? 'cursor-grab active:cursor-grabbing' : ''} ${dragging ? 'opacity-40' : ''} ${rowClassName ? rowClassName(row) : ''}`}
+                      onClick={onRowClick ? handleRowClick(row) : undefined}
+                      className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 ${canReorder ? 'cursor-grab active:cursor-grabbing' : onRowClick ? 'cursor-pointer' : ''} ${dragging ? 'opacity-40' : ''} ${rowClassName ? rowClassName(row) : ''}`}
                     >
                       {reorderable && (
                         <td className="p-3 text-brand-burgundy/45">

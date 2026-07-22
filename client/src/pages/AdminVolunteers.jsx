@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
-import { ActionIconButton } from '../components/ActionIcon.jsx';
 import { DataTable } from '../components/DataTable.jsx';
+import { FormDrawer, useRecordNav } from '../components/Drawer.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 // ניהול מתנדבים ומשימות קבועות (סעיף 24). מסך ניהול גלובלי.
@@ -81,15 +81,20 @@ function VolunteersManager({ meals, areas, onErr, canDelete }) {
   }
 
   async function toggleActive(v) {
-    try { await api.updateVolunteer(v.id, { is_active: !v.is_active }); load(); }
-    catch (e) { onErr(e); }
+    try {
+      await api.updateVolunteer(v.id, { is_active: !v.is_active });
+      setEditing((e) => (e && e.id === v.id ? { ...e, is_active: !v.is_active } : e));
+      load();
+    } catch (e) { onErr(e); }
   }
 
   async function deleteVolunteer(v) {
     if (!confirm(`למחוק לצמיתות את ${v.full_name}?`)) return;
-    try { await api.deleteVolunteer(v.id); load(); }
+    try { await api.deleteVolunteer(v.id); setEditing(null); load(); }
     catch (e) { onErr(e); }
   }
+
+  const nav = useRecordNav(setEditing, editing?.id ?? null);
 
   const areaText = (v) => (v.area_ids || []).map((id) => areaName[id]).filter(Boolean).join(', ');
   const mealsText = (v) => (v.linked_meals?.length
@@ -149,47 +154,43 @@ function VolunteersManager({ meals, areas, onErr, canDelete }) {
     <div className="space-y-4">
       <button onClick={() => setEditing({})} className="btn-primary">+ מתנדב חדש</button>
 
-      {editing && !editing.id && (
-        <VolunteerForm
-          meals={meals}
-          areas={areas}
-          customers={customers}
-          initial={editing}
-          onSave={save}
-          onCancel={() => setEditing(null)}
-        />
-      )}
-
       <DataTable
         columns={columns}
         rows={list}
         empty="אין מתנדבים עדיין."
-        expandedId={editing?.id}
         rowClassName={(v) => `${!v.is_active ? 'opacity-50' : ''} ${editing?.id === v.id ? 'bg-brand-cream/40' : ''}`}
-        renderExpanded={() => (
-          <VolunteerForm meals={meals} areas={areas} customers={customers} initial={editing}
-            onSave={save} onCancel={() => setEditing(null)} />
-        )}
-        actions={(v) => (
-          <>
-            <ActionIconButton icon={editing?.id === v.id ? 'cancel' : 'edit'} label={editing?.id === v.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === v.id ? null : v)} />
-            <ActionIconButton
-              icon={v.is_active ? 'deactivate' : 'activate'}
-              label={v.is_active ? 'השבתה' : 'הפעלה'}
-              tone="muted"
-              onClick={() => toggleActive(v)}
-            />
-            {canDelete && (
-              <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteVolunteer(v)} />
-            )}
-          </>
-        )}
+        onRowClick={setEditing}
+        onVisibleRowsChange={nav.setVisibleRows}
       />
+
+      <FormDrawer
+        editing={editing}
+        onClose={() => setEditing(null)}
+        entity="מתנדב"
+        title={editing?.full_name}
+        width="xl"
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        footer={editing?.id ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => toggleActive(editing)} className="btn-ghost">{editing.is_active ? 'השבתה' : 'הפעלה'}</button>
+            {canDelete && (
+              <button onClick={() => deleteVolunteer(editing)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing && (
+          <VolunteerForm meals={meals} areas={areas} customers={customers} initial={editing}
+            onSave={save} onCancel={() => setEditing(null)} embedded />
+        )}
+      </FormDrawer>
     </div>
   );
 }
 
-function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel }) {
+function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, embedded = false }) {
   const activeAreas = areas.filter((a) => a.is_active);
   const [customerSearch, setCustomerSearch] = useState('');
   const [f, setF] = useState({
@@ -253,8 +254,8 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel }) {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
-      <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת מתנדב' : 'מתנדב חדש'}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת מתנדב' : 'מתנדב חדש'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="קישור ללקוח קיים">
           <div className="space-y-2">
@@ -423,15 +424,20 @@ function TasksManager({ meals, areas, volunteers, onErr, canDelete }) {
   }
 
   async function toggleActive(t) {
-    try { await api.updateVolunteerTask(t.id, { is_active: !t.is_active }); load(); }
-    catch (e) { onErr(e); }
+    try {
+      await api.updateVolunteerTask(t.id, { is_active: !t.is_active });
+      setEditing((e) => (e && e.id === t.id ? { ...e, is_active: !t.is_active } : e));
+      load();
+    } catch (e) { onErr(e); }
   }
 
   async function deleteTask(t) {
     if (!confirm(`למחוק לצמיתות את המשימה ${t.name}?`)) return;
-    try { await api.deleteVolunteerTask(t.id); load(); }
+    try { await api.deleteVolunteerTask(t.id); setEditing(null); load(); }
     catch (e) { onErr(e); }
   }
+
+  const nav = useRecordNav(setEditing, editing?.id ?? null);
 
   if (!list) return <p>טוען...</p>;
 
@@ -477,10 +483,6 @@ function TasksManager({ meals, areas, volunteers, onErr, canDelete }) {
         {savingOrder && <span className="text-xs text-brand-burgundy/55">שומר את סדר המשימות...</span>}
       </div>
 
-      {editing && !editing.id && (
-        <TaskForm meals={meals} areas={areas} volunteers={volunteers} initial={editing} onSave={save} onCancel={() => setEditing(null)} />
-      )}
-
       <DataTable
         columns={columns}
         rows={list}
@@ -489,26 +491,34 @@ function TasksManager({ meals, areas, volunteers, onErr, canDelete }) {
         onReorder={handleReorder}
         reorderHint="אפשר לגרור שורות כדי לקבוע את סדר המשימות"
         reorderDisabledHint="כדי לשנות סדר יש לנקות את הסינון"
-        expandedId={editing?.id}
         rowClassName={(t) => `${!t.is_active ? 'opacity-50' : ''} ${editing?.id === t.id ? 'bg-brand-cream/40' : ''}`}
-        renderExpanded={() => (
-          <TaskForm meals={meals} areas={areas} volunteers={volunteers} initial={editing} onSave={save} onCancel={() => setEditing(null)} />
-        )}
-        actions={(t) => (
-          <>
-            <ActionIconButton icon={editing?.id === t.id ? 'cancel' : 'edit'} label={editing?.id === t.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === t.id ? null : t)} />
-            <ActionIconButton
-              icon={t.is_active ? 'deactivate' : 'activate'}
-              label={t.is_active ? 'השבתה' : 'הפעלה'}
-              tone="muted"
-              onClick={() => toggleActive(t)}
-            />
-            {canDelete && (
-              <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteTask(t)} />
-            )}
-          </>
-        )}
+        onRowClick={setEditing}
+        onVisibleRowsChange={nav.setVisibleRows}
       />
+
+      <FormDrawer
+        editing={editing}
+        onClose={() => setEditing(null)}
+        entity="משימה"
+        article="חדשה"
+        title={editing?.name}
+        width="xl"
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        footer={editing?.id ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => toggleActive(editing)} className="btn-ghost">{editing.is_active ? 'השבתה' : 'הפעלה'}</button>
+            {canDelete && (
+              <button onClick={() => deleteTask(editing)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing && (
+          <TaskForm meals={meals} areas={areas} volunteers={volunteers} initial={editing} onSave={save} onCancel={() => setEditing(null)} embedded />
+        )}
+      </FormDrawer>
     </div>
   );
 }
@@ -593,7 +603,7 @@ function AreasManager({ areas, onChanged, onErr, canDelete }) {
   );
 }
 
-function TaskForm({ meals, areas, volunteers, initial, onSave, onCancel }) {
+function TaskForm({ meals, areas, volunteers, initial, onSave, onCancel, embedded = false }) {
   const activeAreas = areas.filter((a) => a.is_active);
   const [f, setF] = useState({
     id: initial.id,
@@ -633,8 +643,8 @@ function TaskForm({ meals, areas, volunteers, initial, onSave, onCancel }) {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
-      <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת משימה' : 'משימה חדשה'}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת משימה' : 'משימה חדשה'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם משימה *">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />

@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { MealCategoryPicker } from '../components/MealCategoryPicker.jsx';
-import { slotComboKey } from '../lib/pricing.js';
+import { calcMealSurcharges, slotComboKey } from '../lib/pricing.js';
 
 const MIN_PORTIONS = 50;
 const MAX_PORTIONS = 100;
@@ -122,7 +122,8 @@ export default function AdminOrderEdit({ onAuthError }) {
     const track = catalog.price_tracks.find((t) => slotComboKey(t.meal_slot_ids) === selectedKey);
     const perPortion = track ? Number(track.price_per_portion) : 0;
     const totalPortions = selectedSlots.reduce((s, x) => s + x.portions, 0);
-    const base = totalPortions * perPortion;
+    const base = totalPortions * perPortion
+      + calcMealSurcharges(meals, catalog.meals, selectedSlots);
     let ex = 0;
     for (const [eid, qty] of Object.entries(extras)) {
       const e = catalog.extras.find((x) => x.id === eid);
@@ -130,7 +131,7 @@ export default function AdminOrderEdit({ onAuthError }) {
     }
     const noMatch = selectedSlots.length > 0 && !track;
     return { base, extras: ex, total: base + ex, noMatch };
-  }, [catalog, selectedSlots, extras]);
+  }, [catalog, selectedSlots, meals, extras]);
 
   // מפה: category_id -> מצב חלוקה ('equal' | 'additive'). תאימות-לאחור לדגל הישן.
   const splitModeByCategory = useMemo(() => {

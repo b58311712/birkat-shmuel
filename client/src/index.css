@@ -144,6 +144,17 @@
   .toast-enter { animation: none; }
 }
 
+/* פאנל צידי (Drawer) - החלקה מקצה המסך + עמעום רקע. */
+@keyframes drawer-in-left { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes drawer-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes drawer-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+.drawer-panel-left { animation: drawer-in-left 240ms cubic-bezier(0.32, 0.72, 0, 1); }
+.drawer-panel-right { animation: drawer-in-right 240ms cubic-bezier(0.32, 0.72, 0, 1); }
+.drawer-backdrop { animation: drawer-backdrop-in 200ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .drawer-panel-left, .drawer-panel-right, .drawer-backdrop { animation: none; }
+}
+
 .admin-pilot header img[src="/logo.png"] {
   height: 2.25rem;
   width: 2.25rem;

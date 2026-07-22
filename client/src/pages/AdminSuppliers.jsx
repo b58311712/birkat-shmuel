@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
-import { ActionIconButton } from '../components/ActionIcon.jsx';
 import { DataTable } from '../components/DataTable.jsx';
+import { Drawer, useRecordNav } from '../components/Drawer.jsx';
 import { ACTIVE_STATUS, Badge, SUPPLIER_CHANNEL, PO_STATUS } from '../lib/status.jsx';
 import PriceInput from '../components/PriceInput.jsx';
 import { formatWithVat } from '../lib/vat.js';
@@ -43,6 +43,8 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
       else await api.createSupplier(form);
       setEditing(null);
       load();
+      // אם ערכנו ספק שהכרטיס שלו פתוח - מרעננים את התצוגה בפאנל.
+      if (form.id && detail?.supplier?.id === form.id) openDetail({ id: form.id });
     } catch (e) { handleErr(e); }
   }
 
@@ -61,9 +63,17 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
   }
 
   async function openDetail(s) {
+    setEditing(null);
     try { setDetail(await api.supplier(s.id)); }
     catch (e) { handleErr(e); }
   }
+
+  function openEdit(s) { setDetail(null); setEditing(s); }
+  function closeDrawer() { setDetail(null); setEditing(null); }
+
+  const drawerOpen = !!detail || !!editing;
+  const supplier = detail?.supplier;
+  const nav = useRecordNav(openDetail, !editing && detail ? supplier.id : null);
 
   const columns = [
     {
@@ -71,9 +81,7 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
       label: 'שם ספק',
       type: 'text',
       className: 'font-medium',
-      render: (s) => (
-        <button onClick={() => openDetail(s)} className="text-brand-burgundy hover:underline">{s.name}</button>
-      ),
+      render: (s) => <span className="text-brand-burgundy">{s.name}</span>,
     },
     { key: 'contact_name', label: 'איש קשר', type: 'text' },
     { key: 'phone', label: 'טלפון', type: 'text', dir: 'ltr' },
@@ -97,40 +105,47 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
   return (
     <Page title="ניהול ספקים" subtitle="כרטיס ספק, פרטי קשר ומוצרים שהספק מספק">
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <button onClick={() => setEditing({})} className="btn-primary">+ ספק חדש</button>
+        <button onClick={() => openEdit({})} className="btn-primary">+ ספק חדש</button>
         <Link to="/admin/purchase-orders" className="btn-ghost">הזמנות רכש ←</Link>
       </div>
-
-      {editing && !editing.id && (
-        <SupplierForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />
-      )}
-      {detail && (
-        <SupplierDetail data={detail} onClose={() => setDetail(null)} onErr={handleErr} onChanged={() => openDetail(detail.supplier)} />
-      )}
 
       <DataTable
         columns={columns}
         rows={list}
         empty="אין ספקים עדיין."
-        expandedId={editing?.id}
-        rowClassName={(s) => `${!s.is_active ? 'opacity-50' : ''} ${editing?.id === s.id ? 'bg-brand-cream/40' : ''}`}
-        renderExpanded={() => <SupplierForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
-        actions={(s) => (
-          <>
-            <ActionIconButton icon="view" label="פירוט" onClick={() => openDetail(s)} />
-            <ActionIconButton icon={editing?.id === s.id ? 'cancel' : 'edit'} label={editing?.id === s.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === s.id ? null : s)} />
-            <ActionIconButton
-              icon={s.is_active ? 'deactivate' : 'activate'}
-              label={s.is_active ? 'השבתה' : 'הפעלה'}
-              tone="muted"
-              onClick={() => toggleActive(s)}
-            />
-            {canDelete && (
-              <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteSupplier(s)} />
-            )}
-          </>
-        )}
+        rowClassName={(s) => `${!s.is_active ? 'opacity-50' : ''} ${supplier?.id === s.id ? 'bg-brand-cream/40' : ''}`}
+        onRowClick={openDetail}
+        onVisibleRowsChange={nav.setVisibleRows}
       />
+
+      <Drawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        contentKey={editing ? `e${editing.id ?? 'new'}` : `v${supplier?.id ?? ''}`}
+        width="lg"
+        eyebrow={editing ? (editing.id ? 'עריכת ספק' : 'ספק חדש') : 'כרטיס ספק'}
+        title={editing ? (editing.name || (editing.id ? 'עריכת ספק' : 'ספק חדש')) : (supplier?.name || 'טוען...')}
+        footer={!editing && detail ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setEditing(supplier)} className="btn-primary">עריכה</button>
+            <button onClick={() => toggleActive(supplier)} className="btn-ghost">{supplier.is_active ? 'השבתה' : 'הפעלה'}</button>
+            {canDelete && (
+              <button onClick={() => deleteSupplier(supplier)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing ? (
+          <SupplierForm initial={editing} onSave={save} onCancel={() => setEditing(null)} embedded />
+        ) : detail ? (
+          <SupplierDetailBody data={detail} onErr={handleErr} onChanged={() => openDetail(detail.supplier)} />
+        ) : (
+          <p className="text-sm text-surface-muted">טוען...</p>
+        )}
+      </Drawer>
     </Page>
   );
 }
@@ -138,7 +153,7 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
 // ---------------------------------------------------------------------------
 // טופס כרטיס ספק (סעיף 27.1)
 // ---------------------------------------------------------------------------
-function SupplierForm({ initial, onSave, onCancel }) {
+function SupplierForm({ initial, onSave, onCancel, embedded = false }) {
   const [f, setF] = useState({
     id: initial.id,
     name: initial.name || '',
@@ -158,8 +173,8 @@ function SupplierForm({ initial, onSave, onCancel }) {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold mb-4">
-      <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת ספק' : 'ספק חדש'}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold mb-4'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת ספק' : 'ספק חדש'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם ספק *">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />
@@ -197,7 +212,7 @@ function SupplierForm({ initial, onSave, onCancel }) {
 // ---------------------------------------------------------------------------
 // פירוט ספק: מוצרים שהוא מספק (סעיף 25.3) + הזמנות רכש אחרונות
 // ---------------------------------------------------------------------------
-function SupplierDetail({ data, onClose, onErr, onChanged }) {
+function SupplierDetailBody({ data, onErr, onChanged }) {
   const { supplier, items, orders } = data;
   const [allItems, setAllItems] = useState(null);
   const [editingItems, setEditingItems] = useState(false);
@@ -231,19 +246,16 @@ function SupplierDetail({ data, onClose, onErr, onChanged }) {
   const chosen = new Set(rows.map((r) => r.inventory_item_id));
 
   return (
-    <div className="card space-y-4 border-r-4 border-brand-burgundy mb-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <h3 className="font-bold text-brand-burgundy text-lg">{supplier.name}</h3>
-          <div className="text-sm text-brand-burgundy/70 space-y-0.5 mt-1">
-            {supplier.contact_name && <div>איש קשר: {supplier.contact_name}</div>}
-            {supplier.phone && <div dir="ltr" className="text-right">טלפון: {supplier.phone}</div>}
-            {supplier.email && <div dir="ltr" className="text-right">מייל: {supplier.email}</div>}
-            {supplier.preferred_channel && <div>אמצעי הזמנה: {SUPPLIER_CHANNEL[supplier.preferred_channel]}</div>}
-            {supplier.order_notes && <div className="text-brand-burgundy/50">הערות: {supplier.order_notes}</div>}
-          </div>
-        </div>
-        <button onClick={onClose} className="text-brand-burgundy/60 hover:underline text-sm">סגירה</button>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge map={ACTIVE_STATUS} value={supplier.is_active ? 'active' : 'inactive'} />
+      </div>
+      <div className="text-sm text-brand-burgundy/70 space-y-0.5">
+        {supplier.contact_name && <div>איש קשר: {supplier.contact_name}</div>}
+        {supplier.phone && <div dir="ltr" className="text-right">טלפון: {supplier.phone}</div>}
+        {supplier.email && <div dir="ltr" className="text-right">מייל: {supplier.email}</div>}
+        {supplier.preferred_channel && <div>אמצעי הזמנה: {SUPPLIER_CHANNEL[supplier.preferred_channel]}</div>}
+        {supplier.order_notes && <div className="text-brand-burgundy/50">הערות: {supplier.order_notes}</div>}
       </div>
 
       {/* מוצרים שהספק מספק */}

@@ -4,7 +4,7 @@ import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { MealCategoryPicker } from '../components/MealCategoryPicker.jsx';
 import { formatGregorianDate, formatShabbatHebrewDate, formatShabbatTitle } from '../lib/dates.js';
-import { slotComboKey } from '../lib/pricing.js';
+import { calcMealSurcharges, slotComboKey } from '../lib/pricing.js';
 import { splitPercentsFor } from '../lib/splitPercents.js';
 import { PAYMENT_METHOD } from '../lib/status.jsx';
 
@@ -103,7 +103,8 @@ export default function NewOrder({ customer }) {
     const track = catalog.price_tracks.find((t) => slotComboKey(t.meal_slot_ids) === selectedKey);
     const perPortion = track ? Number(track.price_per_portion) : 0;
     const totalPortions = selectedSlots.reduce((s, x) => s + x.portions, 0);
-    const base = totalPortions * perPortion;
+    const base = totalPortions * perPortion
+      + calcMealSurcharges(meals, catalog.meals, selectedSlots);
     let ex = 0;
     for (const [id, qty] of Object.entries(extras)) {
       const e = catalog.extras.find((x) => x.id === id);
@@ -112,7 +113,7 @@ export default function NewOrder({ customer }) {
     // אין מסלול לצירוף שנבחר → אין מחיר בסיס, ההזמנה תיחסם בשרת.
     const noMatch = selectedSlots.length > 0 && !track;
     return { base, extras: ex, total: base + ex, noMatch };
-  }, [catalog, selectedSlots, extras]);
+  }, [catalog, selectedSlots, meals, extras]);
 
   // מפה: category_id -> מצב חלוקה ('equal' | 'additive'). תאימות-לאחור לדגל הישן.
   const splitModeByCategory = useMemo(() => {

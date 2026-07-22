@@ -4,6 +4,7 @@ import { Page } from '../components/Layout.jsx';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
 import { DragHandle } from '../components/DragHandle.jsx';
 import { DataTable } from '../components/DataTable.jsx';
+import { Drawer, FormDrawer, useRecordNav } from '../components/Drawer.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 import PriceInput from '../components/PriceInput.jsx';
 import { formatWithVat } from '../lib/vat.js';
@@ -108,14 +109,9 @@ function ItemsManager({ onErr, canDelete }) {
     }
   }
 
-  async function toggleActive(it) {
-    try { await api.updateInvItem(it.id, { is_active: !it.is_active }); load(); }
-    catch (e) { onErr(e); }
-  }
-
   async function deleteItem(it) {
     if (!confirm(`למחוק לצמיתות את ${it.name}?`)) return;
-    try { await api.deleteInvItem(it.id); load(); }
+    try { await api.deleteInvItem(it.id); setEditing(null); load(); }
     catch (e) { onErr(e); }
   }
 
@@ -142,6 +138,8 @@ function ItemsManager({ onErr, canDelete }) {
     [list, lowStockOnly],
   );
 
+  const nav = useRecordNav(setEditing, editing?.id ?? null);
+
   const columns = [
     {
       key: 'name',
@@ -149,19 +147,12 @@ function ItemsManager({ onErr, canDelete }) {
       type: 'text',
       rawCell: true,
       render: (it) => (
-        <QuickEditCell
-          value={it.name}
-          ariaLabel="שם מוצר"
-          className="font-medium"
-          onSave={(value) => {
-            const name = value.trim();
-            if (!name) { alert('חובה להזין שם מוצר.'); return false; }
-            return saveInline(it.id, { name });
-          }}
-        >
-          {it.name}
+        <td className="p-3 text-sm font-medium">
+          <button type="button" onClick={() => setEditing(it)} className="text-right text-brand-burgundy hover:underline">
+            {it.name}
+          </button>
           {it.is_packaging && <span className="text-xs text-brand-burgundy/50 mr-1">(אריזה)</span>}
-        </QuickEditCell>
+        </td>
       ),
     },
     {
@@ -302,47 +293,49 @@ function ItemsManager({ onErr, canDelete }) {
           <input type="checkbox" checked={lowStockOnly} onChange={(e) => setLowStockOnly(e.target.checked)} />
           מתחת למינימום בלבד
         </label>
-        <span className="pb-2 text-xs text-brand-burgundy/55">לחיצה על תא מאפשרת לערוך אותו במקום</span>
+        <span className="pb-2 text-xs text-brand-burgundy/55">לחיצה על שם המוצר פותחת את הכרטיס המלא; לחיצה על תא אחר עורכת אותו במקום</span>
       </div>
-
-      {editing && !editing.id && (
-        <ItemForm categories={categories} suppliers={suppliers} units={units} initial={editing}
-          onSave={save} onCancel={() => setEditing(null)} onSuppliersChanged={loadRefs} onErr={onErr} />
-      )}
-      {adjusting && (
-        <AdjustForm item={adjusting} onSubmit={submitAdjust} onCancel={() => setAdjusting(null)} />
-      )}
-      {history && (
-        <HistoryPanel item={history.item} movements={history.movements} onClose={() => setHistory(null)} />
-      )}
 
       <DataTable
         columns={columns}
         rows={rows}
         empty="אין פריטי מלאי."
-        expandedId={editing?.id}
         rowClassName={(it) => `${!it.is_active ? 'opacity-50' : ''} ${editing?.id === it.id ? 'bg-brand-cream/40' : ''}`}
-        renderExpanded={() => (
-          <ItemForm categories={categories} suppliers={suppliers} units={units} initial={editing}
-            onSave={save} onCancel={() => setEditing(null)} onSuppliersChanged={loadRefs} onErr={onErr} />
-        )}
-        actions={(it) => (
-          <>
-            <ActionIconButton icon="adjust" label="שינוי כמות" onClick={() => setAdjusting(it)} />
-            <ActionIconButton icon={editing?.id === it.id ? 'cancel' : 'open'} label={editing?.id === it.id ? 'סגירת פרטי הרשומה' : 'פתיחת כל פרטי הרשומה'} onClick={() => setEditing(editing?.id === it.id ? null : it)} />
-            <ActionIconButton icon="history" label="תנועות" tone="muted" onClick={() => openHistory(it)} />
-            <ActionIconButton
-              icon={it.is_active ? 'deactivate' : 'activate'}
-              label={it.is_active ? 'השבתה' : 'הפעלה'}
-              tone="muted"
-              onClick={() => toggleActive(it)}
-            />
-            {canDelete && (
-              <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteItem(it)} />
-            )}
-          </>
-        )}
+        onVisibleRowsChange={nav.setVisibleRows}
       />
+
+      <FormDrawer
+        editing={editing}
+        onClose={() => setEditing(null)}
+        entity="מוצר"
+        title={editing?.name}
+        width="xl"
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        footer={editing?.id ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => { setEditing(null); setAdjusting(editing); }} className="btn-ghost">שינוי כמות</button>
+            <button onClick={() => { setEditing(null); openHistory(editing); }} className="btn-ghost">תנועות</button>
+            {canDelete && (
+              <button onClick={() => deleteItem(editing)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing && (
+          <ItemForm categories={categories} suppliers={suppliers} units={units} initial={editing}
+            onSave={save} onCancel={() => setEditing(null)} onSuppliersChanged={loadRefs} onErr={onErr} embedded />
+        )}
+      </FormDrawer>
+
+      <Drawer open={!!adjusting} onClose={() => setAdjusting(null)} width="md" eyebrow="שינוי כמות" title={adjusting?.name}>
+        {adjusting && <AdjustForm item={adjusting} onSubmit={submitAdjust} onCancel={() => setAdjusting(null)} embedded />}
+      </Drawer>
+
+      <Drawer open={!!history} onClose={() => setHistory(null)} width="xl" eyebrow="תנועות מלאי" title={history?.item?.name}>
+        {history && <HistoryPanel item={history.item} movements={history.movements} embedded />}
+      </Drawer>
     </div>
   );
 }
@@ -434,7 +427,7 @@ function QuickEditCell({ value, children, onSave, ariaLabel, type = 'text', opti
   );
 }
 
-function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onSuppliersChanged, onErr }) {
+function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onSuppliersChanged, onErr, embedded = false }) {
   const [f, setF] = useState({
     id: initial.id,
     name: initial.name || '',
@@ -486,8 +479,8 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
-      <h3 className="font-bold text-brand-burgundy">{isEdit ? 'עריכת מוצר' : 'מוצר חדש'}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{isEdit ? 'עריכת מוצר' : 'מוצר חדש'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם מוצר *">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />
@@ -573,7 +566,7 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
 }
 
 // שינוי ידני בכמות עם תיעוד (סעיף 25.5)
-function AdjustForm({ item, onSubmit, onCancel }) {
+function AdjustForm({ item, onSubmit, onCancel, embedded = false }) {
   const [mode, setMode] = useState('set'); // set = כמות חדשה | delta = תוספת/הפחתה
   const [value, setValue] = useState('');
   const [reason, setReason] = useState('count_error');
@@ -589,8 +582,8 @@ function AdjustForm({ item, onSubmit, onCancel }) {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-burgundy">
-      <h3 className="font-bold text-brand-burgundy">שינוי כמות — {item.name}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-burgundy'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">שינוי כמות — {item.name}</h3>}
       <p className="text-sm text-brand-burgundy/60">כמות נוכחית: {fmt(item.quantity_on_hand)} {item.unit}</p>
       <div className="flex gap-2">
         <button type="button" onClick={() => setMode('set')}
@@ -624,13 +617,15 @@ function AdjustForm({ item, onSubmit, onCancel }) {
 }
 
 // היסטוריית תנועות של פריט (ביקורת — סעיף 25.5)
-function HistoryPanel({ item, movements, onClose }) {
+function HistoryPanel({ item, movements, onClose, embedded = false }) {
   return (
-    <div className="card space-y-3 border-r-4 border-brand-cream-dark">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-brand-burgundy">תנועות מלאי — {item.name}</h3>
-        <button onClick={onClose} className="text-brand-burgundy/60 hover:underline text-sm">סגירה</button>
-      </div>
+    <div className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-cream-dark'}>
+      {!embedded && (
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-brand-burgundy">תנועות מלאי — {item.name}</h3>
+          <button onClick={onClose} className="text-brand-burgundy/60 hover:underline text-sm">סגירה</button>
+        </div>
+      )}
       {movements.length === 0 ? (
         <p className="text-sm text-brand-burgundy/50">אין תנועות רשומות.</p>
       ) : (
@@ -723,15 +718,22 @@ function CategoriesManager({ onErr, canDelete }) {
   }
 
   async function toggleActive(c) {
-    try { await api.updateInvCategory(c.id, { is_active: !c.is_active }); load(); }
-    catch (e) { onErr(e); }
+    try {
+      await api.updateInvCategory(c.id, { is_active: !c.is_active });
+      setEditing((e) => (e && e.id === c.id ? { ...e, is_active: !c.is_active } : e));
+      load();
+    } catch (e) { onErr(e); }
   }
 
   async function deleteCategory(c) {
     if (!confirm(`למחוק לצמיתות את הקטגוריה ${c.name}?`)) return;
-    try { await api.deleteInvCategory(c.id); load(); }
+    try { await api.deleteInvCategory(c.id); setEditing(null); load(); }
     catch (e) { onErr(e); }
   }
+
+  const nav = useRecordNav(setEditing, editing?.id ?? null);
+  // טבלה מותאמת (לא DataTable): חושפים ידנית את סדר הרשומות לדפדוף.
+  useEffect(() => { nav.setVisibleRows(list || []); }, [list, nav.setVisibleRows]);
 
   if (!list) return <p>טוען...</p>;
 
@@ -743,7 +745,6 @@ function CategoriesManager({ onErr, canDelete }) {
           {savingOrder ? 'שומר את סדר הקטגוריות...' : 'אפשר לגרור שורות כדי לקבוע את סדר הקטגוריות'}
         </span>
       </div>
-      {editing && !editing.id && <CategoryForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
 
       <div className="overflow-x-auto">
         <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
@@ -752,7 +753,6 @@ function CategoriesManager({ onErr, canDelete }) {
               <th className="p-3 text-right">סדר</th>
               <th className="p-3 text-right">קטגוריה</th>
               <th className="p-3 text-right">סטטוס</th>
-              <th className="p-3 text-right"></th>
             </tr>
           </thead>
           <tbody>
@@ -773,46 +773,48 @@ function CategoriesManager({ onErr, canDelete }) {
                 }}
                 onDrop={(e) => { e.preventDefault(); moveCategory(c.id); }}
                 onDragEnd={() => setDraggedCategoryId(null)}
-                className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 cursor-grab active:cursor-grabbing ${draggedCategoryId === c.id ? 'opacity-40' : ''} ${!c.is_active ? 'opacity-50' : ''}`}
+                onClick={(e) => { if (!e.target.closest('[data-no-row-click]')) setEditing(c); }}
+                className={`border-b border-brand-cream-dark hover:bg-brand-cream/30 cursor-pointer ${draggedCategoryId === c.id ? 'opacity-40' : ''} ${!c.is_active ? 'opacity-50' : ''} ${editing?.id === c.id ? 'bg-brand-cream/40' : ''}`}
               >
-                <td className="p-3"><DragHandle label={`גרירת ${c.name}`} /></td>
+                <td className="p-3 cursor-grab active:cursor-grabbing" data-no-row-click><DragHandle label={`גרירת ${c.name}`} /></td>
                 <td className="p-3 font-medium">{c.name}</td>
                 <td className="p-3 text-sm"><Badge map={ACTIVE_STATUS} value={c.is_active ? 'active' : 'inactive'} /></td>
-                <td className="p-3 text-sm whitespace-nowrap">
-                  <div className="flex flex-wrap gap-1">
-                  <ActionIconButton icon={editing?.id === c.id ? 'cancel' : 'edit'} label={editing?.id === c.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === c.id ? null : c)} />
-                  <ActionIconButton
-                    icon={c.is_active ? 'deactivate' : 'activate'}
-                    label={c.is_active ? 'השבתה' : 'הפעלה'}
-                    tone="muted"
-                    onClick={() => toggleActive(c)}
-                  />
-                  {canDelete && (
-                    <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteCategory(c)} />
-                  )}
-                  </div>
-                </td>
               </tr>
-              {editing?.id === c.id && (
-                <tr className="border-b border-brand-cream-dark bg-brand-cream/20">
-                  <td colSpan={4} className="p-3 sm:p-4">
-                    <CategoryForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />
-                  </td>
-                </tr>
-              )}
               </Fragment>
             ))}
             {list.length === 0 && (
-              <tr><td colSpan={4} className="p-6 text-center text-brand-burgundy/50">אין קטגוריות עדיין.</td></tr>
+              <tr><td colSpan={3} className="p-6 text-center text-brand-burgundy/50">אין קטגוריות עדיין.</td></tr>
             )}
           </tbody>
         </table>
       </div>
+
+      <FormDrawer
+        editing={editing}
+        onClose={() => setEditing(null)}
+        entity="קטגוריה"
+        article="חדשה"
+        title={editing?.name}
+        width="md"
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        footer={editing?.id ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => toggleActive(editing)} className="btn-ghost">{editing.is_active ? 'השבתה' : 'הפעלה'}</button>
+            {canDelete && (
+              <button onClick={() => deleteCategory(editing)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing && <CategoryForm initial={editing} onSave={save} onCancel={() => setEditing(null)} embedded />}
+      </FormDrawer>
     </div>
   );
 }
 
-function CategoryForm({ initial, onSave, onCancel }) {
+function CategoryForm({ initial, onSave, onCancel, embedded = false }) {
   const [f, setF] = useState({
     id: initial.id,
     name: initial.name || '',
@@ -827,8 +829,8 @@ function CategoryForm({ initial, onSave, onCancel }) {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
-      <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת קטגוריה' : 'קטגוריה חדשה'}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת קטגוריה' : 'קטגוריה חדשה'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם קטגוריה *">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />
@@ -1010,15 +1012,20 @@ function UnitsManager({ onErr, canDelete }) {
   }
 
   async function toggleActive(u) {
-    try { await api.updateInvUnit(u.id, { is_active: !u.is_active }); load(); }
-    catch (e) { onErr(e); }
+    try {
+      await api.updateInvUnit(u.id, { is_active: !u.is_active });
+      setEditing((e) => (e && e.id === u.id ? { ...e, is_active: !u.is_active } : e));
+      load();
+    } catch (e) { onErr(e); }
   }
 
   async function deleteUnit(u) {
     if (!confirm(`למחוק לצמיתות את היחידה ${u.name}?`)) return;
-    try { await api.deleteInvUnit(u.id); load(); }
+    try { await api.deleteInvUnit(u.id); setEditing(null); load(); }
     catch (e) { onErr(e); }
   }
+
+  const nav = useRecordNav(setEditing, editing?.id ?? null);
 
   // [כלי מיזוג זמני] מיזוג יחידת המקור ליעד: ממפה מחדש הכל ומוחק את המקור
   async function doMerge(targetId) {
@@ -1056,34 +1063,47 @@ function UnitsManager({ onErr, canDelete }) {
           (למשל יח'→יחידה) לחצו על 🔗 מיזוג.
         </span>
       </div>
-      {editing && !editing.id && <UnitForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
-      {merging && (
-        <MergeUnitPanel source={merging} units={list || []} onMerge={doMerge} onCancel={() => setMerging(null)} />
-      )}
-
       <DataTable
         columns={columns}
         rows={list}
         empty="אין יחידות מידה."
-        expandedId={editing?.id}
         rowClassName={(u) => `${!u.is_active ? 'opacity-50' : ''} ${editing?.id === u.id ? 'bg-brand-cream/40' : ''}`}
-        renderExpanded={() => <UnitForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
-        actions={(u) => (
-          <>
-            {/* [כלי מיזוג זמני] */}
-            <ActionIconButton icon="merge" label="מיזוג ליחידה אחרת" tone="muted" onClick={() => setMerging(u)} />
-            <ActionIconButton icon={editing?.id === u.id ? 'cancel' : 'edit'} label={editing?.id === u.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === u.id ? null : u)} />
-            <ActionIconButton icon={u.is_active ? 'deactivate' : 'activate'} label={u.is_active ? 'השבתה' : 'הפעלה'} tone="muted" onClick={() => toggleActive(u)} />
-            {canDelete && <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteUnit(u)} />}
-          </>
-        )}
+        onRowClick={setEditing}
+        onVisibleRowsChange={nav.setVisibleRows}
       />
+
+      <FormDrawer
+        editing={editing}
+        onClose={() => setEditing(null)}
+        entity="יחידה"
+        article="חדשה"
+        title={editing?.name}
+        width="md"
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        footer={editing?.id ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => { setEditing(null); setMerging(editing); }} className="btn-ghost">מיזוג</button>
+            <button onClick={() => toggleActive(editing)} className="btn-ghost">{editing.is_active ? 'השבתה' : 'הפעלה'}</button>
+            {canDelete && (
+              <button onClick={() => deleteUnit(editing)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing && <UnitForm initial={editing} onSave={save} onCancel={() => setEditing(null)} embedded />}
+      </FormDrawer>
+
+      <Drawer open={!!merging} onClose={() => setMerging(null)} width="md" eyebrow="מיזוג יחידה" title={merging?.name}>
+        {merging && <MergeUnitPanel source={merging} units={list || []} onMerge={doMerge} onCancel={() => setMerging(null)} embedded />}
+      </Drawer>
     </div>
   );
 }
 
 // [כלי מיזוג זמני] פאנל מיזוג: בוחרים יחידת יעד, וכל הרשומות של המקור עוברות אליה
-function MergeUnitPanel({ source, units, onMerge, onCancel }) {
+function MergeUnitPanel({ source, units, onMerge, onCancel, embedded = false }) {
   const [targetId, setTargetId] = useState('');
   const targets = units.filter((u) => u.id !== source.id);
 
@@ -1099,8 +1119,8 @@ function MergeUnitPanel({ source, units, onMerge, onCancel }) {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-burgundy">
-      <h3 className="font-bold text-brand-burgundy">מיזוג יחידה — {source.name}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-burgundy'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">מיזוג יחידה — {source.name}</h3>}
       <p className="text-sm text-brand-burgundy/60">
         כל {source.usage_count || 0} השימושים של "{source.name}" יועברו ליחידת היעד, והיחידה תימחק.
       </p>
@@ -1118,7 +1138,7 @@ function MergeUnitPanel({ source, units, onMerge, onCancel }) {
   );
 }
 
-function UnitForm({ initial, onSave, onCancel }) {
+function UnitForm({ initial, onSave, onCancel, embedded = false }) {
   const [f, setF] = useState({
     id: initial.id,
     name: initial.name || '',
@@ -1133,8 +1153,8 @@ function UnitForm({ initial, onSave, onCancel }) {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
-      <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת יחידה' : 'יחידה חדשה'}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת יחידה' : 'יחידה חדשה'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם יחידה * (גרם, ק״ג, כף, יחידה...)">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />

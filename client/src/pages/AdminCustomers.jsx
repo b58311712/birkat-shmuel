@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
-import { ActionIconButton, ActionIconLink } from '../components/ActionIcon.jsx';
+import { ActionIconLink } from '../components/ActionIcon.jsx';
 import { DataTable } from '../components/DataTable.jsx';
+import { Drawer, useRecordNav } from '../components/Drawer.jsx';
 import { Badge, CUSTOMER_STATUS, ORDER_STATUS, PAYMENT_STATUS } from '../lib/status.jsx';
 
 const HEADER_ALIASES = {
@@ -116,11 +117,17 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
 
   async function save(form) {
     try {
-      if (form.id) await api.updateCustomer(form.id, form);
-      else await api.createCustomer(form);
+      let savedId = form.id;
+      if (form.id) {
+        await api.updateCustomer(form.id, form);
+      } else {
+        const created = await api.createCustomer(form);
+        savedId = created?.customer?.id ?? null;
+      }
       setEditing(null);
       load();
-      if (detail?.customer?.id === form.id) openDetail(form.id);
+      // אחרי שמירה: הפאנל עובר ממצב עריכה לתצוגת הכרטיס המעודכן.
+      if (savedId) openDetail(savedId);
     } catch (e) { handleErr(e); }
   }
 
@@ -141,11 +148,35 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
     } catch (e) { handleErr(e); }
   }
 
+  // פותח את הפאנל במצב תצוגה. מנקה עריכה כדי שהתצוגה תגבר.
   async function openDetail(customerOrId) {
     const id = typeof customerOrId === 'string' ? customerOrId : customerOrId.id;
+    setEditing(null);
     try { setDetail(await api.adminCustomer(id)); }
     catch (e) { handleErr(e); }
   }
+
+  // פתיחת הפאנל ישירות במצב עריכה (מאייקון העריכה בשורה).
+  function openEdit(customer) {
+    setDetail(null);
+    setEditing(customer);
+  }
+
+  // סגירת הפאנל לגמרי.
+  function closeDrawer() {
+    setDetail(null);
+    setEditing(null);
+  }
+
+  // ביטול עריכה: אם נפתח מתוך כרטיס קיים חוזרים לתצוגה, אחרת סוגרים.
+  function cancelEdit() {
+    setEditing(null);
+  }
+
+  const drawerOpen = !!detail || !!editing;
+  const drawerCustomer = detail?.customer;
+  // דפדוף בין רשומות פעיל רק במצב תצוגה (לא בעריכה/יצירה).
+  const nav = useRecordNav(openDetail, !editing && detail ? drawerCustomer.id : null);
 
   async function importCsv(file) {
     if (!file) return;
@@ -172,9 +203,7 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
       className: 'font-medium',
       render: (customer) => (
         <>
-          <button onClick={() => openDetail(customer)} className="text-brand-burgundy hover:underline">
-            {customer.full_name}
-          </button>
+          <span className="text-brand-burgundy">{customer.full_name}</span>
           {customer.internal_notes && <div className="text-xs text-brand-burgundy/50 mt-1">{customer.internal_notes}</div>}
         </>
       ),
@@ -196,7 +225,7 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
     <Page title="לקוחות" subtitle="כרטיסי לקוח, פרטי קשר, סטטוס והיסטוריית הזמנות">
       <div className="space-y-4">
         <div className="flex flex-wrap items-end gap-3">
-          <button onClick={() => setEditing({})} className="btn-primary">+ לקוח חדש</button>
+          <button onClick={() => openEdit({})} className="btn-primary">+ לקוח חדש</button>
           <Field label="ייבוא לקוחות CSV">
             <input
               type="file"
@@ -211,46 +240,57 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
           </Field>
         </div>
 
-        {editing && !editing.id && <CustomerForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
         {importResult && <ImportResult result={importResult} />}
-        {detail && (
-          <CustomerDetail
-            data={detail}
-            onClose={() => setDetail(null)}
-            onEdit={(customer) => {
-              setDetail(null);
-              setEditing(customer);
-            }}
-            onSetStatus={setStatus}
-            onDelete={canDelete ? deleteCustomer : null}
-          />
-        )}
 
         <DataTable
           columns={columns}
           rows={customers}
           initialFilters={urlSearch ? { full_name: { term: urlSearch } } : undefined}
           empty="לא נמצאו לקוחות."
-          expandedId={editing?.id}
-          rowClassName={(c) => `${c.status !== 'active' ? 'opacity-70' : ''} ${editing?.id === c.id ? 'bg-brand-cream/40' : ''}`}
-          renderExpanded={() => <CustomerForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
-          actions={(customer) => (
-            <>
-              <ActionIconButton icon="view" label="צפייה" onClick={() => openDetail(customer)} />
-              <ActionIconButton icon={editing?.id === customer.id ? 'cancel' : 'edit'} label={editing?.id === customer.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === customer.id ? null : customer)} />
-              <ActionIconButton
-                icon={customer.status === 'active' ? 'deactivate' : 'activate'}
-                label={customer.status === 'active' ? 'השבתה' : 'הפעלה'}
-                tone="muted"
-                onClick={() => setStatus(customer, customer.status === 'active' ? 'inactive' : 'active')}
-              />
-              {canDelete && (
-                <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteCustomer(customer)} />
-              )}
-            </>
-          )}
+          rowClassName={(c) => `${c.status !== 'active' ? 'opacity-70' : ''} ${drawerCustomer?.id === c.id ? 'bg-brand-cream/40' : ''}`}
+          onRowClick={openDetail}
+          onVisibleRowsChange={nav.setVisibleRows}
         />
       </div>
+
+      <Drawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        contentKey={editing ? `e${editing.id ?? 'new'}` : `v${drawerCustomer?.id ?? ''}`}
+        eyebrow={editing ? (editing.id ? 'עריכת לקוח' : 'לקוח חדש') : 'כרטיס לקוח'}
+        title={editing
+          ? (editing.full_name || (editing.id ? 'עריכת לקוח' : 'לקוח חדש'))
+          : (drawerCustomer?.full_name || 'טוען...')}
+        subtitle={!editing ? drawerCustomer?.phone : undefined}
+        footer={!editing && detail ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setEditing(drawerCustomer)} className="btn-primary">עריכה</button>
+            {drawerCustomer.status !== 'active' && (
+              <button onClick={() => setStatus(drawerCustomer, 'active')} className="btn-ghost">הפעלה</button>
+            )}
+            {drawerCustomer.status !== 'inactive' && (
+              <button onClick={() => setStatus(drawerCustomer, 'inactive')} className="btn-ghost">השבתה</button>
+            )}
+            {drawerCustomer.status !== 'blocked' && (
+              <button onClick={() => setStatus(drawerCustomer, 'blocked')} className="btn-ghost">חסימה</button>
+            )}
+            {canDelete && (
+              <button onClick={() => deleteCustomer(drawerCustomer)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing ? (
+          <CustomerForm initial={editing} onSave={save} onCancel={cancelEdit} embedded />
+        ) : detail ? (
+          <CustomerDetailBody data={detail} />
+        ) : (
+          <p className="text-sm text-surface-muted">טוען...</p>
+        )}
+      </Drawer>
     </Page>
   );
 }
@@ -295,7 +335,7 @@ function ImportResult({ result }) {
   );
 }
 
-function CustomerForm({ initial, onSave, onCancel }) {
+function CustomerForm({ initial, onSave, onCancel, embedded = false }) {
   const [form, setForm] = useState({
     id: initial.id,
     full_name: initial.full_name || '',
@@ -320,9 +360,10 @@ function CustomerForm({ initial, onSave, onCancel }) {
     });
   }
 
+  // בתוך פאנל צידי הכותרת כבר מופיעה בראש הפאנל, ואין צורך במעטפת כרטיס.
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
-      <h3 className="font-bold text-brand-burgundy">{isEdit ? 'עריכת לקוח' : 'לקוח חדש'}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{isEdit ? 'עריכת לקוח' : 'לקוח חדש'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם מלא *">
           <input value={form.full_name} onChange={(e) => set('full_name', e.target.value)} className={inputCls} />
@@ -356,45 +397,33 @@ function CustomerForm({ initial, onSave, onCancel }) {
   );
 }
 
-function CustomerDetail({ data, onClose, onEdit, onSetStatus, onDelete }) {
+function InfoRow({ label, value, dir }) {
+  return (
+    <div className="flex gap-2">
+      <dt className="w-16 shrink-0 text-surface-muted">{label}</dt>
+      <dd className="min-w-0 flex-1 break-words text-surface-body" dir={dir}>{value}</dd>
+    </div>
+  );
+}
+
+// גוף כרטיס הלקוח בתוך הפאנל: פרטי קשר + היסטוריית הזמנות.
+// הכותרת (שם) והפעולות מוצגות במעטפת ה-Drawer.
+function CustomerDetailBody({ data }) {
   const { customer, orders } = data;
 
   return (
-    <div className="card space-y-4 border-r-4 border-brand-burgundy">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-bold text-brand-burgundy text-lg">{customer.full_name}</h3>
-            <Badge map={CUSTOMER_STATUS} value={customer.status} />
-          </div>
-          <div className="text-sm text-brand-burgundy/70 space-y-0.5 mt-2">
-            <div dir="ltr" className="text-right">טלפון: {customer.phone}</div>
-            {customer.email && <div dir="ltr" className="text-right">מייל: {customer.email}</div>}
-            {customer.address && <div>כתובת: {customer.address}</div>}
-            {customer.internal_notes && <div className="text-brand-burgundy/50">הערות: {customer.internal_notes}</div>}
-          </div>
-        </div>
-        <button onClick={onClose} className="text-brand-burgundy/60 hover:underline text-sm">סגירה</button>
-      </div>
+    <div className="space-y-5">
+      <Badge map={CUSTOMER_STATUS} value={customer.status} />
 
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => onEdit(customer)} className="btn-primary">עריכת לקוח</button>
-        {customer.status !== 'active' && (
-          <button onClick={() => onSetStatus(customer, 'active')} className="btn-ghost">הפעלה</button>
-        )}
-        {customer.status !== 'inactive' && (
-          <button onClick={() => onSetStatus(customer, 'inactive')} className="btn-ghost">השבתה</button>
-        )}
-        {customer.status !== 'blocked' && (
-          <button onClick={() => onSetStatus(customer, 'blocked')} className="btn-ghost">חסימה</button>
-        )}
-        {onDelete && (
-          <button onClick={() => onDelete(customer)} className="btn-ghost text-red-600">מחיקה</button>
-        )}
-      </div>
+      <dl className="space-y-1.5 text-sm">
+        <InfoRow label="טלפון" value={customer.phone} dir="ltr" />
+        {customer.email && <InfoRow label="מייל" value={customer.email} dir="ltr" />}
+        {customer.address && <InfoRow label="כתובת" value={customer.address} />}
+        {customer.internal_notes && <InfoRow label="הערות" value={customer.internal_notes} />}
+      </dl>
 
       <div>
-        <h4 className="font-semibold text-brand-burgundy mb-2">היסטוריית הזמנות</h4>
+        <h4 className="font-semibold text-ink mb-2">היסטוריית הזמנות</h4>
         {orders.length === 0 ? (
           <p className="text-sm text-brand-burgundy/50">אין הזמנות ללקוח זה.</p>
         ) : (

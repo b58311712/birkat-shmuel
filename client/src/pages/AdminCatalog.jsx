@@ -4,6 +4,7 @@ import { parseRecipe } from '../lib/recipeParser.js';
 import { Page } from '../components/Layout.jsx';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
 import { DataTable } from '../components/DataTable.jsx';
+import { FormDrawer, useRecordNav } from '../components/Drawer.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 const inputCls = 'w-full border border-brand-cream-dark rounded-lg p-2 focus:border-brand-gold outline-none';
@@ -147,6 +148,7 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
   async function toggleActive(meal) {
     try {
       await api.updateCatalogMeal(meal.id, { is_active: !meal.is_active });
+      setEditing((e) => (e && e.id === meal.id ? { ...e, is_active: !meal.is_active } : e));
       load();
     } catch (e) { onErr(e); }
   }
@@ -155,10 +157,13 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
     if (!confirm(`למחוק לצמיתות את ${meal.name}?`)) return;
     try {
       await api.deleteCatalogMeal(meal.id);
+      setEditing(null);
       load();
       onChanged?.();
     } catch (e) { onErr(e); }
   }
+
+  const nav = useRecordNav(setEditing, editing?.id ?? null);
 
   async function handleReorder(reordered) {
     const previous = list;
@@ -244,21 +249,6 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
         {savingOrder && <span className="text-xs text-brand-burgundy/55">שומר את סדר המאכלים...</span>}
       </div>
 
-      {/* מאכל חדש נפתח מעל הטבלה (אין לו שורה מתאימה); עריכת מאכל קיים נפתחת
-          צמוד לשורה הנערכת כשורת-טבלה מורחבת. */}
-      {editing && !editing.id && (
-        <MealForm
-          initial={editing}
-          categories={activeCategories}
-          mealSlots={mealSlots}
-          inventoryItems={inventoryItems}
-          units={units}
-          onInventoryItemCreated={onInventoryItemCreated}
-          onSave={save}
-          onCancel={() => setEditing(null)}
-        />
-      )}
-
       <DataTable
         columns={columns}
         rows={list}
@@ -267,44 +257,48 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
         onReorder={handleReorder}
         reorderHint="אפשר לגרור שורות כדי לקבוע את הסדר בממשק ההזמנות"
         reorderDisabledHint="כדי לשנות סדר יש לנקות את הסינון"
-        expandedId={editing?.id}
         rowClassName={(meal) => `${!meal.is_active ? 'opacity-50' : ''} ${editing?.id === meal.id ? 'bg-brand-cream/40' : ''}`}
-        renderExpanded={() => (
+        onRowClick={setEditing}
+        onVisibleRowsChange={nav.setVisibleRows}
+      />
+
+      <FormDrawer
+        editing={editing}
+        onClose={() => setEditing(null)}
+        entity="מאכל"
+        title={editing?.name}
+        width="6xl"
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        footer={editing?.id ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => toggleActive(editing)} className="btn-ghost">{editing.is_active ? 'השבתה' : 'הפעלה'}</button>
+            {canDelete && (
+              <button onClick={() => deleteMeal(editing)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing && (
           <MealForm
             initial={editing}
-            categories={categories}
+            categories={editing.id ? categories : activeCategories}
             mealSlots={mealSlots}
             inventoryItems={inventoryItems}
             units={units}
             onInventoryItemCreated={onInventoryItemCreated}
             onSave={save}
             onCancel={() => setEditing(null)}
+            embedded
           />
         )}
-        actions={(meal) => (
-          <>
-            <ActionIconButton
-              icon={editing?.id === meal.id ? 'cancel' : 'edit'}
-              label={editing?.id === meal.id ? 'סגירה' : 'עריכה'}
-              onClick={() => setEditing(editing?.id === meal.id ? null : meal)}
-            />
-            <ActionIconButton
-              icon={meal.is_active ? 'deactivate' : 'activate'}
-              label={meal.is_active ? 'השבתה' : 'הפעלה'}
-              tone="muted"
-              onClick={() => toggleActive(meal)}
-            />
-            {canDelete && (
-              <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteMeal(meal)} />
-            )}
-          </>
-        )}
-      />
+      </FormDrawer>
     </div>
   );
 }
 
-function MealForm({ initial, categories, mealSlots, inventoryItems, units, onInventoryItemCreated, onSave, onCancel }) {
+function MealForm({ initial, categories, mealSlots, inventoryItems, units, onInventoryItemCreated, onSave, onCancel, embedded = false }) {
   const [f, setF] = useState({
     id: initial.id,
     name: initial.name || '',
@@ -406,9 +400,9 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, units, onInv
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
-      <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת מאכל' : 'מאכל חדש'}</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת מאכל' : 'מאכל חדש'}</h3>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <Field label="שם מאכל *">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />
         </Field>
@@ -1002,6 +996,7 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
   async function toggleActive(category) {
     try {
       await api.updateCatalogCategory(category.id, { is_active: !category.is_active });
+      setEditing((e) => (e && e.id === category.id ? { ...e, is_active: !category.is_active } : e));
       load();
       onChanged?.();
     } catch (e) { onErr(e); }
@@ -1011,10 +1006,13 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
     if (!confirm(`למחוק לצמיתות את הקטגוריה ${category.name}?`)) return;
     try {
       await api.deleteCatalogCategory(category.id);
+      setEditing(null);
       load();
       onChanged?.();
     } catch (e) { onErr(e); }
   }
+
+  const nav = useRecordNav(setEditing, editing?.id ?? null);
 
   async function handleReorder(reordered) {
     const previous = list;
@@ -1089,15 +1087,6 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
         {savingOrder && <span className="text-xs text-brand-burgundy/55">שומר את סדר הקטגוריות...</span>}
       </div>
 
-      {editing && !editing.id && (
-        <CategoryForm
-          initial={editing}
-          mealSlots={mealSlots}
-          onSave={save}
-          onCancel={() => setEditing(null)}
-        />
-      )}
-
       <DataTable
         columns={columns}
         rows={list}
@@ -1106,24 +1095,32 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
         onReorder={handleReorder}
         reorderHint="אפשר לגרור שורות כדי לקבוע את הסדר בממשק ההזמנות"
         reorderDisabledHint="כדי לשנות סדר יש לנקות את הסינון"
-        expandedId={editing?.id}
         rowClassName={(category) => `${!category.is_active ? 'opacity-50' : ''} ${editing?.id === category.id ? 'bg-brand-cream/40' : ''}`}
-        renderExpanded={() => <CategoryForm initial={editing} mealSlots={mealSlots} onSave={save} onCancel={() => setEditing(null)} />}
-        actions={(category) => (
-          <>
-            <ActionIconButton icon={editing?.id === category.id ? 'cancel' : 'edit'} label={editing?.id === category.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === category.id ? null : category)} />
-            <ActionIconButton
-              icon={category.is_active ? 'deactivate' : 'activate'}
-              label={category.is_active ? 'השבתה' : 'הפעלה'}
-              tone="muted"
-              onClick={() => toggleActive(category)}
-            />
-            {canDelete && (
-              <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteCategory(category)} />
-            )}
-          </>
-        )}
+        onRowClick={setEditing}
+        onVisibleRowsChange={nav.setVisibleRows}
       />
+
+      <FormDrawer
+        editing={editing}
+        onClose={() => setEditing(null)}
+        entity="קטגוריה"
+        article="חדשה"
+        title={editing?.name}
+        width="xl"
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        footer={editing?.id ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => toggleActive(editing)} className="btn-ghost">{editing.is_active ? 'השבתה' : 'הפעלה'}</button>
+            {canDelete && (
+              <button onClick={() => deleteCategory(editing)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing && <CategoryForm initial={editing} mealSlots={mealSlots} onSave={save} onCancel={() => setEditing(null)} embedded />}
+      </FormDrawer>
     </div>
   );
 }
@@ -1173,7 +1170,7 @@ function slotSplitsToPayload(slotSplits) {
   return out;
 }
 
-function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
+function CategoryForm({ initial, mealSlots, onSave, onCancel, embedded = false }) {
   const [f, setF] = useState({
     id: initial.id,
     name: initial.name || '',
@@ -1244,8 +1241,8 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel }) {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
-      <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת קטגוריה' : 'קטגוריה חדשה'}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת קטגוריה' : 'קטגוריה חדשה'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם קטגוריה *">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} />
@@ -1446,6 +1443,7 @@ function ExtrasManager({ categories, onErr, canDelete }) {
   async function toggleActive(extra) {
     try {
       await api.updateCatalogExtra(extra.id, { is_active: !extra.is_active });
+      setEditing((e) => (e && e.id === extra.id ? { ...e, is_active: !extra.is_active } : e));
       load();
     } catch (e) { onErr(e); }
   }
@@ -1454,9 +1452,12 @@ function ExtrasManager({ categories, onErr, canDelete }) {
     if (!confirm(`למחוק לצמיתות את התוספת ${extra.name}?`)) return;
     try {
       await api.deleteCatalogExtra(extra.id);
+      setEditing(null);
       load();
     } catch (e) { onErr(e); }
   }
+
+  const nav = useRecordNav(setEditing, editing?.id ?? null);
 
   async function handleReorder(reordered) {
     const previous = list;
@@ -1486,10 +1487,6 @@ function ExtrasManager({ categories, onErr, canDelete }) {
         {savingOrder && <span className="text-xs text-brand-burgundy/55">שומר את סדר התוספות...</span>}
       </div>
 
-      {editing && !editing.id && (
-        <ExtraForm initial={editing} meals={meals} categories={categories} onSave={save} onCancel={() => setEditing(null)} />
-      )}
-
       <DataTable
         columns={columns}
         rows={list}
@@ -1498,30 +1495,32 @@ function ExtrasManager({ categories, onErr, canDelete }) {
         onReorder={handleReorder}
         reorderHint="אפשר לגרור שורות כדי לקבוע את סדר התוספות"
         reorderDisabledHint="כדי לשנות סדר יש לנקות את הסינון"
-        expandedId={editing?.id}
         rowClassName={(extra) => `${!extra.is_active ? 'opacity-50' : ''} ${editing?.id === extra.id ? 'bg-brand-cream/40' : ''}`}
-        renderExpanded={() => (
-          <ExtraForm initial={editing} meals={meals} categories={categories} onSave={save} onCancel={() => setEditing(null)} />
-        )}
-        actions={(extra) => (
-          <>
-            <ActionIconButton
-              icon={editing?.id === extra.id ? 'cancel' : 'edit'}
-              label={editing?.id === extra.id ? 'סגירה' : 'עריכה'}
-              onClick={() => setEditing(editing?.id === extra.id ? null : extra)}
-            />
-            <ActionIconButton
-              icon={extra.is_active ? 'deactivate' : 'activate'}
-              label={extra.is_active ? 'השבתה' : 'הפעלה'}
-              tone="muted"
-              onClick={() => toggleActive(extra)}
-            />
-            {canDelete && (
-              <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteExtra(extra)} />
-            )}
-          </>
-        )}
+        onRowClick={setEditing}
+        onVisibleRowsChange={nav.setVisibleRows}
       />
+
+      <FormDrawer
+        editing={editing}
+        onClose={() => setEditing(null)}
+        entity="תוספת"
+        article="חדשה"
+        title={editing?.name}
+        width="lg"
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        footer={editing?.id ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => toggleActive(editing)} className="btn-ghost">{editing.is_active ? 'השבתה' : 'הפעלה'}</button>
+            {canDelete && (
+              <button onClick={() => deleteExtra(editing)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing && <ExtraForm initial={editing} meals={meals} categories={categories} onSave={save} onCancel={() => setEditing(null)} embedded />}
+      </FormDrawer>
     </div>
   );
 }
@@ -1584,7 +1583,7 @@ function requiredMealsLabel(ids = [], mealNameById = {}) {
   return ids.map((id) => mealNameById[id] || 'מאכל שהוסר').join(', ');
 }
 
-function ExtraForm({ initial, meals = [], categories = [], onSave, onCancel }) {
+function ExtraForm({ initial, meals = [], categories = [], onSave, onCancel, embedded = false }) {
   const [f, setF] = useState({
     id: initial.id,
     name: initial.name || '',
@@ -1641,8 +1640,8 @@ function ExtraForm({ initial, meals = [], categories = [], onSave, onCancel }) {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
-      <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת תוספת' : 'תוספת חדשה'}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת תוספת' : 'תוספת חדשה'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם תוספת *">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} placeholder="שתייה, חלות, מיץ ענבים..." />
@@ -1742,6 +1741,7 @@ function PriceTracksManager({ mealSlots, onErr, canDelete }) {
   async function toggleActive(track) {
     try {
       await api.updateCatalogPriceTrack(track.id, { is_active: !track.is_active });
+      setEditing((e) => (e && e.id === track.id ? { ...e, is_active: !track.is_active } : e));
       load();
     } catch (e) { onErr(e); }
   }
@@ -1750,9 +1750,12 @@ function PriceTracksManager({ mealSlots, onErr, canDelete }) {
     if (!confirm(`למחוק לצמיתות את המסלול ${track.name}?`)) return;
     try {
       await api.deleteCatalogPriceTrack(track.id);
+      setEditing(null);
       load();
     } catch (e) { onErr(e); }
   }
+
+  const nav = useRecordNav(setEditing, editing?.id ?? null);
 
   if (!list) return <p>טוען...</p>;
 
@@ -1766,10 +1769,6 @@ function PriceTracksManager({ mealSlots, onErr, canDelete }) {
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={() => setEditing({})} className="btn-primary">+ מסלול מחיר חדש</button>
       </div>
-
-      {editing && !editing.id && (
-        <PriceTrackForm initial={editing} mealSlots={mealSlots} onSave={save} onCancel={() => setEditing(null)} />
-      )}
 
       <DataTable
         columns={[
@@ -1806,33 +1805,36 @@ function PriceTracksManager({ mealSlots, onErr, canDelete }) {
         ]}
         rows={list}
         empty="אין מסלולי מחיר להצגה."
-        expandedId={editing?.id}
         rowClassName={(track) => `${!track.is_active ? 'opacity-50' : ''} ${editing?.id === track.id ? 'bg-brand-cream/40' : ''}`}
-        renderExpanded={() => <PriceTrackForm initial={editing} mealSlots={mealSlots} onSave={save} onCancel={() => setEditing(null)} />}
-        actions={(track) => (
-          <>
-            <ActionIconButton
-              icon={editing?.id === track.id ? 'cancel' : 'edit'}
-              label={editing?.id === track.id ? 'סגירה' : 'עריכה'}
-              onClick={() => setEditing(editing?.id === track.id ? null : track)}
-            />
-            <ActionIconButton
-              icon={track.is_active ? 'deactivate' : 'activate'}
-              label={track.is_active ? 'השבתה' : 'הפעלה'}
-              tone="muted"
-              onClick={() => toggleActive(track)}
-            />
-            {canDelete && (
-              <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteTrack(track)} />
-            )}
-          </>
-        )}
+        onRowClick={setEditing}
+        onVisibleRowsChange={nav.setVisibleRows}
       />
+
+      <FormDrawer
+        editing={editing}
+        onClose={() => setEditing(null)}
+        entity="מסלול מחיר"
+        title={editing?.name}
+        width="lg"
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        footer={editing?.id ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => toggleActive(editing)} className="btn-ghost">{editing.is_active ? 'השבתה' : 'הפעלה'}</button>
+            {canDelete && (
+              <button onClick={() => deleteTrack(editing)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing && <PriceTrackForm initial={editing} mealSlots={mealSlots} onSave={save} onCancel={() => setEditing(null)} embedded />}
+      </FormDrawer>
     </div>
   );
 }
 
-function PriceTrackForm({ initial, mealSlots, onSave, onCancel }) {
+function PriceTrackForm({ initial, mealSlots, onSave, onCancel, embedded = false }) {
   const [f, setF] = useState({
     id: initial.id,
     name: initial.name || '',
@@ -1865,8 +1867,8 @@ function PriceTrackForm({ initial, mealSlots, onSave, onCancel }) {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
-      <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת מסלול מחיר' : 'מסלול מחיר חדש'}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת מסלול מחיר' : 'מסלול מחיר חדש'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם מסלול *">
           <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} placeholder="ליל שבת בלבד, ליל שבת + שחרית..." />

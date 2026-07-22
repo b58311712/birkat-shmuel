@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
-import { ActionIconButton } from '../components/ActionIcon.jsx';
 import { DataTable } from '../components/DataTable.jsx';
+import { Drawer, FormDrawer, useRecordNav } from '../components/Drawer.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 const ROLES = [
@@ -41,16 +41,6 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
     } catch (e) { handleErr(e); }
   }
 
-  async function toggleActive(user) {
-    if (user.id === currentAdmin?.id && user.is_active) {
-      return alert('לא ניתן להשבית את המשתמש המחובר.');
-    }
-    try {
-      await api.updateAdminUser(user.id, { is_active: !user.is_active });
-      load();
-    } catch (e) { handleErr(e); }
-  }
-
   async function deleteUser(user) {
     if (user.id === currentAdmin?.id) {
       return alert('לא ניתן למחוק את המשתמש המחובר.');
@@ -58,6 +48,7 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
     if (!confirm(`למחוק לצמיתות את ${user.full_name}?`)) return;
     try {
       await api.deleteAdminUser(user.id);
+      setEditing(null);
       load();
     } catch (e) { handleErr(e); }
   }
@@ -78,6 +69,8 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
       </Page>
     );
   }
+
+  const nav = useRecordNav(setEditing, editing?.id ?? null);
 
   const columns = [
     {
@@ -120,40 +113,50 @@ export default function AdminUsers({ onAuthError, currentAdmin }) {
           <button onClick={() => setEditing({})} className="btn-primary">+ משתמש חדש</button>
         </div>
 
-        {editing && !editing.id && <UserForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
-        {passwordUser && (
-          <PasswordForm user={passwordUser} onSave={resetPassword} onCancel={() => setPasswordUser(null)} />
-        )}
-
         <DataTable
           columns={columns}
           rows={users}
           empty="לא נמצאו משתמשים."
-          expandedId={editing?.id}
           rowClassName={(user) => `${!user.is_active ? 'opacity-50' : ''} ${editing?.id === user.id ? 'bg-brand-cream/40' : ''}`}
-          renderExpanded={() => <UserForm initial={editing} onSave={save} onCancel={() => setEditing(null)} />}
-          actions={(user) => (
-            <>
-              <ActionIconButton icon={editing?.id === user.id ? 'cancel' : 'edit'} label={editing?.id === user.id ? 'סגירה' : 'עריכה'} onClick={() => setEditing(editing?.id === user.id ? null : user)} />
-              <ActionIconButton icon="password" label="איפוס סיסמה" onClick={() => setPasswordUser(user)} />
-              <ActionIconButton
-                icon={user.is_active ? 'deactivate' : 'activate'}
-                label={user.is_active ? 'השבתה' : 'הפעלה'}
-                tone="muted"
-                onClick={() => toggleActive(user)}
-              />
-              {canDelete && user.id !== currentAdmin?.id && (
-                <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => deleteUser(user)} />
-              )}
-            </>
-          )}
+          onRowClick={setEditing}
+          onVisibleRowsChange={nav.setVisibleRows}
         />
       </div>
+
+      <FormDrawer
+        editing={editing}
+        onClose={() => setEditing(null)}
+        entity="משתמש"
+        title={editing?.full_name}
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        footer={editing?.id ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => { setEditing(null); setPasswordUser(editing); }} className="btn-ghost">איפוס סיסמה</button>
+            {canDelete && editing.id !== currentAdmin?.id && (
+              <button onClick={() => deleteUser(editing)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing && <UserForm initial={editing} onSave={save} onCancel={() => setEditing(null)} embedded />}
+      </FormDrawer>
+
+      <Drawer
+        open={!!passwordUser}
+        onClose={() => setPasswordUser(null)}
+        width="md"
+        eyebrow="איפוס סיסמה"
+        title={passwordUser?.full_name}
+      >
+        {passwordUser && <PasswordForm user={passwordUser} onSave={resetPassword} onCancel={() => setPasswordUser(null)} embedded />}
+      </Drawer>
     </Page>
   );
 }
 
-function UserForm({ initial, onSave, onCancel }) {
+function UserForm({ initial, onSave, onCancel, embedded = false }) {
   const isEdit = !!initial.id;
   const [form, setForm] = useState({
     id: initial.id,
@@ -179,8 +182,8 @@ function UserForm({ initial, onSave, onCancel }) {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
-      <h3 className="font-bold text-brand-burgundy">{isEdit ? 'עריכת משתמש' : 'משתמש חדש'}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{isEdit ? 'עריכת משתמש' : 'משתמש חדש'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="שם מלא *">
           <input value={form.full_name} onChange={(e) => set('full_name', e.target.value)} className={inputCls} />
@@ -217,7 +220,7 @@ function UserForm({ initial, onSave, onCancel }) {
   );
 }
 
-function PasswordForm({ user, onSave, onCancel }) {
+function PasswordForm({ user, onSave, onCancel, embedded = false }) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
 
@@ -229,8 +232,8 @@ function PasswordForm({ user, onSave, onCancel }) {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-burgundy">
-      <h3 className="font-bold text-brand-burgundy">איפוס סיסמה - {user.full_name}</h3>
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-burgundy'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">איפוס סיסמה - {user.full_name}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="סיסמה חדשה">
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} autoComplete="new-password" autoFocus />

@@ -327,7 +327,7 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
                 <span className="block text-xs opacity-70 mt-0.5">מאכל משני</span>
               )}
               {meal.requires_extra_charge && (
-                <span className="block text-xs opacity-70 mt-0.5">+ {meal.extra_charge_amount}</span>
+                <span className="block text-xs opacity-70 mt-0.5">+ ₪{meal.extra_charge_amount} למנה</span>
               )}
               {/* equal בלבד ונבחרו 2+ מאכלים — שדה כמות ידני למאכל */}
               {isEqualSplit && selected && activeSelectedCount > 1 && (

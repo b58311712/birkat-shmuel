@@ -440,7 +440,7 @@ function CategoryBlock({ block, slot }) {
             <span className="flex-1 text-sm font-medium text-black">
               {meal.name}
               {meal.requires_extra_charge && meal.extra_charge_amount != null && (
-                <span className="text-brand-gold-dark"> (+{Number(meal.extra_charge_amount)} ש״ח)</span>
+                <span className="text-brand-gold-dark"> (+{Number(meal.extra_charge_amount)} ש״ח למנה)</span>
               )}
             </span>
 

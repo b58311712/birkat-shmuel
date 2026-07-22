@@ -149,7 +149,7 @@ export default function AdminOrderView({ onAuthError, currentAdmin }) {
                   <span key={m.id} className="badge bg-brand-cream text-brand-burgundy">
                     {m.meal_name_snapshot}
                     {m.portions != null && <span className="font-bold"> × {Number(m.portions)}</span>}
-                    {Number(m.extra_charge_amount) > 0 && ` (+${Number(m.extra_charge_amount).toFixed(0)}₪)`}
+                    {Number(m.extra_charge_amount) > 0 && ` (+${Number(m.extra_charge_amount).toFixed(0)}₪ למנה)`}
                   </span>
                 ))}
                 {!(mealsBySlot[s.meal_slot_id] || []).length && <span className="text-sm text-brand-burgundy/40">לא נבחרו מאכלים</span>}
