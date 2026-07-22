@@ -1,4 +1,4 @@
-// שרת מטבח החסד — נקודת כניסה
+// שרת מטבח החסד - נקודת כניסה
 import 'dotenv/config';
 import dns from 'node:dns';
 import express from 'express';
@@ -28,6 +28,7 @@ import cronRoutes from './routes/cron.js';
 import emailRoutes from './routes/email.js';
 import settingsRoutes from './routes/settings.js';
 import { requireAdmin } from './lib/auth.js';
+import { startScheduler } from './services/scheduler.js';
 
 const app = express();
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || '*' }));
@@ -36,7 +37,7 @@ app.use(express.json({ limit: '2mb' }));
 // בדיקת חיים
 app.get('/api/health', (req, res) => res.json({ ok: true, service: 'מטבח החסד' }));
 
-// נתיבי CRON — מאובטחים במפתח סודי (CRON_SECRET), לא בלוגין מנהל. חייב להירשם לפני /api/admin.
+// נתיבי CRON - מאובטחים במפתח סודי (CRON_SECRET), לא בלוגין מנהל. חייב להירשם לפני /api/admin.
 app.use('/api/cron', cronRoutes);
 
 // נתיבים
@@ -45,7 +46,7 @@ app.use('/api/catalog', catalogRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/shabbatot', shabbatotRoutes);
 app.use('/api/orders', ordersRoutes);
-// אזור הניהול — כל הקריאות מאחורי אימות מנהל (סעיף 5)
+// אזור הניהול - כל הקריאות מאחורי אימות מנהל (סעיף 5)
 app.use('/api/admin/shabbat-files', requireAdmin, shabbatFileRoutes);
 app.use('/api/admin/volunteers', requireAdmin, volunteersRoutes);
 app.use('/api/admin/inventory', requireAdmin, inventoryRoutes);
@@ -67,4 +68,6 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3005;
 app.listen(PORT, () => {
   console.log(`\n🍲 שרת מטבח החסד פועל על http://localhost:${PORT}\n`);
+  // מתזמן פנימי - יצירת שבתות אוטומטית (מוצ״ש 22:00 + השלמה בעליית השרת).
+  startScheduler();
 });

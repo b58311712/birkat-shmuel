@@ -1,14 +1,15 @@
-// נתיבי CRON — מופעלים ע"י שירות תזמון חיצוני (cron-job.org / Render Cron / GitHub Action),
+// נתיבי CRON - מופעלים ע"י שירות תזמון חיצוני (cron-job.org / Render Cron / GitHub Action),
 // כי שרת ה-Render החינמי נרדם ואינו יכול להריץ timer פנימי אמין.
-// אבטחה: מפתח סודי CRON_SECRET בכותרת (x-cron-secret) או בפרמטר ?secret= — לא לוגין מנהל.
+// אבטחה: מפתח סודי CRON_SECRET בכותרת (x-cron-secret) או בפרמטר ?secret= - לא לוגין מנהל.
 // נרשם ב-index.js תחת /api/cron (מחוץ ל-requireAdmin).
 import { Router } from 'express';
 import { asyncHandler, fail } from '../lib/helpers.js';
 import { generateForMonth, monthKeyOf, isMonthKey } from '../services/recurringExpenses.js';
+import { ensureUpcomingShabbatot } from '../services/shabbatGenerator.js';
 
 const router = Router();
 
-// שער אבטחה — משווה מפתח בזמן קבוע. אם CRON_SECRET לא הוגדר, ה-CRON מושבת (403).
+// שער אבטחה - משווה מפתח בזמן קבוע. אם CRON_SECRET לא הוגדר, ה-CRON מושבת (403).
 function checkSecret(req, res) {
   const expected = process.env.CRON_SECRET;
   if (!expected) { fail(res, 503, 'CRON אינו מוגדר בשרת (חסר CRON_SECRET).'); return false; }
@@ -18,15 +19,15 @@ function checkSecret(req, res) {
 }
 
 // ---------------------------------------------------------------------------
-// POST /run-due — מפיק את ההוצאות הקבועות שיום-החודש שלהן = היום, לחודש הנוכחי.
-// מיועד להרצה יומית. idempotent — הרצה חוזרת באותו יום לא משכפלת.
+// POST /run-due - מפיק את ההוצאות הקבועות שיום-החודש שלהן = היום, לחודש הנוכחי.
+// מיועד להרצה יומית. idempotent - הרצה חוזרת באותו יום לא משכפלת.
 // אפשר לכפות יום/חודש לבדיקה: body { day, month } (שניהם אופציונליים).
 // ---------------------------------------------------------------------------
 router.post('/run-due', asyncHandler(async (req, res) => {
   if (!checkSecret(req, res)) return;
 
   const now = new Date();
-  // יום היעד: 1..28. אם היום 29/30/31 — מטפלים בו כ-28 כדי לא לפספס תבניות של סוף החודש
+  // יום היעד: 1..28. אם היום 29/30/31 - מטפלים בו כ-28 כדי לא לפספס תבניות של סוף החודש
   // (day_of_month מוגבל ל-1..28, ולכן ה-29+ לעולם לא "מגיע" אחרת).
   const rawDay = Number(req.body?.day) || now.getDate();
   const day = Math.min(Math.max(rawDay, 1), 28);
@@ -38,8 +39,8 @@ router.post('/run-due', asyncHandler(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
-// POST /run-month — גיבוי: מפיק את כל התבניות הפעילות לחודש הנוכחי (ללא סינון יום).
-// שימושי אם החמיצו הרצות יומיות — הריצו פעם בחודש להשלמה. idempotent.
+// POST /run-month - גיבוי: מפיק את כל התבניות הפעילות לחודש הנוכחי (ללא סינון יום).
+// שימושי אם החמיצו הרצות יומיות - הריצו פעם בחודש להשלמה. idempotent.
 // ---------------------------------------------------------------------------
 router.post('/run-month', asyncHandler(async (req, res) => {
   if (!checkSecret(req, res)) return;
@@ -47,6 +48,25 @@ router.post('/run-month', asyncHandler(async (req, res) => {
   const month = req.body?.month || monthKeyOf(new Date());
   if (!isMonthKey(month)) return fail(res, 400, 'חודש לא תקין (נדרש YYYY-MM).');
   const result = await generateForMonth({ month });
+  res.json(result);
+}));
+
+// ---------------------------------------------------------------------------
+// POST /ensure-shabbatot - מוודא שתמיד קיימות N שבתות פעילות קדימה (ברירת מחדל 8),
+// יוצר מלוח עברי רק את החסרות. מיועד להרצה שבועית (מוצ״ש 22:00): בהרצה רגילה
+// נוצרת בדיוק השבת ה-8 (שבעוד 7 שבתות), וכשהוחמצו הרצות - משלים את הפער.
+// אידמפוטנטי. אפשר לכפות לבדיקה: body { count, from } (from = 'YYYY-MM-DD').
+// ---------------------------------------------------------------------------
+router.post('/ensure-shabbatot', asyncHandler(async (req, res) => {
+  if (!checkSecret(req, res)) return;
+
+  const rawCount = Number(req.body?.count);
+  const count = Number.isFinite(rawCount) && rawCount > 0 ? Math.min(Math.floor(rawCount), 52) : 8;
+
+  const from = req.body?.from ? new Date(`${String(req.body.from).slice(0, 10)}T12:00:00`) : new Date();
+  if (Number.isNaN(from.getTime())) return fail(res, 400, 'תאריך התחלה לא תקין (נדרש YYYY-MM-DD).');
+
+  const result = await ensureUpcomingShabbatot({ count, from });
   res.json(result);
 }));
 

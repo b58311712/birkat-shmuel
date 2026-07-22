@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "שרת מטבח החסד — Node + Express + Supabase",
+  "description": "שרת מטבח החסד - Node + Express + Supabase",
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
@@ -19,6 +19,7 @@
     "express": "^4.21.2",
     "googleapis": "^173.0.0",
     "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.6.0",
     "nodemailer": "^9.0.3"
   }
 }
