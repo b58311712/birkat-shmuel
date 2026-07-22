@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { asyncHandler, fail } from '../lib/helpers.js';
 import { buildOrderItems } from '../services/orderItems.js';
-import { normalizePhone, isValidPhone } from '../lib/helpers.js';
+import { normalizePhone, isValidPhone, splitFullName, joinName } from '../lib/helpers.js';
 import { hashPassword, requireRole } from '../lib/auth.js';
 import { sendTemplateEmail, orderVars, registrationVars } from '../services/email.js';
 import { createAdminNotification } from '../services/adminNotifications.js';
@@ -12,7 +12,7 @@ const router = Router();
 
 const USER_SELECT = 'id, full_name, email, phone, role, is_active, notes, last_login_at, created_at, updated_at';
 const USER_ROLES = ['developer', 'manager', 'coordinator'];
-const CUSTOMER_SELECT = 'id, full_name, phone, phone_normalized, email, address, status, internal_notes, created_at, updated_at';
+const CUSTOMER_SELECT = 'id, first_name, last_name, full_name, phone, phone_normalized, email, address, status, internal_notes, created_at, updated_at';
 const CUSTOMER_STATUSES = ['active', 'pending_approval', 'inactive', 'blocked'];
 const ORDER_PAYMENT_METHODS = ['cash', 'bank_transfer', 'check'];
 
@@ -29,10 +29,23 @@ function publicUser(user) {
 function cleanCustomerPayload(body, { partial = false } = {}) {
   const update = {};
 
-  if (!partial || body.full_name !== undefined) {
-    const full_name = String(body.full_name || '').trim();
-    if (!full_name) return { error: 'נא להזין שם מלא.' };
-    update.full_name = full_name;
+  // שם פרטי/משפחה מפוצלים. full_name הוא עמודה מחושבת ולכן לא נכתב ישירות.
+  // נפילה חזרה: אם התקבל full_name בלבד (קלט ישן/ייבוא) - מפצלים אותו.
+  const hasSplit = body.first_name !== undefined || body.last_name !== undefined;
+  const hasFull = body.full_name !== undefined;
+  if (!partial || hasSplit || hasFull) {
+    let first_name = String(body.first_name ?? '').trim();
+    let last_name = body.last_name !== undefined ? String(body.last_name || '').trim() : null;
+    let lastProvided = body.last_name !== undefined;
+    if (!first_name && hasFull) {
+      const split = splitFullName(body.full_name);
+      first_name = split.first_name;
+      last_name = split.last_name;
+      lastProvided = true;
+    }
+    if (!first_name) return { error: 'נא להזין שם פרטי.' };
+    update.first_name = first_name;
+    if (lastProvided || !partial) update.last_name = last_name || null;
   }
 
   if (!partial || body.phone !== undefined) {
@@ -112,7 +125,7 @@ router.post('/notifications/:id/read', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// GET /api/admin/customers — רשימת לקוחות לניהול (סעיף 6)
+// GET /api/admin/customers - רשימת לקוחות לניהול (סעיף 6)
 router.get('/customers', asyncHandler(async (req, res) => {
   let q = supabase
     .from('customers')
@@ -130,7 +143,7 @@ router.get('/customers', asyncHandler(async (req, res) => {
   res.json(data || []);
 }));
 
-// POST /api/admin/customers — יצירת לקוח ידנית
+// POST /api/admin/customers - יצירת לקוח ידנית
 router.post('/customers', asyncHandler(async (req, res) => {
   const cleaned = cleanCustomerPayload(req.body);
   if (cleaned.error) return fail(res, 400, cleaned.error);
@@ -148,7 +161,7 @@ router.post('/customers', asyncHandler(async (req, res) => {
   res.json({ ok: true, customer: data });
 }));
 
-// GET /api/admin/customers/:id — כרטיס לקוח + היסטוריית הזמנות
+// GET /api/admin/customers/:id - כרטיס לקוח + היסטוריית הזמנות
 // POST /api/admin/customers/import -- CSV import after parsing in the browser.
 router.post('/customers/import', asyncHandler(async (req, res) => {
   const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
@@ -161,6 +174,8 @@ router.post('/customers/import', asyncHandler(async (req, res) => {
 
   rows.forEach((row, index) => {
     const cleaned = cleanCustomerPayload({
+      first_name: row.first_name,
+      last_name: row.last_name,
       full_name: row.full_name,
       phone: row.phone,
       email: row.email || null,
@@ -170,12 +185,13 @@ router.post('/customers/import', asyncHandler(async (req, res) => {
     });
 
     if (cleaned.error) {
-      skipped.push({ row: index + 2, name: row.full_name || '', phone: row.phone || '', reason: cleaned.error });
+      const name = joinName(row.first_name, row.last_name) || row.full_name || '';
+      skipped.push({ row: index + 2, name, phone: row.phone || '', reason: cleaned.error });
       return;
     }
 
     if (seenPhones.has(cleaned.update.phone_normalized)) {
-      skipped.push({ row: index + 2, name: cleaned.update.full_name, phone: cleaned.update.phone, reason: 'טלפון כפול בקובץ.' });
+      skipped.push({ row: index + 2, name: joinName(cleaned.update.first_name, cleaned.update.last_name), phone: cleaned.update.phone, reason: 'טלפון כפול בקובץ.' });
       return;
     }
 
@@ -198,7 +214,7 @@ router.post('/customers/import', asyncHandler(async (req, res) => {
   const toInsert = [];
   prepared.forEach((item) => {
     if (existingPhones.has(item.customer.phone_normalized)) {
-      skipped.push({ row: item.row, name: item.customer.full_name, phone: item.customer.phone, reason: 'לקוח עם הטלפון הזה כבר קיים.' });
+      skipped.push({ row: item.row, name: joinName(item.customer.first_name, item.customer.last_name), phone: item.customer.phone, reason: 'לקוח עם הטלפון הזה כבר קיים.' });
     } else {
       toInsert.push(item.customer);
     }
@@ -239,7 +255,7 @@ router.get('/customers/:id', asyncHandler(async (req, res) => {
   res.json({ customer, orders: orders || [] });
 }));
 
-// PATCH /api/admin/customers/:id — עריכת כרטיס לקוח והשבתה דרך סטטוס
+// PATCH /api/admin/customers/:id - עריכת כרטיס לקוח והשבתה דרך סטטוס
 router.patch('/customers/:id', asyncHandler(async (req, res) => {
   const cleaned = cleanCustomerPayload(req.body, { partial: true });
   if (cleaned.error) return fail(res, 400, cleaned.error);
@@ -290,7 +306,7 @@ router.delete('/customers/:id', requireRole('developer'), asyncHandler(async (re
   res.json({ ok: true });
 }));
 
-// GET /api/admin/users — ניהול משתמשי מערכת (סעיף 5, 34.27)
+// GET /api/admin/users - ניהול משתמשי מערכת (סעיף 5, 34.27)
 router.get('/users', requireRole('developer', 'manager'), asyncHandler(async (req, res) => {
   let q = supabase
     .from('app_users')
@@ -310,7 +326,7 @@ router.get('/users', requireRole('developer', 'manager'), asyncHandler(async (re
   res.json(data || []);
 }));
 
-// POST /api/admin/users — יצירת משתמש מערכת חדש
+// POST /api/admin/users - יצירת משתמש מערכת חדש
 router.post('/users', requireRole('developer', 'manager'), asyncHandler(async (req, res) => {
   const full_name = String(req.body.full_name || '').trim();
   const email = cleanEmail(req.body.email);
@@ -345,7 +361,7 @@ router.post('/users', requireRole('developer', 'manager'), asyncHandler(async (r
   res.json({ ok: true, user: data });
 }));
 
-// PATCH /api/admin/users/:id — עדכון פרטי משתמש והשבתה במקום מחיקה
+// PATCH /api/admin/users/:id - עדכון פרטי משתמש והשבתה במקום מחיקה
 router.patch('/users/:id', requireRole('developer', 'manager'), asyncHandler(async (req, res) => {
   const update = {};
 
@@ -388,7 +404,7 @@ router.patch('/users/:id', requireRole('developer', 'manager'), asyncHandler(asy
   res.json({ ok: true, user: data });
 }));
 
-// POST /api/admin/users/:id/password — איפוס סיסמה פנימי
+// POST /api/admin/users/:id/password - איפוס סיסמה פנימי
 router.post('/users/:id/password', requireRole('developer', 'manager'), asyncHandler(async (req, res) => {
   const password = String(req.body.password || '');
   if (password.length < 6) return fail(res, 400, 'סיסמה חייבת להכיל לפחות 6 תווים.');
@@ -448,7 +464,7 @@ router.delete('/users/:id', requireRole('developer'), asyncHandler(async (req, r
   res.json({ ok: true });
 }));
 
-// GET /api/admin/orders?status=&shabbat_id= — רשימת הזמנות לניהול (סעיף 9.3)
+// GET /api/admin/orders?status=&shabbat_id= - רשימת הזמנות לניהול (סעיף 9.3)
 router.get('/orders', asyncHandler(async (req, res) => {
   let q = supabase
     .from('orders')
@@ -463,7 +479,7 @@ router.get('/orders', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// GET /api/admin/orders/:id — הזמנה מלאה לניהול, כולל כל שדות הטופס וההיסטוריה
+// GET /api/admin/orders/:id - הזמנה מלאה לניהול, כולל כל שדות הטופס וההיסטוריה
 router.get('/orders/:id', asyncHandler(async (req, res) => {
   const { data: order, error } = await supabase
     .from('orders')
@@ -500,7 +516,7 @@ router.delete('/orders/:id', requireRole('developer'), asyncHandler(async (req, 
   res.json({ ok: true });
 }));
 
-// PUT /api/admin/orders/:id — עריכה מלאה של הזמנה ע"י מנהל (שבת, אספקה, סעודות, מאכלים, תוספות)
+// PUT /api/admin/orders/:id - עריכה מלאה של הזמנה ע"י מנהל (שבת, אספקה, סעודות, מאכלים, תוספות)
 // המחירים מחושבים מחדש בשרת מהמחירון הפעיל (כמו ביצירה). לא ניתן לערוך הזמנה מבוטלת.
 router.put('/orders/:id', asyncHandler(async (req, res) => {
   const b = req.body;
@@ -581,7 +597,7 @@ router.put('/orders/:id', asyncHandler(async (req, res) => {
   await supabase.from('order_history').insert({
     order_id: order.id, changed_by: req.appUser?.sub || null,
     action: exception.requested
-      ? `ההזמנה נערכה ע"י מנהל (כמות מנות חריגה — ${exception.note})`
+      ? `ההזמנה נערכה ע"י מנהל (כמות מנות חריגה - ${exception.note})`
       : 'ההזמנה נערכה ע"י מנהל',
   });
 
@@ -589,18 +605,26 @@ router.put('/orders/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true, order: updated });
 }));
 
-// PATCH /api/admin/orders/:id/customer — עדכון פרטי הלקוח של ההזמנה (שם/טלפון/דוא"ל/כתובת)
+// PATCH /api/admin/orders/:id/customer - עדכון פרטי הלקוח של ההזמנה (שם/טלפון/דוא"ל/כתובת)
 router.patch('/orders/:id/customer', asyncHandler(async (req, res) => {
-  const { full_name, phone, email, address } = req.body;
+  const { full_name, first_name, last_name, phone, email, address } = req.body;
 
   const { data: order, error: getErr } = await supabase
     .from('orders').select('customer_id').eq('id', req.params.id).single();
   if (getErr) throw getErr;
 
   const update = {};
-  if (full_name !== undefined) {
+  // full_name הוא עמודה מחושבת - כותבים לשם פרטי/משפחה. תומכים גם בקלט full_name (פיצול).
+  if (first_name !== undefined || last_name !== undefined) {
+    const fn = String(first_name ?? '').trim();
+    if (!fn) return fail(res, 400, 'שם הלקוח לא יכול להיות ריק.');
+    update.first_name = fn;
+    update.last_name = last_name ? String(last_name).trim() : null;
+  } else if (full_name !== undefined) {
     if (!full_name || !full_name.trim()) return fail(res, 400, 'שם הלקוח לא יכול להיות ריק.');
-    update.full_name = full_name.trim();
+    const split = splitFullName(full_name);
+    update.first_name = split.first_name;
+    update.last_name = split.last_name;
   }
   if (phone !== undefined) {
     const normalized = normalizePhone(phone);
@@ -629,7 +653,7 @@ router.patch('/orders/:id/customer', asyncHandler(async (req, res) => {
 // ---------------------------------------------------------------------------
 
 // מחשב מחדש את סכומי ההנחות/חיובים והסכום הסופי של ההזמנה מטבלאות המשנה.
-// מקור אמת יחיד — נקרא אחרי כל הוספה/מחיקה של הנחה או חיוב.
+// מקור אמת יחיד - נקרא אחרי כל הוספה/מחיקה של הנחה או חיוב.
 async function recomputeOrderAmounts(orderId) {
   const [{ data: order }, { data: mc }, { data: dc }] = await Promise.all([
     supabase.from('orders').select('base_amount, extras_amount').eq('id', orderId).single(),
@@ -651,7 +675,7 @@ async function recomputeOrderAmounts(orderId) {
   return { manual_charges_amount: manualCharges, discount_amount: discounts, final_amount: finalAmount };
 }
 
-// טוען הזמנה ומוודא שאינה מבוטלת — הנחות/חיובים אסורים על הזמנה מבוטלת.
+// טוען הזמנה ומוודא שאינה מבוטלת - הנחות/חיובים אסורים על הזמנה מבוטלת.
 async function loadEditableOrder(res, orderId) {
   const { data: order, error } = await supabase
     .from('orders').select('id, order_status, base_amount, extras_amount').eq('id', orderId).single();
@@ -660,7 +684,7 @@ async function loadEditableOrder(res, orderId) {
   return order;
 }
 
-// POST /api/admin/orders/:id/discounts — הוספת הנחה ידנית (סעיף 16.1)
+// POST /api/admin/orders/:id/discounts - הוספת הנחה ידנית (סעיף 16.1)
 router.post('/orders/:id/discounts', asyncHandler(async (req, res) => {
   const orderId = req.params.id;
   const { discount_type, value, internal_reason } = req.body;
@@ -702,7 +726,7 @@ router.post('/orders/:id/discounts', asyncHandler(async (req, res) => {
   res.json({ ok: true, amounts });
 }));
 
-// DELETE /api/admin/orders/:id/discounts/:discountId — הסרת הנחה
+// DELETE /api/admin/orders/:id/discounts/:discountId - הסרת הנחה
 router.delete('/orders/:id/discounts/:discountId', asyncHandler(async (req, res) => {
   const orderId = req.params.id;
   const order = await loadEditableOrder(res, orderId);
@@ -722,7 +746,7 @@ router.delete('/orders/:id/discounts/:discountId', asyncHandler(async (req, res)
   res.json({ ok: true, amounts });
 }));
 
-// POST /api/admin/orders/:id/manual-charges — הוספת חיוב ידני (סעיף 16.2)
+// POST /api/admin/orders/:id/manual-charges - הוספת חיוב ידני (סעיף 16.2)
 router.post('/orders/:id/manual-charges', asyncHandler(async (req, res) => {
   const orderId = req.params.id;
   const { name, amount, reason } = req.body;
@@ -750,7 +774,7 @@ router.post('/orders/:id/manual-charges', asyncHandler(async (req, res) => {
   res.json({ ok: true, amounts });
 }));
 
-// DELETE /api/admin/orders/:id/manual-charges/:chargeId — הסרת חיוב ידני
+// DELETE /api/admin/orders/:id/manual-charges/:chargeId - הסרת חיוב ידני
 router.delete('/orders/:id/manual-charges/:chargeId', asyncHandler(async (req, res) => {
   const orderId = req.params.id;
   const order = await loadEditableOrder(res, orderId);
@@ -770,7 +794,7 @@ router.delete('/orders/:id/manual-charges/:chargeId', asyncHandler(async (req, r
   res.json({ ok: true, amounts });
 }));
 
-// POST /api/admin/orders/:id/approve — אישור הזמנה (סעיף 11.1)
+// POST /api/admin/orders/:id/approve - אישור הזמנה (סעיף 11.1)
 router.post('/orders/:id/approve', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('orders')
@@ -778,14 +802,14 @@ router.post('/orders/:id/approve', asyncHandler(async (req, res) => {
     .eq('id', req.params.id).eq('order_status', 'pending_approval')
     .select('*').maybeSingle();
   if (error) throw error;
-  if (!data) return fail(res, 409, 'לא ניתן לאשר — ההזמנה אינה בסטטוס ממתין לאישור.');
+  if (!data) return fail(res, 409, 'לא ניתן לאשר - ההזמנה אינה בסטטוס ממתין לאישור.');
 
   await supabase.from('order_history').insert({
     order_id: req.params.id, action: 'ההזמנה אושרה',
   });
   await markEntityNotificationsRead('orders', req.params.id);
 
-  // 18.3 — מייל אישור ללקוח (כולל תזכורת לתשלום)
+  // 18.3 - מייל אישור ללקוח (כולל תזכורת לתשלום)
   const { data: customer } = await supabase
     .from('customers').select('full_name, email').eq('id', data.customer_id).maybeSingle();
   const { data: shabbat } = await supabase
@@ -800,7 +824,7 @@ router.post('/orders/:id/approve', asyncHandler(async (req, res) => {
   res.json({ ok: true, order: data });
 }));
 
-// POST /api/admin/orders/:id/cancel — ביטול הזמנה בכל סטטוס (סעיף 10.5)
+// POST /api/admin/orders/:id/cancel - ביטול הזמנה בכל סטטוס (סעיף 10.5)
 router.post('/orders/:id/cancel', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('orders').update({ order_status: 'cancelled' })
@@ -813,7 +837,7 @@ router.post('/orders/:id/cancel', asyncHandler(async (req, res) => {
   res.json({ ok: true, order: data });
 }));
 
-// POST /api/admin/orders/:id/payment — עדכון סטטוס תשלום (סעיף 17.2)
+// POST /api/admin/orders/:id/payment - עדכון סטטוס תשלום (סעיף 17.2)
 router.post('/orders/:id/payment', asyncHandler(async (req, res) => {
   const { payment_status, amount, payment_method, paid_at } = req.body;
   const valid = ['unpaid', 'partially_paid', 'paid', 'payment_override'];
@@ -824,7 +848,7 @@ router.post('/orders/:id/payment', asyncHandler(async (req, res) => {
     .eq('id', req.params.id).select('*').single();
   if (error) throw error;
 
-  // אם נרשם סכום — מתעדים תשלום (סעיף 17.2)
+  // אם נרשם סכום - מתעדים תשלום (סעיף 17.2)
   if (amount && Number(amount) > 0) {
     await supabase.from('customer_payments').insert({
       order_id: req.params.id,
@@ -836,7 +860,7 @@ router.post('/orders/:id/payment', asyncHandler(async (req, res) => {
   res.json({ ok: true, order: data });
 }));
 
-// GET /api/admin/dashboard — נתוני דשבורד ניהולי (סעיף 30)
+// GET /api/admin/dashboard - נתוני דשבורד ניהולי (סעיף 30)
 // מחזיר את "הדברים הדורשים טיפול" בחלוקה ל-5 סקציות: הזמנות, תשלומים,
 // מלאי, מתנדבים, ספקים. לכל פריט מספר; הפרונט מוסיף קישור ישיר לפעולה.
 router.get('/dashboard', asyncHandler(async (req, res) => {
@@ -859,12 +883,12 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
     lowStock, openPOs, supplierPayments,
     invItems, transportOrders,
   ] = await Promise.all([
-    // 30.1 — הזמנות
+    // 30.1 - הזמנות
     supabase.from('orders').select('id', { count: 'exact', head: true })
       .eq('order_status', 'pending_approval'),
     supabase.from('orders').select('id', { count: 'exact', head: true })
       .eq('order_status', 'cancelled').gte('updated_at', weekAgo),
-    // 30.2 — תשלומים
+    // 30.2 - תשלומים
     supabase.from('orders').select('id', { count: 'exact', head: true })
       .in('order_status', ACTIVE).eq('payment_status', 'unpaid'),
     supabase.from('orders').select('id', { count: 'exact', head: true })
@@ -873,17 +897,17 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
       .eq('payment_status', 'payment_override'),
     supabase.from('order_refunds').select('id', { count: 'exact', head: true })
       .eq('status', 'pending'),
-    // 30.3/30.5 — מלאי + רכש
+    // 30.3/30.5 - מלאי + רכש
     supabase.from('inventory_items').select('id, quantity_on_hand, min_alert_quantity')
       .eq('is_active', true).not('min_alert_quantity', 'is', null),
     supabase.from('purchase_orders').select('id', { count: 'exact', head: true })
       .in('status', ['draft', 'sent', 'partially_received']),
     supabase.from('supplier_payments').select('id', { count: 'exact', head: true })
       .in('status', ['unpaid', 'partially_paid', 'awaiting_invoice']),
-    // עזר: פריטי מלאי מלאים (לא בשימוש כאן ישירות — נשמר לעתיד)
+    // עזר: פריטי מלאי מלאים (לא בשימוש כאן ישירות - נשמר לעתיד)
     supabase.from('inventory_items').select('id', { count: 'exact', head: true })
       .eq('is_active', true),
-    // 30.4 — הזמנות פעילות שדורשות שינוע (למניית שיבוץ שינוע חסר)
+    // 30.4 - הזמנות פעילות שדורשות שינוע (למניית שיבוץ שינוע חסר)
     nextShabbat
       ? supabase.from('orders')
           .select('id, transport_volunteer_id')
@@ -893,12 +917,12 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
       : Promise.resolve({ data: [] }),
   ]);
 
-  // מוצרים מתחת למינימום — השוואה בין שתי עמודות מתבצעת ב-JS
+  // מוצרים מתחת למינימום - השוואה בין שתי עמודות מתבצעת ב-JS
   const belowMin = (lowStock.data || []).filter(
     (it) => Number(it.quantity_on_hand) < Number(it.min_alert_quantity),
   ).length;
 
-  // הזמנות שלא שולמו בזמן — מאושרות/פעילות שלא שולמו והשבת שלהן עברה את מועד התשלום
+  // הזמנות שלא שולמו בזמן - מאושרות/פעילות שלא שולמו והשבת שלהן עברה את מועד התשלום
   let overdueUnpaid = 0;
   let nextShabbatOrders = 0;
   let missingTransport = 0;
@@ -926,7 +950,7 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
     unassignedTasks = (tasks || []).filter((t) => !assignedTaskIds.has(t.id)).length;
   }
 
-  // הזמנות שלא שולמו בזמן — דורש את מועד התשלום של השבת של כל הזמנה
+  // הזמנות שלא שולמו בזמן - דורש את מועד התשלום של השבת של כל הזמנה
   const { data: unpaidRows } = await supabase
     .from('orders')
     .select('id, shabbatot(payment_deadline)')
@@ -971,16 +995,16 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
     registrations: {
       pending: pendingRegistrations || 0,
     },
-    // תאימות לאחור — שדות הדשבורד הישן
+    // תאימות לאחור - שדות הדשבורד הישן
     pending_orders: pendingOrders.count || 0,
     unpaid_approved: unpaidActive.count || 0,
     pending_registrations: pendingRegistrations || 0,
   });
 }));
 
-// POST /api/admin/orders/payment-reminders — שליחת תזכורות תשלום (סעיף 18.4)
+// POST /api/admin/orders/payment-reminders - שליחת תזכורות תשלום (סעיף 18.4)
 // שולח תזכורת לכל ההזמנות המאושרות שטרם שולמו במלואן.
-// body: { overdue_only?: boolean } — אם true, רק הזמנות שעבר מועד התשלום שלהן.
+// body: { overdue_only?: boolean } - אם true, רק הזמנות שעבר מועד התשלום שלהן.
 // ללקוח עם מייל: נשלח מייל (או dry_run). ללקוח ללא מייל: נוצרת התראה פנימית (סעיף 18.4).
 router.post('/orders/payment-reminders', asyncHandler(async (req, res) => {
   const overdueOnly = req.body?.overdue_only === true;
@@ -1009,13 +1033,13 @@ router.post('/orders/payment-reminders', asyncHandler(async (req, res) => {
       else if (result?.status === 'dry_run') dryRun++;
       else skipped++;
     } else {
-      // אין מייל ללקוח — התראה פנימית למנהל/רכז (סעיף 18.4)
+      // אין מייל ללקוח - התראה פנימית למנהל/רכז (סעיף 18.4)
       await createAdminNotification({
         notification_type: 'payment_reminder',
         entity_table: 'orders',
         entity_id: o.id,
         title: 'תזכורת תשלום ללא מייל לקוח',
-        body: `הזמנה ${o.order_number} — ${o.customers?.full_name || ''} (אין מייל, יש ליצור קשר ידני)`,
+        body: `הזמנה ${o.order_number} - ${o.customers?.full_name || ''} (אין מייל, יש ליצור קשר ידני)`,
         link_path: `/admin/orders/${o.id}`,
       });
       internal++;
@@ -1025,7 +1049,7 @@ router.post('/orders/payment-reminders', asyncHandler(async (req, res) => {
   res.json({ ok: true, total: (orders || []).length, emailed, dry_run: dryRun, internal, skipped });
 }));
 
-// GET /api/admin/registrations — בקשות רישום ממתינות (סעיף 7)
+// GET /api/admin/registrations - בקשות רישום ממתינות (סעיף 7)
 router.get('/registrations', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('customer_registration_requests').select('*')
@@ -1034,7 +1058,7 @@ router.get('/registrations', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// POST /api/admin/registrations/:id/approve — אישור רישום -> יוצר לקוח פעיל
+// POST /api/admin/registrations/:id/approve - אישור רישום -> יוצר לקוח פעיל
 router.post('/registrations/:id/approve', asyncHandler(async (req, res) => {
   const { data: reqRow, error } = await supabase
     .from('customer_registration_requests').select('*').eq('id', req.params.id).single();
@@ -1063,7 +1087,8 @@ router.post('/registrations/:id/approve', asyncHandler(async (req, res) => {
   }
 
   const { data: customer, error: cErr } = await supabase.from('customers').insert({
-    full_name: reqRow.full_name,
+    first_name: reqRow.first_name,
+    last_name: reqRow.last_name,
     phone: reqRow.phone,
     phone_normalized: reqRow.phone_normalized,
     email: reqRow.email,
@@ -1087,7 +1112,7 @@ router.post('/registrations/:id/approve', asyncHandler(async (req, res) => {
 }));
 
 // מייל חוזר ללקוח על החלטת המנהל בבקשת הרישום (אישור/דחייה, סעיף 18).
-// ברקע ואחרי התשובה — תופעת-לוואי שלא מעכבת את המנהל ולא מפילה את הבקשה.
+// ברקע ואחרי התשובה - תופעת-לוואי שלא מעכבת את המנהל ולא מפילה את הבקשה.
 // אם ללקוח אין מייל, sendTemplateEmail מדלג בשקט.
 function sendRegistrationReply(code, reqRow, reason = '') {
   sendTemplateEmail({
@@ -1097,7 +1122,7 @@ function sendRegistrationReply(code, reqRow, reason = '') {
   }).catch((e) => console.warn(`registration reply email (${code}) failed:`, e.message));
 }
 
-// POST /api/admin/registrations/:id/reject — דחיית רישום -> יוצר/מעדכן לקוח חסום עם סיבה
+// POST /api/admin/registrations/:id/reject - דחיית רישום -> יוצר/מעדכן לקוח חסום עם סיבה
 router.post('/registrations/:id/reject', asyncHandler(async (req, res) => {
   const reason = String(req.body.reason || '').trim();
   if (!reason) return fail(res, 400, 'חובה להזין סיבת דחיית רישום.');
@@ -1128,7 +1153,8 @@ router.post('/registrations/:id/reject', asyncHandler(async (req, res) => {
     customer = updated;
   } else {
     const { data: created, error: createErr } = await supabase.from('customers').insert({
-      full_name: reqRow.full_name,
+      first_name: reqRow.first_name,
+      last_name: reqRow.last_name,
       phone: reqRow.phone,
       phone_normalized: reqRow.phone_normalized,
       email: reqRow.email,

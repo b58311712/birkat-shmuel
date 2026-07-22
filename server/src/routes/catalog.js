@@ -6,7 +6,7 @@ import { fetchSlotSplitsByCategory } from '../services/categorySplits.js';
 
 const router = Router();
 
-// GET /api/catalog — כל הקטלוג הפעיל להצגה בממשק הזמנה, בקריאה אחת.
+// GET /api/catalog - כל הקטלוג הפעיל להצגה בממשק הזמנה, בקריאה אחת.
 router.get('/', asyncHandler(async (req, res) => {
   const [slots, categories, meals, mealSlots, extras, extraMeals, priceTracks, trackSlots, slotSplits] = await Promise.all([
     supabase.from('meal_slots').select('*').eq('is_active', true).order('display_order'),

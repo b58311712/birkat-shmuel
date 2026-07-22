@@ -8,11 +8,11 @@ import { toBasePrice, withVat, getVatRate } from '../lib/vat.js';
 // כך שהערך הנשמר אחיד תמיד. מתחת לשדה מוצג המחיר הסופי כולל מע"מ לאישור ויזואלי.
 //
 // props:
-//   value          — מחיר הבסיס הנוכחי (מספר או '' / null). מקור האמת מבחוץ.
-//   onChange(base) — נקרא עם מחיר הבסיס המנורמל (מספר או null).
-//   exempt         — הפריט פטור ממע"מ → אין תוספת מע"מ, והמתג מוסתר.
-//   defaultIncludesVat — מצב התחלתי למתג (ברירת מחדל של הספק). ברירת מחדל: false.
-//   className, placeholder, id — מועברים לשדה הקלט.
+//   value          - מחיר הבסיס הנוכחי (מספר או '' / null). מקור האמת מבחוץ.
+//   onChange(base) - נקרא עם מחיר הבסיס המנורמל (מספר או null).
+//   exempt         - הפריט פטור ממע"מ → אין תוספת מע"מ, והמתג מוסתר.
+//   defaultIncludesVat - מצב התחלתי למתג (ברירת מחדל של הספק). ברירת מחדל: false.
+//   className, placeholder, id - מועברים לשדה הקלט.
 export default function PriceInput({
   value,
   onChange,
@@ -22,7 +22,7 @@ export default function PriceInput({
   placeholder = 'מחיר',
   id,
 }) {
-  // מצב המתג: האם המספר המוקלד הוא כולל מע"מ. לפריט פטור — תמיד "לפני" (זהה).
+  // מצב המתג: האם המספר המוקלד הוא כולל מע"מ. לפריט פטור - תמיד "לפני" (זהה).
   const [includesVat, setIncludesVat] = useState(defaultIncludesVat && !exempt);
   // הטקסט המוצג בשדה. לא נגזר ישירות מ-value כדי לא לשבש הקלדה חופשית.
   const [text, setText] = useState('');
@@ -40,14 +40,14 @@ export default function PriceInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  // כשמשתנה מצב הפטור — מכריחים חזרה ל"לפני מע"מ" (המתג לא רלוונטי לפטור).
+  // כשמשתנה מצב הפטור - מכריחים חזרה ל"לפני מע"מ" (המתג לא רלוונטי לפטור).
   useEffect(() => {
     if (exempt && includesVat) setIncludesVat(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exempt]);
 
   // ברירת המחדל של הספק מגיעה לעתים אחרי העלייה (טעינה אסינכרונית של הספק).
-  // מסנכרנים את המתג כל עוד השדה ריק — כדי לא לדרוס בחירה ידנית של המשתמש.
+  // מסנכרנים את המתג כל עוד השדה ריק - כדי לא לדרוס בחירה ידנית של המשתמש.
   useEffect(() => {
     if (text === '' && !exempt) setIncludesVat(defaultIncludesVat);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,7 +71,7 @@ export default function PriceInput({
   function toggleMode(nextIncludesVat) {
     setIncludesVat(nextIncludesVat);
     const currentBase = toBasePrice(text, { includesVat, exempt });
-    if (currentBase == null) return; // שדה ריק — רק מחליפים מצב
+    if (currentBase == null) return; // שדה ריק - רק מחליפים מצב
     const shown = nextIncludesVat && !exempt ? withVat(currentBase, { exempt }) : currentBase;
     setText(shown == null ? '' : String(shown));
     lastEmitted.current = currentBase;
@@ -95,7 +95,7 @@ export default function PriceInput({
         dir="ltr"
       />
       {exempt ? (
-        <div className="text-xs text-brand-burgundy/50">פטור ממע"מ — המחיר הסופי</div>
+        <div className="text-xs text-brand-burgundy/50">פטור ממע"מ - המחיר הסופי</div>
       ) : (
         <>
           <div className="flex gap-1 text-xs" dir="rtl">

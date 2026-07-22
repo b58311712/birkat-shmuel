@@ -14,12 +14,12 @@ function writeDrafts(drafts) {
   else sessionStorage.removeItem(EMAIL_DRAFTS_KEY);
 }
 
-// ניהול מיילים (סעיף 18) — עריכת נוסחי מייל דינמיים, שליחת תזכורות תשלום, ויומן שליחה.
+// ניהול מיילים (סעיף 18) - עריכת נוסחי מייל דינמיים, שליחת תזכורות תשלום, ויומן שליחה.
 // שמות ידידותיים לנוסחים המוכרים.
 const TEMPLATE_LABELS = {
   order_summary: 'סיכום הזמנה ללקוח (בעת יצירה)',
   order_approved: 'אישור הזמנה ללקוח',
-  new_order_manager_alert: 'התראת מנהל — הזמנה חדשה',
+  new_order_manager_alert: 'התראת מנהל - הזמנה חדשה',
   payment_reminder: 'תזכורת תשלום ללקוח',
 };
 
@@ -111,7 +111,7 @@ export default function AdminEmail({ onAuthError }) {
     try {
       const r = await api.sendPaymentReminders(overdueOnly);
       setMsg(
-        `תזכורות: ${r.emailed} נשלחו, ${r.dry_run} במצב יבש, ${r.internal} התראות פנימיות (ללא מייל), ${r.skipped} דולגו — מתוך ${r.total} הזמנות.`
+        `תזכורות: ${r.emailed} נשלחו, ${r.dry_run} במצב יבש, ${r.internal} התראות פנימיות (ללא מייל), ${r.skipped} דולגו - מתוך ${r.total} הזמנות.`
       );
       loadLog();
     } catch (err) { handleErr(err); }
@@ -127,7 +127,7 @@ export default function AdminEmail({ onAuthError }) {
       {dryRun && (
         <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
           <strong>מצב יבש פעיל:</strong> לא הוגדר חשבון SMTP, ולכן מיילים <em>מתועדים ביומן</em> ולא נשלחים בפועל.
-          כדי לשלוח באמת — מלאו את פרטי ה-SMTP בקובץ <code>.env</code> והפעילו מחדש את השרת.
+          כדי לשלוח באמת - מלאו את פרטי ה-SMTP בקובץ <code>.env</code> והפעילו מחדש את השרת.
         </div>
       )}
 
@@ -147,7 +147,7 @@ export default function AdminEmail({ onAuthError }) {
       <section className="card mb-6">
         <h2 className="mb-2 text-lg font-bold text-brand-burgundy">עיצוב המייל</h2>
         <p className="text-sm text-brand-burgundy/70">
-          את/ה עורך/ת כאן <strong>טקסט בלבד</strong>. המערכת עוטפת אותו אוטומטית במעטפת רשמית ואחידה —
+          את/ה עורך/ת כאן <strong>טקסט בלבד</strong>. המערכת עוטפת אותו אוטומטית במעטפת רשמית ואחידה -
           כותרת עם הלוגו, גוף מעוצב בצבעי המותג, וכותרת תחתונה עם פרטי מטבח החסד. שורה ריקה מפרידה בין פסקאות.
         </p>
       </section>
@@ -158,7 +158,7 @@ export default function AdminEmail({ onAuthError }) {
         <div className="flex flex-wrap gap-2">
           {PLACEHOLDERS.map(([ph, label]) => (
             <span key={ph} className="badge bg-brand-cream text-brand-burgundy">
-              <code className="font-mono">{ph}</code> — {label}
+              <code className="font-mono">{ph}</code> - {label}
             </span>
           ))}
         </div>
@@ -212,7 +212,7 @@ export default function AdminEmail({ onAuthError }) {
   );
 }
 
-// עורך נוסח בודד — נושא, גוף, סטטוס פעיל.
+// עורך נוסח בודד - נושא, גוף, סטטוס פעיל.
 function TemplateEditor({ template, draft, onSave }) {
   const [subject, setSubject] = useState(draft?.subject ?? template.subject);
   const [body, setBody] = useState(draft?.body ?? template.body);

@@ -86,12 +86,12 @@ export default function AdminFinance({ onAuthError }) {
 
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
         <FinancePanel title="חובות לקוחות" subtitle={`${reports.customer_debts.length} יתרות פתוחות`} full>
-          {reports.customer_debts.length === 0 ? <Empty>אין חובות פתוחים — כל ההזמנות הפעילות שולמו במלואן.</Empty> : (
+          {reports.customer_debts.length === 0 ? <Empty>אין חובות פתוחים - כל ההזמנות הפעילות שולמו במלואן.</Empty> : (
             <FinanceTable head={['הזמנה', 'שבת', 'סכום סופי', 'שולם', 'יתרה', '']}>
               {reports.customer_debts.map((order) => (
                 <tr key={order.id}>
                   <td className="px-5 py-4 font-mono text-xs font-bold text-brand-burgundy" dir="ltr">{order.order_number}</td>
-                  <td className="px-4 py-4 font-medium">{order.shabbat || '—'}</td>
+                  <td className="px-4 py-4 font-medium">{order.shabbat || '-'}</td>
                   <MoneyCell value={order.final_amount} />
                   <MoneyCell value={order.paid} muted />
                   <MoneyCell value={order.balance} danger />
@@ -108,7 +108,7 @@ export default function AdminFinance({ onAuthError }) {
               {income.by_shabbat.map((row) => (
                 <tr key={row.shabbat_id}>
                   <td className="px-5 py-4 font-bold">{row.label}</td>
-                  <td className="px-4 py-4 text-sm text-[#82777b]" dir="ltr">{row.date || '—'}</td>
+                  <td className="px-4 py-4 text-sm text-[#82777b]" dir="ltr">{row.date || '-'}</td>
                   <MoneyCell value={row.expected} /><MoneyCell value={row.paid} muted /><MoneyCell value={round2(row.expected - row.paid)} />
                 </tr>
               ))}

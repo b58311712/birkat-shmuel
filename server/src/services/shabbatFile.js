@@ -1,10 +1,10 @@
-// שירות תיק שבת — איחוד ההזמנות של שבת וחישובי כמויות/מטבח/אריזה (סעיף 9, 21)
+// שירות תיק שבת - איחוד ההזמנות של שבת וחישובי כמויות/מטבח/אריזה (סעיף 9, 21)
 //
 // עיקרון מרכזי (סעיף 8.7): רק הזמנות שנכנסות ל"הכנות" משתתפות בחישובים
 // תפעוליים (כמויות, מטבח, מלאי, אריזה, שינוע):
 //   order_status = 'approved'
 //   וגם payment_status ∈ { paid, partially_paid, payment_override }
-// הזמנה שבוטלה או שלא שולמה (ואין חריגה) — לא נכנסת לחישוב.
+// הזמנה שבוטלה או שלא שולמה (ואין חריגה) - לא נכנסת לחישוב.
 import { supabase } from '../lib/supabase.js';
 import { roundUp } from '../lib/helpers.js';
 import { orderedMealIds } from './volunteerScheduling.js';
@@ -90,7 +90,7 @@ export async function buildSummary(shabbatId) {
 
 // עוזר משותף: צובר סך המנות לכל מאכל על פני כל ההזמנות התפעוליות של השבת.
 // המנות של מאכל = מנות הסעודה שאליה הוא שייך באותה הזמנה. מאכל שנבחר בכמה
-// סעודות/הזמנות — נסכם את כולן (סעיף 21.2, בלי הפרדה). משמש מטבח + מלאי.
+// סעודות/הזמנות - נסכם את כולן (סעיף 21.2, בלי הפרדה). משמש מטבח + מלאי.
 // מחזיר { portionsByMeal, nameByMeal }.
 function computePortionsByMeal(orders) {
   const portionsByMeal = {}; // meal_id -> total portions
@@ -113,7 +113,7 @@ function computePortionsByMeal(orders) {
 }
 
 // לשונית כמויות ומטבח (סעיף 9.4, 21):
-//   - סך מנות לכל מאכל (איחוד כל הסעודות, בלי הפרדה — סעיף 21.2)
+//   - סך מנות לכל מאכל (איחוד כל הסעודות, בלי הפרדה - סעיף 21.2)
 //   - קיבוץ לפי קטגוריה
 //   - חומרי גלם לפי מתכונים * מנות, כמות מדויקת + מעוגלת (סעיף 21.3, 21.4)
 export async function buildKitchenReport(shabbatId) {
@@ -297,7 +297,7 @@ export async function buildInventoryReport(shabbatId) {
   const mealIds = Object.keys(portionsByMeal);
 
   // requiredByItem: inventory_item_id -> כמות מדויקת נדרשת (מצטבר)
-  // unlinked: שורות מתכון בלי קישור למלאי — אי אפשר לחשב חוסר, מציגים בנפרד
+  // unlinked: שורות מתכון בלי קישור למלאי - אי אפשר לחשב חוסר, מציגים בנפרד
   const requiredByItem = {};
   const unlinkedByName = {}; // "שם::יחידה" -> { name, unit, quantity }
 
@@ -327,7 +327,7 @@ export async function buildInventoryReport(shabbatId) {
       }
     }
 
-    // אריזות מכללי אריזה (סעיף 22.4) — כל אריזה שמקושרת לפריט מלאי
+    // אריזות מכללי אריזה (סעיף 22.4) - כל אריזה שמקושרת לפריט מלאי
     for (const r of rules || []) {
       if (!r.packaging_item_id) continue;
       const portions = portionsByMeal[r.meal_id] || 0;
@@ -370,7 +370,7 @@ export async function buildInventoryReport(shabbatId) {
     const required = roundUp(exactRequired); // כמות נדרשת מעוגלת (סעיף 21.4)
     const onHand = Number(item.quantity_on_hand || 0);
     const missing = Math.max(0, required - onHand); // כמה חסר לכיסוי צורך השבת
-    // מומלץ לקנייה (סעיף 26): לכסות את החוסר, ואם מוגדר מלאי מינימום — לקנות
+    // מומלץ לקנייה (סעיף 26): לכסות את החוסר, ואם מוגדר מלאי מינימום - לקנות
     // מספיק כדי שלאחר השבת המלאי לא ירד מתחת למינימום ההתראה.
     const minAlert = item.min_alert_quantity != null ? Number(item.min_alert_quantity) : 0;
     const suggested = Math.max(missing, required + minAlert - onHand, 0);
@@ -417,17 +417,17 @@ export async function buildInventoryReport(shabbatId) {
   };
 }
 
-// לשונית מתנדבים (סעיף 9.8, 24) — מבנה מפושט, חישוב חי בלי snapshot:
+// לשונית מתנדבים (סעיף 9.8, 24) - מבנה מפושט, חישוב חי בלי snapshot:
 //   - משימות קבועות פעילות (volunteer_tasks) + מי משובץ אליהן בשבת זו
 //   - המשובץ = דריסה ידנית (is_override) אם קיימת, אחרת המתנדב הקבוע (primary),
-//     ולמשימת בישול — נפילה למתנדב המקושר למאכל (volunteer_meal_links)
-//   - משימת בישול שהמאכל שלה לא הוזמן בשבת — לא רלוונטית ומוסתרת
+//     ולמשימת בישול - נפילה למתנדב המקושר למאכל (volunteer_meal_links)
+//   - משימת בישול שהמאכל שלה לא הוזמן בשבת - לא רלוונטית ומוסתרת
 //   - מחליפים (backup) מוצגים כרשימת גיבוי לבחירה
 export async function buildVolunteerReport(shabbatId) {
   const { shabbat, orders } = await loadShabbatOrders(shabbatId);
   if (!shabbat) return null;
 
-  const { nameByMeal } = computePortionsByMeal(orders);
+  const { portionsByMeal, nameByMeal } = computePortionsByMeal(orders);
   const orderedMeals = await orderedMealIds(shabbatId);
 
   const [
@@ -444,7 +444,7 @@ export async function buildVolunteerReport(shabbatId) {
     supabase.from('volunteer_task_links')
       .select('task_id, role, priority, volunteers:volunteer_id (id, full_name, phone, area_id, has_vehicle, is_active)'),
     supabase.from('volunteer_assignments')
-      .select('id, task_id, volunteer_id, notes, volunteers:volunteer_id (id, full_name, phone, area_id, has_vehicle)')
+      .select('id, task_id, meal_id, volunteer_id, notes, volunteers:volunteer_id (id, full_name, phone, area_id, has_vehicle)')
       .eq('shabbat_id', shabbatId).eq('is_override', true),
     supabase.from('volunteer_meal_links')
       .select('meal_id, volunteers:volunteer_id (id, full_name, phone, area_id, has_vehicle, is_active)'),
@@ -457,8 +457,13 @@ export async function buildVolunteerReport(shabbatId) {
   // קישורי צוות (primary/backup) מקובצים לפי משימה
   const staffingByTask = {};
   for (const link of staffingLinks || []) (staffingByTask[link.task_id] ||= []).push(link);
-  // דריסה ידנית אחת לכל משימה בשבת זו
-  const overrideByTask = Object.fromEntries((overrides || []).map((o) => [o.task_id, o]));
+  // דריסות ידניות בשבת זו: לפי משימה (task_id) או דריסת מבשל לפי מאכל (meal_id).
+  const overrideByTask = {};
+  const overrideByMeal = {};
+  for (const o of overrides || []) {
+    if (o.task_id) overrideByTask[o.task_id] = o;
+    else if (o.meal_id) overrideByMeal[o.meal_id] = o;
+  }
   // מתנדבי בישול פעילים לפי מאכל (לנפילה כשאין primary)
   const mealVolunteersByMeal = {};
   for (const link of mealLinks || []) {
@@ -499,7 +504,7 @@ export async function buildVolunteerReport(shabbatId) {
       task_id: task.id,
       name: task.name,
       area_id: task.area_id,
-      area_name: area?.name || '—',
+      area_name: area?.name || '-',
       area_is_cooking: !!area?.is_cooking,
       area_display_order: area?.display_order ?? 0,
       execution_day: task.execution_day,
@@ -539,14 +544,50 @@ export async function buildVolunteerReport(shabbatId) {
     || a.display_order - b.display_order
     || a.name.localeCompare(b.name, 'he'));
 
+  // פירוט בישול פר-מאכל: כל מאכל שהוזמן בפועל בשבת (תפעולי) + כל המתנדבים
+  // המשובצים לבשל אותו (volunteer_meal_links). מאכל בלי מבשל מסומן כפער.
+  // נגזר ישירות מההזמנות ולא מהמשימות - כך שום מאכל שהוזמן לא נופל בין הכיסאות.
+  // דריסת מבשל פר-שבת (overrideByMeal): מחליפה את המבשלים הקבועים לשבת זו בלבד.
+  const cookingMeals = Object.keys(portionsByMeal)
+    .map((mealId) => {
+      const permanentCooks = (mealVolunteersByMeal[mealId] || []).map((v) => ({
+        volunteer_id: v.id,
+        volunteer_name: v.full_name,
+        phone: v.phone || null,
+        has_vehicle: v.has_vehicle || false,
+      }));
+      const override = overrideByMeal[mealId];
+      const overrideCook = override?.volunteers ? {
+        volunteer_id: override.volunteers.id,
+        volunteer_name: override.volunteers.full_name,
+        phone: override.volunteers.phone || null,
+        has_vehicle: override.volunteers.has_vehicle || false,
+      } : null;
+      // כשיש מחליף לשבת זו - הוא המבשל בפועל במקום הקבועים.
+      const cooks = overrideCook ? [overrideCook] : permanentCooks;
+      return {
+        meal_id: mealId,
+        meal_name: nameByMeal[mealId] || 'מאכל',
+        portions: portionsByMeal[mealId],
+        cooks,
+        permanent_cooks: permanentCooks,
+        override_cook: overrideCook,
+        is_override: !!overrideCook,
+        is_unassigned: cooks.length === 0,
+      };
+    })
+    .sort((a, b) => b.portions - a.portions || a.meal_name.localeCompare(b.meal_name, 'he'));
+
   return {
     shabbat_id: shabbatId,
     tasks: tasksOut,
     unassigned_count: tasksOut.filter((task) => task.is_unassigned).length,
+    cooking_meals: cookingMeals,
+    cooking_unassigned_count: cookingMeals.filter((meal) => meal.is_unassigned).length,
   };
 }
 
-// דוח פירוט ללקוח (סעיף 33.6): לכל הזמנה תפעולית — המאכלים שהזמין לפי סעודה,
+// דוח פירוט ללקוח (סעיף 33.6): לכל הזמנה תפעולית - המאכלים שהזמין לפי סעודה,
 // ללא מחיר וללא מצב תשלום. דף זה נשאר אצל הלקוח עם האוכל.
 export async function buildCustomerSlips(shabbatId) {
   const { shabbat, orders } = await loadShabbatOrders(shabbatId);
@@ -594,7 +635,7 @@ export async function buildCustomerSlips(shabbatId) {
 }
 
 // לשונית הדפסות / תיק עבודה (סעיף 9.9, 33): מרכז את כל הדוחות לתיק עבודה אחד
-// להדפסה — שער, סיכום, מטבח, חומרי גלם וחוסרים, אריזה, שינוע, מתנדבים, ופירוט ללקוח.
+// להדפסה - שער, סיכום, מטבח, חומרי גלם וחוסרים, אריזה, שינוע, מתנדבים, ופירוט ללקוח.
 // מאחד את בוני הדוחות הקיימים בקריאה אחת כדי שהפרונט יפיק מסמך מרוכז אחד.
 export async function buildWorkFile(shabbatId) {
   const { shabbat } = await loadShabbatOrders(shabbatId);

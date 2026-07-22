@@ -3,6 +3,7 @@
 import 'dotenv/config';
 import { supabase } from '../lib/supabase.js';
 import { parashaForDate } from '../lib/parasha.js';
+import { splitFullName } from '../lib/helpers.js';
 
 async function main() {
   console.log('🌱 מזין נתוני דמו...\n');
@@ -77,7 +78,7 @@ async function main() {
   console.log(`✓ ${demoExtras.length} תוספות בתשלום`);
 
   // --- שבתות דמו (4 שבתות עתידיות) ---
-  // הפרשה מחושבת מהתאריך הלועזי האמיתי (parasha.js), לא מקודדת-קשיח — כך
+  // הפרשה מחושבת מהתאריך הלועזי האמיתי (parasha.js), לא מקודדת-קשיח - כך
   // שהשבת הקרובה תמיד תציג את הפרשה הנכונה, כולל פרשות מחוברות.
   let d = new Date();
   d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7)); // שבת הקרובה
@@ -94,7 +95,7 @@ async function main() {
   if (existing.data?.length) await supabase.from('shabbatot').delete().in('id', existing.data.map((s) => s.id));
 
   for (const { dateStr, parasha } of weeks) {
-    if (!parasha) continue; // חג/מועד ללא פרשה — מדלגים
+    if (!parasha) continue; // חג/מועד ללא פרשה - מדלגים
     await supabase.from('shabbatot').insert({
       parasha,
       hebrew_date: `שבת פרשת ${parasha}`,
@@ -116,18 +117,18 @@ async function main() {
       full_name: 'מנהל דמו', email: 'manager@demo.local', role: 'manager', is_active: true, password_hash,
     });
   }
-  console.log(`✓ משתמש מנהל דמו — כניסה: manager@demo.local / ${demoMgrPassword}`);
+  console.log(`✓ משתמש מנהל דמו - כניסה: manager@demo.local / ${demoMgrPassword}`);
 
   // --- לקוח דמו פעיל (לכניסה בטלפון) ---
   const demoPhone = '0501234567';
   const { data: cust } = await supabase.from('customers').select('id').eq('phone_normalized', demoPhone).maybeSingle();
   if (!cust) {
     await supabase.from('customers').insert({
-      full_name: 'ישראל ישראלי', phone: '050-123-4567', phone_normalized: demoPhone,
+      first_name: 'ישראל', last_name: 'ישראלי', phone: '050-123-4567', phone_normalized: demoPhone,
       address: 'רחוב הדוגמה 1, ביתר עילית', status: 'active',
     });
   }
-  console.log(`✓ לקוח דמו פעיל — טלפון לכניסה: ${demoPhone}`);
+  console.log(`✓ לקוח דמו פעיל - טלפון לכניסה: ${demoPhone}`);
 
   // --- מלאי, ספקים, מתכונים וכללי אריזה (סעיפים 25-27) ---
   await seedInventory(mealIdByName);
@@ -145,7 +146,7 @@ async function main() {
 async function seedInventory(mealIdByName) {
   // --- ספקים ---
   const demoSuppliers = [
-    { name: 'ספק חומרי גלם — כהן', contact_name: 'משה כהן', phone: '02-500-1111' },
+    { name: 'ספק חומרי גלם - כהן', contact_name: 'משה כהן', phone: '02-500-1111' },
     { name: 'ירקות השדה', contact_name: 'דוד לוי', phone: '02-500-2222' },
     { name: 'אריזות פלוס', contact_name: 'שרה מזרחי', phone: '02-500-3333' },
   ];
@@ -160,11 +161,11 @@ async function seedInventory(mealIdByName) {
   const invCatByName = Object.fromEntries((invCats || []).map((c) => [c.name, c.id]));
 
   const demoItems = [
-    { name: 'חזה עוף', cat: 'חומרי גלם', unit: 'ק"ג', on_hand: 8, min: 5, supplier: 'ספק חומרי גלם — כהן', price: 32 },
+    { name: 'חזה עוף', cat: 'חומרי גלם', unit: 'ק"ג', on_hand: 8, min: 5, supplier: 'ספק חומרי גלם - כהן', price: 32 },
     { name: 'בצל', cat: 'ירקות', unit: 'ק"ג', on_hand: 3, min: 2, supplier: 'ירקות השדה', price: 4 },
     { name: 'גזר', cat: 'ירקות', unit: 'ק"ג', on_hand: 10, min: 3, supplier: 'ירקות השדה', price: 5 },
     { name: 'חצילים', cat: 'ירקות', unit: 'ק"ג', on_hand: 1, min: 4, supplier: 'ירקות השדה', price: 7 },
-    { name: 'שמן', cat: 'חומרי גלם', unit: 'ליטר', on_hand: 20, min: 5, supplier: 'ספק חומרי גלם — כהן', price: 12 },
+    { name: 'שמן', cat: 'חומרי גלם', unit: 'ליטר', on_hand: 20, min: 5, supplier: 'ספק חומרי גלם - כהן', price: 12 },
     { name: 'קופסת מרק 4 ליטר', cat: 'אריזות', unit: 'יחידה', on_hand: 15, min: 20, supplier: 'אריזות פלוס', price: 3, packaging: true },
   ];
   const itemNames = demoItems.map((i) => i.name);
@@ -192,7 +193,7 @@ async function seedInventory(mealIdByName) {
   const itemByName = Object.fromEntries((items || []).map((i) => [i.name, i.id]));
   console.log(`✓ ${demoSuppliers.length} ספקים + ${demoItems.length} פריטי מלאי`);
 
-  // --- מתכונים (recipe_lines) — כמות למנה אחת, מקושרים למלאי ---
+  // --- מתכונים (recipe_lines) - כמות למנה אחת, מקושרים למלאי ---
   // מרק עוף: חזה עוף, בצל, גזר (מקושרים) + "פטרוזיליה" ללא קישור (להדגמת שורה לא-מקושרת)
   // סלט חצילים: חצילים, שמן (מקושרים)
   const recipes = [
@@ -265,11 +266,13 @@ async function seedVolunteers(mealIdByName) {
   const volMealNames = (v) => (v.meals || (v.meal ? [v.meal] : []));
   const volRows = demoVolunteers.map((v) => {
     const mealIds = volMealNames(v).map((n) => mealIdByName[n]).filter(Boolean);
+    const { first_name, last_name } = splitFullName(v.name);
     return {
-      full_name: v.name,
+      first_name,
+      last_name,
       phone: v.phone,
       area_id: areaId(v.area),
-      linked_meal_id: mealIds[0] || null, // מאכל ראשי — תאימות לאחור
+      linked_meal_id: mealIds[0] || null, // מאכל ראשי - תאימות לאחור
       has_vehicle: !!v.vehicle,
       is_regular: !!v.regular,
       is_active: true,
@@ -295,7 +298,7 @@ async function seedVolunteers(mealIdByName) {
   }
   if (mealLinkRows.length) await supabase.from('volunteer_meal_links').insert(mealLinkRows);
 
-  // --- משימות קבועות (סעיף 24.3) — לא נוצרות מחדש בכל שבת ---
+  // --- משימות קבועות (סעיף 24.3) - לא נוצרות מחדש בכל שבת ---
   const demoTasks = [
     { name: 'הכנת מרק', area: 'cooking', meal: 'מרק עוף', order: 1 },
     { name: 'הכנת סלטים', area: 'cooking', meal: 'סלט חצילים', order: 2 },

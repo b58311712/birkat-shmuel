@@ -97,7 +97,7 @@ export default function AdminPettyCash({ onAuthError }) {
             <span className="h-1.5 w-1.5 rounded-full bg-brand-gold" /> מזומן שוטף
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight text-[#2b2024] sm:text-3xl">קופה קטנה</h1>
-          <p className="mt-1 text-sm text-[#7c7175]">הפקדות והוצאות מזומן שוטפות — יתרה רצה. ההוצאות נספרות בסך ההוצאות במודול הכספי.</p>
+          <p className="mt-1 text-sm text-[#7c7175]">הפקדות והוצאות מזומן שוטפות - יתרה רצה. ההוצאות נספרות בסך ההוצאות במודול הכספי.</p>
         </div>
         <Link to="/admin/finance" className="rounded-xl border border-black/[0.07] bg-white px-4 py-2.5 text-sm font-bold text-brand-burgundy shadow-[0_5px_16px_rgba(42,31,36,0.05)] transition hover:border-brand-gold/35">למודול הכספי</Link>
       </header>
@@ -107,7 +107,7 @@ export default function AdminPettyCash({ onAuthError }) {
         <div className={`pilot-panel flex min-w-0 flex-col justify-center p-5 ${negative ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50/60'}`}>
           <p className="text-xs font-bold text-[#8a7f82]">יתרה בקופה</p>
           <p className={`mt-1 text-3xl font-extrabold tabular-nums ${negative ? 'text-red-700' : 'text-emerald-700'}`} dir="ltr">{nis(summary.balance)}</p>
-          {negative && <p className="mt-1 text-xs font-semibold text-red-600">היתרה שלילית — נדרשת הפקדה.</p>}
+          {negative && <p className="mt-1 text-xs font-semibold text-red-600">היתרה שלילית - נדרשת הפקדה.</p>}
         </div>
         <SummaryTile label="סך הפקדות" value={summary.deposits_total} sub={`${rowCount.deposits} תנועות`} tone="neutral" />
         <SummaryTile label="סך הוצאות" value={summary.expenses_total} sub={`${rowCount.expenses} תנועות`} tone="gold" />
@@ -143,7 +143,7 @@ export default function AdminPettyCash({ onAuthError }) {
               <select value={form.supplier_id}
                 onChange={(e) => setForm((f) => ({ ...f, supplier_id: e.target.value }))}
                 className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-gold">
-                <option value="">— ללא ספק —</option>
+                <option value="">- ללא ספק -</option>
                 {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </Field>
@@ -188,10 +188,10 @@ export default function AdminPettyCash({ onAuthError }) {
                   <tr key={t.id}>
                     <td className="whitespace-nowrap px-5 py-4 text-sm text-[#82777b]" dir="ltr">{t.tx_date}</td>
                     <td className="px-4 py-4"><KindBadge kind={t.kind} /></td>
-                    <td className="px-4 py-4 font-medium text-[#3d3135]">{t.description || '—'}</td>
-                    <td className="px-4 py-4 text-sm text-[#655b5f]">{t.category || '—'}</td>
-                    <td className="px-4 py-4 text-sm text-[#655b5f]">{t.supplier_name || '—'}</td>
-                    <td className="px-4 py-4 text-sm text-[#82777b]" dir="ltr">{t.receipt_number || '—'}</td>
+                    <td className="px-4 py-4 font-medium text-[#3d3135]">{t.description || '-'}</td>
+                    <td className="px-4 py-4 text-sm text-[#655b5f]">{t.category || '-'}</td>
+                    <td className="px-4 py-4 text-sm text-[#655b5f]">{t.supplier_name || '-'}</td>
+                    <td className="px-4 py-4 text-sm text-[#82777b]" dir="ltr">{t.receipt_number || '-'}</td>
                     <td className={`whitespace-nowrap px-4 py-4 font-bold tabular-nums ${t.kind === 'deposit' ? 'text-emerald-700' : 'text-[#3d3135]'}`} dir="ltr">
                       {t.kind === 'deposit' ? '+' : '−'}{nis(t.amount)}
                     </td>

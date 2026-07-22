@@ -27,13 +27,13 @@ const UPDATE_EXISTING = process.argv.includes('--update-existing');
 function normalizeName(name) {
   return String(name || '')
     .replace(/\([^)(]*\)/g, '')  // (טקסט)
-    .replace(/\)[^)(]*\(/g, '')  // )טקסט(  — סוגריים הפוכים
+    .replace(/\)[^)(]*\(/g, '')  // )טקסט(  - סוגריים הפוכים
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 // ---------------------------------------------------------------------------
-// מיפוי קטגוריות: לפי מילת מפתח בשם המאכל. הראשון שמתאים — קובע.
+// מיפוי קטגוריות: לפי מילת מפתח בשם המאכל. הראשון שמתאים - קובע.
 // שמות הקטגוריות חייבים להתאים לקיימים ב-DB (seed.sql).
 // ---------------------------------------------------------------------------
 const CATEGORY_RULES = [
@@ -86,14 +86,14 @@ const UNITS = [
   'חבילות', 'חבילה', 'חב\'', 'יחידות', 'יחי\'', 'יח\'', 'יח',
   'פסים', 'פס', 'שיני', 'שן', 'חופן', 'קורט', 'ראשים', 'ראש',
 ];
-// היחידה חייבת להסתיים ברווח או בסוף המחרוזת (לא \b — הוא לא עובד עם עברית/מרכאות).
+// היחידה חייבת להסתיים ברווח או בסוף המחרוזת (לא \b - הוא לא עובד עם עברית/מרכאות).
 const UNIT_RE = new RegExp(`^(${UNITS.join('|')})(?=\\s|$)`);
 
 // כותרות שמתחילות את חלק ההוראות.
 const INSTRUCTION_HEADINGS = [
   'אופן ההכנה', 'אופן הכנה', 'הוראות הכנה', 'הוראות אפיה', 'לאפות', 'הפרשת חלה',
 ];
-// כותרת תת-מתכון (רוטב נפרד) — נכניס אותה כטקסט לאופן ההכנה, ואת הרכיבים שלה כרכיבים רגילים.
+// כותרת תת-מתכון (רוטב נפרד) - נכניס אותה כטקסט לאופן ההכנה, ואת הרכיבים שלה כרכיבים רגילים.
 const SUBRECIPE_HEADINGS = ['אופן הכנת הרוטב', 'הכנת התערובת', 'הכנת התרכובת', 'הכנת הרוטב'];
 
 function isInstructionHeading(line) {
@@ -146,7 +146,7 @@ function parseIngredient(line) {
   const name = rest.trim();
   if (!name) return null;
 
-  // אם אין יחידה מפורשת — נשתמש ב"יח'" (למשל "4 גזר", "10 ביצים", "80 דגי מושט")
+  // אם אין יחידה מפורשת - נשתמש ב"יח'" (למשל "4 גזר", "10 ביצים", "80 דגי מושט")
   return { quantity, unit: unit || 'יח\'', name };
 }
 
@@ -168,13 +168,13 @@ function parseRecipe(block) {
     if (!seenContent && /^[)(].*[)(]$/.test(line)) {
       const p = parsePortions(line);
       if (p) portions = p;
-      continue; // מדלגים על שורת התפוקה בכל מקרה — לא נכנסת להוראות
+      continue; // מדלגים על שורת התפוקה בכל מקרה - לא נכנסת להוראות
     }
 
     if (isInstructionHeading(line)) { seenContent = true; instructions.push(line.replace(/:$/, '') + ':'); continue; }
     if (isSubrecipeHeading(line)) { seenContent = true; instructions.push(line.replace(/:$/, '') + ':'); continue; }
 
-    // תת-מתכון: גם אחרי כותרת "אופן הכנת הרוטב" יכולים לבוא רכיבים — נזהה לפי מבנה.
+    // תת-מתכון: גם אחרי כותרת "אופן הכנת הרוטב" יכולים לבוא רכיבים - נזהה לפי מבנה.
     if (STARTS_WITH_QTY.test(line)) {
       const ing = parseIngredient(line);
       if (ing) { ingredients.push(ing); seenContent = true; continue; }
@@ -252,8 +252,8 @@ async function commit(recipes) {
   const missing = needed.filter((n) => !catByName[n]);
   if (missing.length) throw new Error(`קטגוריות חסרות ב-DB: ${missing.join(', ')}. הריצי seed או צרי אותן ידנית.`);
 
-  // מאכלים קיימים — מתאימים לפי שם מנורמל (מקור ל-DB), כדי לזהות קיימים גם כאשר
-  // הסוגריים שונים. אם שני מאכלים מנורמלים לאותו שם — לא נבחר אוטומטית (ambiguous).
+  // מאכלים קיימים - מתאימים לפי שם מנורמל (מקור ל-DB), כדי לזהות קיימים גם כאשר
+  // הסוגריים שונים. אם שני מאכלים מנורמלים לאותו שם - לא נבחר אוטומטית (ambiguous).
   const { data: existingMeals, error: mErr } = await supabase.from('meals').select('id, name');
   if (mErr) throw mErr;
   const byNorm = new Map();
@@ -298,10 +298,10 @@ async function commit(recipes) {
 
       // החלפת שורות המתכון: מחיקה ואז הזנה מחדש (מזין מחדש את הכמויות מהמקור).
       const { error: delErr } = await supabase.from('recipe_lines').delete().eq('meal_id', existing.id);
-      if (delErr) { console.error(`  ❌ ${existing.name}: מחיקת שורות ישנות — ${delErr.message}`); continue; }
+      if (delErr) { console.error(`  ❌ ${existing.name}: מחיקת שורות ישנות - ${delErr.message}`); continue; }
       if (r.ingredients.length) {
         const { error: rErr } = await supabase.from('recipe_lines').insert(linesFor(existing.id, r));
-        if (rErr) { console.error(`  ⚠ ${existing.name}: הזנת שורות — ${rErr.message}`); continue; }
+        if (rErr) { console.error(`  ⚠ ${existing.name}: הזנת שורות - ${rErr.message}`); continue; }
       }
 
       console.log(`  🔄 עודכן: ${existing.name}  (${r.ingredients.length} רכיבים, ${r.portions} מנות)`);
@@ -323,7 +323,7 @@ async function commit(recipes) {
 
     if (r.ingredients.length) {
       const { error: rErr } = await supabase.from('recipe_lines').insert(linesFor(meal.id, r));
-      if (rErr) console.error(`  ⚠ ${r.name}: שגיאה בשורות מתכון — ${rErr.message}`);
+      if (rErr) console.error(`  ⚠ ${r.name}: שגיאה בשורות מתכון - ${rErr.message}`);
     }
 
     console.log(`  ✓ נוצר: ${r.name}  (${r.ingredients.length} רכיבים, ${r.portions} מנות)`);
@@ -355,10 +355,10 @@ async function previewMatch(recipes) {
     else if (UPDATE_EXISTING) willUpdate.push(`${r.name} → "${byNorm.get(key).name}"`);
     else willSkip.push(`${r.name} → "${byNorm.get(key).name}"`);
   }
-  console.log(`\n🔎 תצוגה מקדימה מול ה-DB (${UPDATE_EXISTING ? 'מצב עדכון קיימים' : 'ברירת מחדל — קיימים ידולגו'}):`);
-  console.log(`   ➕ ייווצרו: ${willCreate.length}${willCreate.length ? ' — ' + willCreate.join(', ') : ''}`);
-  console.log(`   🔄 יעודכנו: ${willUpdate.length}${willUpdate.length ? ' — ' + willUpdate.map((s) => s.split(' →')[0]).join(', ') : ''}`);
-  console.log(`   ⏭  ידולגו: ${willSkip.length}${willSkip.length ? ' — ' + willSkip.map((s) => s.split(' →')[0].split(' (')[0]).join(', ') : ''}`);
+  console.log(`\n🔎 תצוגה מקדימה מול ה-DB (${UPDATE_EXISTING ? 'מצב עדכון קיימים' : 'ברירת מחדל - קיימים ידולגו'}):`);
+  console.log(`   ➕ ייווצרו: ${willCreate.length}${willCreate.length ? ' - ' + willCreate.join(', ') : ''}`);
+  console.log(`   🔄 יעודכנו: ${willUpdate.length}${willUpdate.length ? ' - ' + willUpdate.map((s) => s.split(' →')[0]).join(', ') : ''}`);
+  console.log(`   ⏭  ידולגו: ${willSkip.length}${willSkip.length ? ' - ' + willSkip.map((s) => s.split(' →')[0].split(' (')[0]).join(', ') : ''}`);
 }
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ import { asyncHandler } from '../lib/helpers.js';
 
 const router = Router();
 
-// GET /api/shabbatot/open — שבתות פתוחות עתידיות עד חודש קדימה (ללקוח, סעיף 8.3)
+// GET /api/shabbatot/open - שבתות פתוחות עתידיות עד חודש קדימה (ללקוח, סעיף 8.3)
 router.get('/open', asyncHandler(async (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   const inMonth = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
@@ -21,7 +21,7 @@ router.get('/open', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// GET /api/shabbatot — כל השבתות (לניהול)
+// GET /api/shabbatot - כל השבתות (לניהול)
 router.get('/', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('shabbatot')

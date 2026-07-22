@@ -58,7 +58,9 @@ export default function AdminRegistrations({ onAuthError }) {
   }
 
   const columns = [
-    { key: 'full_name', label: 'שם', type: 'text', className: 'font-medium text-brand-burgundy' },
+    { key: 'full_name', label: 'שם מלא', type: 'text', className: 'font-medium text-brand-burgundy' },
+    { key: 'first_name', label: 'שם פרטי', type: 'text', render: (r) => r.first_name || '-' },
+    { key: 'last_name', label: 'שם משפחה', type: 'text', render: (r) => r.last_name || '-' },
     { key: 'phone', label: 'טלפון', type: 'text', dir: 'ltr' },
     { key: 'email', label: 'מייל', type: 'text', dir: 'ltr', render: (r) => r.email || '-' },
     { key: 'address', label: 'כתובת', type: 'text', render: (r) => r.address || '-' },

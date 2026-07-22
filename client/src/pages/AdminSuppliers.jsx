@@ -8,11 +8,11 @@ import { ACTIVE_STATUS, Badge, SUPPLIER_CHANNEL, PO_STATUS } from '../lib/status
 import PriceInput from '../components/PriceInput.jsx';
 import { formatWithVat } from '../lib/vat.js';
 
-// ניהול ספקים — כרטיס ספק מלא (סעיף 27.1) + מוצרים שהספק מספק (סעיף 25.3).
+// ניהול ספקים - כרטיס ספק מלא (סעיף 27.1) + מוצרים שהספק מספק (סעיף 25.3).
 // הזמנות רכש נמצאות במסך נפרד (/admin/purchase-orders).
 
 const CHANNELS = [
-  { value: '', label: '— ללא —' },
+  { value: '', label: '- ללא -' },
   { value: 'phone', label: 'טלפון' },
   { value: 'email', label: 'מייל' },
   { value: 'whatsapp', label: 'וואטסאפ' },
@@ -90,7 +90,7 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
       label: 'אמצעי הזמנה',
       type: 'enum',
       options: Object.entries(SUPPLIER_CHANNEL).map(([value, label]) => ({ value, label })),
-      render: (s) => SUPPLIER_CHANNEL[s.preferred_channel] || '—',
+      render: (s) => SUPPLIER_CHANNEL[s.preferred_channel] || '-',
     },
     {
       key: 'is_active',
@@ -242,7 +242,7 @@ function SupplierDetailBody({ data, onErr, onChanged }) {
     } catch (e) { onErr(e); }
   }
 
-  // מוצרים שכבר נבחרו — לסינון מהרשימה הנפתחת
+  // מוצרים שכבר נבחרו - לסינון מהרשימה הנפתחת
   const chosen = new Set(rows.map((r) => r.inventory_item_id));
 
   return (
@@ -294,7 +294,7 @@ function SupplierDetailBody({ data, onErr, onChanged }) {
               return (
               <div key={idx} className="flex gap-2 items-start">
                 <select value={r.inventory_item_id} onChange={(e) => setRow(idx, { inventory_item_id: e.target.value })} className={`${inputCls} flex-1`}>
-                  <option value="">— בחר מוצר —</option>
+                  <option value="">- בחר מוצר -</option>
                   {allItems
                     .filter((i) => i.id === r.inventory_item_id || !chosen.has(i.id))
                     .map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
@@ -337,8 +337,8 @@ function SupplierDetailBody({ data, onErr, onChanged }) {
                 <tr key={o.id} className="border-b border-brand-cream-dark/50">
                   <td className="p-2"><Link to={`/admin/purchase-orders/${o.id}`} className="text-brand-burgundy hover:underline">{o.po_number}</Link></td>
                   <td className="p-2"><Badge map={PO_STATUS} value={o.status} /></td>
-                  <td className="p-2" dir="ltr">{o.expected_delivery_date || '—'}</td>
-                  <td className="p-2" dir="ltr">{o.estimated_amount != null ? `₪${o.estimated_amount}` : '—'}</td>
+                  <td className="p-2" dir="ltr">{o.expected_delivery_date || '-'}</td>
+                  <td className="p-2" dir="ltr">{o.estimated_amount != null ? `₪${o.estimated_amount}` : '-'}</td>
                 </tr>
               ))}
             </tbody>

@@ -1,7 +1,7 @@
-// קופה קטנה (Petty Cash) — ספר תנועות גלובלי עם יתרה רצה.
+// קופה קטנה (Petty Cash) - ספר תנועות גלובלי עם יתרה רצה.
 // כל הקריאות מאחורי requireAdmin (נרשם ב-index.js תחת /api/admin/petty-cash).
 //
-// יתרה = Σ deposits − Σ expenses. אין ספירת מזומן/התאמה — יתרה רצה בלבד.
+// יתרה = Σ deposits − Σ expenses. אין ספירת מזומן/התאמה - יתרה רצה בלבד.
 // הוצאות הקופה נספרות בסך ההוצאות במודול הכספי (routes/finance.js).
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
@@ -29,7 +29,7 @@ function summarize(rows) {
 }
 
 // ---------------------------------------------------------------------------
-// GET / — כל התנועות (חדש→ישן) + סיכום יתרה
+// GET / - כל התנועות (חדש→ישן) + סיכום יתרה
 // ---------------------------------------------------------------------------
 router.get('/', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
@@ -49,7 +49,7 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
-// POST / — הוספת תנועה (הפקדה או הוצאה)
+// POST / - הוספת תנועה (הפקדה או הוצאה)
 // ---------------------------------------------------------------------------
 router.post('/', asyncHandler(async (req, res) => {
   const { kind, amount, tx_date, category, description, supplier_id, receipt_number } = req.body || {};
@@ -81,7 +81,7 @@ router.post('/', asyncHandler(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
-// DELETE /:id — מחיקת תנועה
+// DELETE /:id - מחיקת תנועה
 // ---------------------------------------------------------------------------
 router.delete('/:id', asyncHandler(async (req, res) => {
   const { error } = await supabase

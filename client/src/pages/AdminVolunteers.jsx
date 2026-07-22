@@ -6,7 +6,7 @@ import { FormDrawer, useRecordNav } from '../components/Drawer.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 // ניהול מתנדבים ומשימות קבועות (סעיף 24). מסך ניהול גלובלי.
-// תחומי ההתנדבות ניתנים לניהול מהממשק (טבלת volunteer_areas) — אין יותר enum קבוע
+// תחומי ההתנדבות ניתנים לניהול מהממשק (טבלת volunteer_areas) - אין יותר enum קבוע
 // ואין קטגוריות נפרדות. דגל is_cooking על תחום מפעיל קישור מאכלים ושיבוץ בישול.
 const DAYS = [
   ['general', 'כללי / ללא יום'], ['tuesday', 'יום ג׳'], ['wednesday', 'יום ד׳'],
@@ -103,7 +103,9 @@ function VolunteersManager({ meals, areas, onErr, canDelete }) {
   ).join(', ');
 
   const columns = [
-    { key: 'full_name', label: 'שם', type: 'text', className: 'font-medium' },
+    { key: 'full_name', label: 'שם מלא', type: 'text', className: 'font-medium' },
+    { key: 'first_name', label: 'שם פרטי', type: 'text', render: (v) => v.first_name || '-' },
+    { key: 'last_name', label: 'שם משפחה', type: 'text', render: (v) => v.last_name || '-' },
     {
       key: 'customer_id',
       label: 'כרטיס לקוח',
@@ -114,15 +116,15 @@ function VolunteersManager({ meals, areas, onErr, canDelete }) {
       value: (v) => !!v.customer_id,
       render: (v) => (v.customer_id ? 'מקושר' : 'עצמאי'),
     },
-    { key: 'phone', label: 'טלפון', type: 'text', dir: 'ltr', render: (v) => v.phone || '—' },
-    { key: 'area', label: 'תחום', type: 'text', value: areaText, render: (v) => areaText(v) || '—' },
+    { key: 'phone', label: 'טלפון', type: 'text', dir: 'ltr', render: (v) => v.phone || '-' },
+    { key: 'area', label: 'תחום', type: 'text', value: areaText, render: (v) => areaText(v) || '-' },
     {
       key: 'meals',
       label: 'מאכלים',
       type: 'text',
       className: 'text-brand-burgundy/60',
       value: mealsText,
-      render: (v) => mealsText(v) || '—',
+      render: (v) => mealsText(v) || '-',
     },
     {
       key: 'has_vehicle',
@@ -131,14 +133,14 @@ function VolunteersManager({ meals, areas, onErr, canDelete }) {
       trueLabel: 'עם רכב',
       falseLabel: 'ללא',
       className: 'text-center',
-      render: (v) => (v.has_vehicle ? '🚗' : '—'),
+      render: (v) => (v.has_vehicle ? '🚗' : '-'),
     },
     {
       key: 'is_regular',
       label: 'קבוע',
       type: 'boolean',
       className: 'text-center',
-      render: (v) => (v.is_regular ? '✓' : '—'),
+      render: (v) => (v.is_regular ? '✓' : '-'),
     },
     {
       key: 'is_active',
@@ -196,7 +198,8 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, emb
   const [f, setF] = useState({
     id: initial.id,
     customer_id: initial.customer_id || '',
-    full_name: initial.full_name || '',
+    first_name: initial.first_name || '',
+    last_name: initial.last_name || '',
     phone: initial.phone || '',
     email: initial.email || '',
     has_vehicle: initial.has_vehicle || false,
@@ -232,7 +235,8 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, emb
     return {
       ...s,
       customer_id: v,
-      full_name: customer?.full_name || s.full_name,
+      first_name: customer?.first_name || s.first_name,
+      last_name: customer?.last_name ?? s.last_name,
       phone: customer?.phone || s.phone,
       email: customer?.email || s.email,
     };
@@ -240,7 +244,7 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, emb
 
   function submit(e) {
     e.preventDefault();
-    if (!f.customer_id && !f.full_name.trim()) return alert('חובה להזין שם מלא.');
+    if (!f.customer_id && !f.first_name.trim()) return alert('חובה להזין שם פרטי.');
     if (areaIds.length === 0) return alert('יש לבחור לפחות תחום התנדבות אחד.');
     // מאכלים נשמרים רק אם נבחר תחום בישול; לתחומים אחרים אין קישור מאכל.
     const meal_ids = hasCookingArea ? mealIds : [];
@@ -268,7 +272,7 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, emb
               aria-label="חיפוש לקוח קיים"
             />
             <select value={f.customer_id} onChange={(e) => set('customer_id', e.target.value)} className={inputCls}>
-              <option value="">— מתנדב עצמאי —</option>
+              <option value="">- מתנדב עצמאי -</option>
               {visibleCustomers.map((customer) => (
                 <option key={customer.id} value={customer.id}>
                   {customer.full_name} {customer.phone ? `(${customer.phone})` : ''}
@@ -280,10 +284,18 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, emb
             </select>
           </div>
         </Field>
-        <Field label="שם מלא *">
+        <Field label="שם פרטי *">
           <input
-            value={f.full_name}
-            onChange={(e) => set('full_name', e.target.value)}
+            value={f.first_name}
+            onChange={(e) => set('first_name', e.target.value)}
+            className={inputCls}
+            readOnly={!!linkedCustomer}
+          />
+        </Field>
+        <Field label="שם משפחה">
+          <input
+            value={f.last_name}
+            onChange={(e) => set('last_name', e.target.value)}
             className={inputCls}
             readOnly={!!linkedCustomer}
           />
@@ -329,7 +341,7 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, emb
       {hasCookingArea && (
         <div>
           <span className="text-sm text-brand-burgundy/70 block mb-1">
-            מאכלים לבישול (לשיבוץ בישול אוטומטי — ניתן לסמן כמה)
+            מאכלים לבישול (לשיבוץ בישול אוטומטי - ניתן לסמן כמה)
           </span>
           {meals.length === 0 ? (
             <p className="text-xs text-brand-burgundy/40">אין מאכלים מוגדרים בקטלוג.</p>
@@ -452,7 +464,7 @@ function TasksManager({ meals, areas, volunteers, onErr, canDelete }) {
       options: areas.map((a) => ({ value: a.id, label: a.name })),
       render: (t) => (
         <>
-          <div>{areaText(t) || '—'}</div>
+          <div>{areaText(t) || '-'}</div>
           <div className="text-xs text-brand-burgundy/50">{DAYS.find(([value]) => value === t.execution_day)?.[1] || 'כללי'}</div>
           <div className="text-xs text-brand-burgundy/60">אחראי: {t.primary_volunteer?.full_name || 'ללא'}</div>
         </>
@@ -464,7 +476,7 @@ function TasksManager({ meals, areas, volunteers, onErr, canDelete }) {
       type: 'text',
       className: 'text-brand-burgundy/60',
       value: (t) => t.meals?.name || '',
-      render: (t) => t.meals?.name || '—',
+      render: (t) => t.meals?.name || '-',
     },
     {
       key: 'is_active',
@@ -671,7 +683,7 @@ function TaskForm({ meals, areas, volunteers, initial, onSave, onCancel, embedde
         {isCookingArea && (
           <Field label="קישור למאכל (לשיבוץ בישול אוטומטי)">
             <select value={f.linked_meal_id} onChange={(e) => set('linked_meal_id', e.target.value)} className={inputCls}>
-              <option value="">— ללא —</option>
+              <option value="">- ללא -</option>
               {meals.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </Field>

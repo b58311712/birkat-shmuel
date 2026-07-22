@@ -3,24 +3,24 @@ import { useEffect, useRef, useState } from 'react';
 const navBtnCls =
   'inline-grid h-8 w-8 place-items-center rounded-lg border border-surface-line bg-white text-surface-body transition-colors hover:border-surface-line-strong hover:text-brand-burgundy focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-burgundy disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-surface-line disabled:hover:text-surface-body';
 
-// פאנל צידי (Drawer) גנרי — נפתח מקצה המסך, שומר את הטבלה גלויה מאחוריו.
+// פאנל צידי (Drawer) גנרי - נפתח מקצה המסך, שומר את הטבלה גלויה מאחוריו.
 // שפת "חדר מצב": רקע מעומעם עם טשטוש, כותרת עם eyebrow + כפתור סגירה,
 // גוף נגלל, ופוטר דביק אופציונלי לכפתורי פעולה.
 //
 // props:
-//   open        — האם הפאנל פתוח (כשfalse לא מרונדר כלום).
-//   onClose     — נקרא בלחיצה על הרקע, על ה-X או ב-Escape.
-//   eyebrow     — תווית-על קטנה (זהב טקסי), למשל "כרטיס לקוח" / "עריכת לקוח".
-//   title       — כותרת ראשית (שם הרשומה).
-//   subtitle    — שורת משנה קטנה מתחת לכותרת (אופציונלי).
-//   footer      — JSX לאזור פעולות דביק בתחתית (אופציונלי).
-//   children    — גוף הפאנל (נגלל).
-//   width       — 'sm' | 'md' | 'lg' | 'xl' | '2xl'..'7xl' (ברירת מחדל 'md').
+//   open        - האם הפאנל פתוח (כשfalse לא מרונדר כלום).
+//   onClose     - נקרא בלחיצה על הרקע, על ה-X או ב-Escape.
+//   eyebrow     - תווית-על קטנה (זהב טקסי), למשל "כרטיס לקוח" / "עריכת לקוח".
+//   title       - כותרת ראשית (שם הרשומה).
+//   subtitle    - שורת משנה קטנה מתחת לכותרת (אופציונלי).
+//   footer      - JSX לאזור פעולות דביק בתחתית (אופציונלי).
+//   children    - גוף הפאנל (נגלל).
+//   width       - 'sm' | 'md' | 'lg' | 'xl' | '2xl'..'7xl' (ברירת מחדל 'md').
 //                 טפסים רחבים (טבלת מתכון) צריכים '6xl'/'7xl' כדי להימנע מגלילה צדדית.
-//   side        — 'left' (ברירת מחדל, לא מכסה את סרגל הצד ב-RTL) | 'right'.
-//   onPrev/onNext — דפדוף בין רשומות (null = מושבת). מציג חצים בכותרת.
-//   position    — טקסט מיקום קצר ("3/20") שמוצג בין החצים.
-//   contentKey  — key לגוף הפאנל. כשמשתנה, הגוף מתרונדר מחדש (remount). חובה
+//   side        - 'left' (ברירת מחדל, לא מכסה את סרגל הצד ב-RTL) | 'right'.
+//   onPrev/onNext - דפדוף בין רשומות (null = מושבת). מציג חצים בכותרת.
+//   position    - טקסט מיקום קצר ("3/20") שמוצג בין החצים.
+//   contentKey  - key לגוף הפאנל. כשמשתנה, הגוף מתרונדר מחדש (remount). חובה
 //                 בדפדוף בין רשומות כדי שטפסים עם state פנימי (useState(initial))
 //                 יאותחלו לרשומה החדשה; גם מאפס גלילה לראש.
 export function Drawer({
@@ -152,8 +152,8 @@ export function FormDrawer({ editing, onClose, entity, article = 'חדש', title
 
 // דפדוף בין רשומות בפאנל. שומר את הרשומות הגלויות בטבלה (אחרי סינון/מיון,
 // דרך onVisibleRowsChange של DataTable) ומחשב הרשומה הקודמת/הבאה יחסית ל-currentId.
-//   open      — callback לפתיחת רשומה נתונה בפאנל (setEditing / openDetail).
-//   currentId — מזהה הרשומה הפתוחה כרגע (null => אין דפדוף, למשל ברשומה חדשה).
+//   open      - callback לפתיחת רשומה נתונה בפאנל (setEditing / openDetail).
+//   currentId - מזהה הרשומה הפתוחה כרגע (null => אין דפדוף, למשל ברשומה חדשה).
 // מחזיר: setVisibleRows (להעברה ל-DataTable) + onPrev/onNext/position (ל-Drawer).
 export function useRecordNav(open, currentId) {
   const [visibleRows, setVisibleRows] = useState([]);

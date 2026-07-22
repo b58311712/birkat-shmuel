@@ -1,4 +1,4 @@
-// לוגיקת הפקת הוצאות קבועות — משותפת לנתיב הניהול (הפקה ידנית) ולנתיב ה-CRON (אוטומטי).
+// לוגיקת הפקת הוצאות קבועות - משותפת לנתיב הניהול (הפקה ידנית) ולנתיב ה-CRON (אוטומטי).
 import { supabase } from '../lib/supabase.js';
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -34,7 +34,7 @@ function rowFromTemplate(t, month, createdBy) {
   };
 }
 
-// מפיק הוצאות לחודש נתון מכל התבניות הפעילות (idempotent — מדלג על מה שכבר הופק).
+// מפיק הוצאות לחודש נתון מכל התבניות הפעילות (idempotent - מדלג על מה שכבר הופק).
 // אם onlyDayOfMonth מוגדר (1..28), מפיק רק תבניות שה-day_of_month שלהן שווה לו (למצב CRON יומי).
 // מחזיר { month, created_count, skipped_count, created }.
 export async function generateForMonth({ month, createdBy = null, onlyDayOfMonth = null } = {}) {

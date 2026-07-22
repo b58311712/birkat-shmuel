@@ -15,7 +15,7 @@ export function calcBase(priceTracks, selectedSlots) {
   const totalPortions = selectedSlots.reduce((sum, s) => sum + Number(s.portions || 0), 0);
 
   if (!track) {
-    // אין מסלול לצירוף הזה — מסמנים חוסר-התאמה כדי שהקורא יחסום את ההזמנה.
+    // אין מסלול לצירוף הזה - מסמנים חוסר-התאמה כדי שהקורא יחסום את ההזמנה.
     return { track: null, noMatch: true, pricePerPortion: 0, totalPortions, baseAmount: 0 };
   }
 
@@ -32,7 +32,7 @@ export function calcBase(priceTracks, selectedSlots) {
   };
 }
 
-// מפתח נורמלי (ממוין, ייחודי) לקבוצת מזהי-סעודות — לשם השוואת צירופים.
+// מפתח נורמלי (ממוין, ייחודי) לקבוצת מזהי-סעודות - לשם השוואת צירופים.
 export function slotKey(ids) {
   return [...new Set((ids || []).filter(Boolean).map(String))].sort().join('|');
 }

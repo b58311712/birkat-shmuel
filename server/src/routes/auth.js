@@ -1,7 +1,7 @@
 // כניסת לקוח לפי טלפון (סעיף 7) + בקשת רישום + כניסת מנהל (סעיף 5)
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
-import { normalizePhone, isValidPhone, asyncHandler, fail } from '../lib/helpers.js';
+import { normalizePhone, isValidPhone, asyncHandler, fail, splitFullName } from '../lib/helpers.js';
 import { verifyPassword, signToken } from '../lib/auth.js';
 import { createAdminNotification } from '../services/adminNotifications.js';
 import { sendTemplateEmail, registrationVars, officeEmail } from '../services/email.js';
@@ -18,7 +18,7 @@ router.post('/login', asyncHandler(async (req, res) => {
 
   const { data: customer, error } = await supabase
     .from('customers')
-    .select('id, full_name, phone, email, status')
+    .select('id, first_name, last_name, full_name, phone, email, status')
     .eq('phone_normalized', normalized)
     .maybeSingle();
   if (error) throw error;
@@ -41,16 +41,24 @@ router.post('/login', asyncHandler(async (req, res) => {
   return res.json({ found: true, active: true, customer });
 }));
 
-// POST /api/auth/register  { full_name, phone, email, address }
+// POST /api/auth/register  { first_name, last_name, phone, email, address }
 // יוצר בקשת רישום לקוח חדש הממתינה לאישור (סעיף 7).
 router.post('/register', asyncHandler(async (req, res) => {
-  const { full_name, email, address } = req.body;
+  const { first_name, last_name, full_name, email, address } = req.body;
   const normalized = normalizePhone(req.body.phone);
 
-  if (!full_name || !full_name.trim()) return fail(res, 400, 'נא להזין שם מלא.');
+  // שם פרטי/משפחה מפוצלים, עם נפילה חזרה לפיצול full_name אם התקבל כך.
+  let firstName = String(first_name ?? '').trim();
+  let lastName = last_name !== undefined ? String(last_name || '').trim() : null;
+  if (!firstName && full_name) {
+    const split = splitFullName(full_name);
+    firstName = split.first_name;
+    lastName = split.last_name;
+  }
+  if (!firstName) return fail(res, 400, 'נא להזין שם פרטי.');
   if (!isValidPhone(normalized)) return fail(res, 400, 'מספר טלפון לא תקין.');
 
-  // אם כבר קיים לקוח עם הטלפון הזה — לא יוצרים כפילות (סעיף 6.1)
+  // אם כבר קיים לקוח עם הטלפון הזה - לא יוצרים כפילות (סעיף 6.1)
   const { data: existing } = await supabase
     .from('customers')
     .select('id')
@@ -72,12 +80,13 @@ router.post('/register', asyncHandler(async (req, res) => {
   }
 
   const { data: registration, error } = await supabase.from('customer_registration_requests').insert({
-    full_name: full_name.trim(),
+    first_name: firstName,
+    last_name: lastName || null,
     phone: req.body.phone,
     phone_normalized: normalized,
     email: email || null,
     address: address || null,
-  }).select('id, full_name, phone, email, address').single();
+  }).select('id, first_name, last_name, full_name, phone, email, address').single();
   if (error) throw error;
 
   await createAdminNotification({
@@ -91,7 +100,7 @@ router.post('/register', asyncHandler(async (req, res) => {
 
   res.json({ ok: true, message: 'בקשת הרישום נשלחה. לאחר אישור מנהל תוכל/י להזמין.' });
 
-  // סעיף 18 — התראת מייל למשרד על בקשת הרישום. ברקע, אחרי התשובה: המייל הוא
+  // סעיף 18 - התראת מייל למשרד על בקשת הרישום. ברקע, אחרי התשובה: המייל הוא
   // תופעת-לוואי ושליחת SMTP איטית/תקועה לא צריכה לעכב את הלקוח או להפיל את הבקשה.
   sendTemplateEmail({
     code: 'new_registration_manager_alert',

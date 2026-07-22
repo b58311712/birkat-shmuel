@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, consumeAdminAuthNotice } from '../lib/api.js';
 
-// כניסת משתמש מערכת (מנהל / רכז / מפתחת) — אימייל + סיסמה (סעיף 5)
+// כניסת משתמש מערכת (מנהל / רכז / מפתחת) - אימייל + סיסמה (סעיף 5)
 export default function AdminLogin({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,7 +32,7 @@ export default function AdminLogin({ onLogin }) {
             מנהלים את המטבח<br />בפשטות ובנחת
           </h1>
           <p className="mx-auto mt-4 max-w-md text-base leading-7 text-[#746a6d] lg:mx-0">
-            כל מה שצריך לניהול ההזמנות, המטבח והקהילה — במקום אחד.
+            כל מה שצריך לניהול ההזמנות, המטבח והקהילה - במקום אחד.
           </p>
         </div>
 

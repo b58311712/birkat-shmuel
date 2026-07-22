@@ -37,7 +37,7 @@ function intOrNull(v) {
   return n === null ? null : Math.trunc(n);
 }
 
-// מפתח נורמלי (ממוין, ייחודי) לצירוף מזהי-סעודות — להשוואת ייחודיות מסלולים.
+// מפתח נורמלי (ממוין, ייחודי) לצירוף מזהי-סעודות - להשוואת ייחודיות מסלולים.
 function slotComboKey(ids) {
   return [...new Set((ids || []).filter(Boolean).map(String))].sort().join('|');
 }
@@ -65,7 +65,7 @@ function normalizeCategory(body, { partial = false } = {}) {
     patch.split_mode = mode;
     patch.requires_portion_split = mode !== 'none';
   } else if (body.requires_portion_split !== undefined) {
-    // תאימות-לאחור: אם נשלח רק הדגל הישן — equal כשדולק, none כשכבוי.
+    // תאימות-לאחור: אם נשלח רק הדגל הישן - equal כשדולק, none כשכבוי.
     patch.requires_portion_split = Boolean(body.requires_portion_split);
     patch.split_mode = patch.requires_portion_split ? 'equal' : 'none';
   }
@@ -89,7 +89,7 @@ function normalizeCategory(body, { partial = false } = {}) {
     }
   }
   if (patch.extra_allowed != null && patch.extra_allowed < 0) return { error: 'מספר התוספת המותרת לא יכול להיות שלילי.' };
-  // אין טעם בירושה בלי מספר תוספת, ולהיפך — אם אחד מוגדר, מיישרים את השני.
+  // אין טעם בירושה בלי מספר תוספת, ולהיפך - אם אחד מוגדר, מיישרים את השני.
   if (patch.inherit_from_slot_id && patch.extra_allowed == null && !partial) patch.extra_allowed = 0;
 
   return { patch };
@@ -170,7 +170,7 @@ function normalizeExtra(body, { partial = false } = {}) {
   if (!partial || body.display_order !== undefined) patch.display_order = intOrNull(body.display_order) ?? 0;
   if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
 
-  // נוסחת כמות מוצעת: בסיס ויחס הולכים יחד — אם יש אחד חייב את השני.
+  // נוסחת כמות מוצעת: בסיס ויחס הולכים יחד - אם יש אחד חייב את השני.
   const basis = patch.suggestion_basis ?? (partial ? undefined : null);
   const ratio = patch.suggestion_ratio ?? (partial ? undefined : null);
   if (basis && (ratio == null || ratio <= 0)) {
@@ -205,7 +205,7 @@ function normalizePriceTrack(body, { partial = false } = {}) {
   }
   if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
 
-  // meals_count נגזר אוטומטית ממספר הסעודות בצירוף — נשמר לתאימות בלבד.
+  // meals_count נגזר אוטומטית ממספר הסעודות בצירוף - נשמר לתאימות בלבד.
   if (Array.isArray(body.meal_slot_ids)) {
     patch.meals_count = [...new Set(body.meal_slot_ids.filter(Boolean))].length || null;
   }
@@ -213,7 +213,7 @@ function normalizePriceTrack(body, { partial = false } = {}) {
   return { patch };
 }
 
-// פותר unit_id: מעדיף id מפורש; אחרת פותר משם-יחידה (טקסט) — מוצא קיים
+// פותר unit_id: מעדיף id מפורש; אחרת פותר משם-יחידה (טקסט) - מוצא קיים
 // (case-insensitive) או יוצר יחידה. תאימות-לאחור לשורות ששולחות רק unit טקסט.
 async function resolveUnitId(unitId, unitText) {
   if (unitId) return unitId;
@@ -262,7 +262,7 @@ async function normalizeRecipeLines(body) {
   return { portions, rows };
 }
 
-// כללי אריזה למאכל (סעיף 22): לכל שורה — אריזה (מפריטי המלאי) וכמה מנות נכנסות באריזה אחת.
+// כללי אריזה למאכל (סעיף 22): לכל שורה - אריזה (מפריטי המלאי) וכמה מנות נכנסות באריזה אחת.
 function normalizePackingRules(body) {
   if (!Array.isArray(body.rules)) return { error: 'יש לשלוח רשימת כללי אריזה.' };
 
@@ -272,7 +272,7 @@ function normalizePackingRules(body) {
     const perPackage = num(raw.portions_per_package);
     const packagingItemId = raw.packaging_item_id || null;
 
-    // שורה ריקה לגמרי — מדלגים.
+    // שורה ריקה לגמרי - מדלגים.
     if (!label && perPackage == null && !packagingItemId) continue;
     if (!label) return { error: 'יש להזין תיאור אריזה לכל שורה (למשל: קופסה 4 ליטר).' };
     if (perPackage === null || perPackage <= 0) {
@@ -494,7 +494,7 @@ router.post('/categories', asyncHandler(async (req, res) => {
   try {
     await replaceSlotSplits(data.id, splits.rows);
   } catch (e) {
-    // מיגרציה 39 טרם הורצה — הקטגוריה נשמרה, רק הדריסות פר-סעודה לא.
+    // מיגרציה 39 טרם הורצה - הקטגוריה נשמרה, רק הדריסות פר-סעודה לא.
     if (e.userMessage) return fail(res, 400, e.userMessage);
     throw e;
   }
@@ -531,7 +531,7 @@ router.patch('/categories/:id', asyncHandler(async (req, res) => {
     try {
       await replaceSlotSplits(req.params.id, splits.rows);
     } catch (e) {
-      // מיגרציה 39 טרם הורצה — שאר שדות הקטגוריה כבר נשמרו.
+      // מיגרציה 39 טרם הורצה - שאר שדות הקטגוריה כבר נשמרו.
       if (e.userMessage) return fail(res, 400, e.userMessage);
       throw e;
     }
@@ -694,7 +694,7 @@ router.put('/meals/:id/recipe', asyncHandler(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
-// packing_rules — כללי אריזה למאכל (סעיף 22)
+// packing_rules - כללי אריזה למאכל (סעיף 22)
 // לכל מאכל: אילו אריזות ומכמה מנות (portions_per_package). האריזות נבחרות מפריטי
 // המלאי המסומנים is_packaging. תיק השבת גוזר מזה כמה אריזות צריך (ceil(מנות/perPkg)).
 // ---------------------------------------------------------------------------
@@ -743,7 +743,7 @@ router.put('/meals/:id/packing', asyncHandler(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
-// extras — תוספות בתשלום (סעיף 14)
+// extras - תוספות בתשלום (סעיף 14)
 // ---------------------------------------------------------------------------
 router.get('/extras', asyncHandler(async (req, res) => {
   let q = supabase.from('extras').select(EXTRA_SELECT).order('display_order').order('name');
@@ -801,7 +801,7 @@ router.patch('/extras/:id', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/extras/:id', requireRole('developer'), asyncHandler(async (req, res) => {
-  // order_extras.extra_id מפנה לכאן ללא cascade — אם התוספת שימשה בהזמנה,
+  // order_extras.extra_id מפנה לכאן ללא cascade - אם התוספת שימשה בהזמנה,
   // מחיקה קשיחה תיכשל על מגבלת המפתח הזר. עדיף להשבית מאשר למחוק היסטוריה.
   const { count, error: usedErr } = await supabase
     .from('order_extras')
@@ -825,7 +825,7 @@ router.delete('/extras/:id', requireRole('developer'), asyncHandler(async (req, 
 }));
 
 // ---------------------------------------------------------------------------
-// price_tracks — מסלולי מחיר / מחיר הבסיס לפי מספר סעודות (סעיף 15)
+// price_tracks - מסלולי מחיר / מחיר הבסיס לפי מספר סעודות (סעיף 15)
 // ---------------------------------------------------------------------------
 router.get('/price-tracks', asyncHandler(async (req, res) => {
   let q = supabase.from('price_tracks').select(PRICE_TRACK_SELECT).order('meals_count', { nullsFirst: true }).order('name');
@@ -844,7 +844,7 @@ router.get('/price-tracks', asyncHandler(async (req, res) => {
 // בודק שאין מסלול פעיל אחר עם אותו צירוף סעודות בדיוק (כדי שהבחירה תהיה חד-משמעית).
 async function findDuplicateCombo(slotIds, excludeId = null) {
   const key = slotComboKey(slotIds);
-  if (!key) return null; // צירוף ריק — נבדק בנפרד
+  if (!key) return null; // צירוף ריק - נבדק בנפרד
   const { data: tracks, error } = await supabase.from('price_tracks').select('id').eq('is_active', true);
   if (error) throw error;
   const others = (tracks || []).filter((t) => t.id !== excludeId);

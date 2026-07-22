@@ -1,8 +1,8 @@
-// הוצאות קבועות חודשיות (Recurring Expenses) — תבניות תקורה חוזרת + הפקה חודשית.
+// הוצאות קבועות חודשיות (Recurring Expenses) - תבניות תקורה חוזרת + הפקה חודשית.
 // כל הקריאות מאחורי requireAdmin (נרשם ב-index.js תחת /api/admin/recurring-expenses).
 //
 // מודל: מגדירים "תבנית" פעם אחת (שם, סכום, יום בחודש, קטגוריה, ספק).
-//       הפקה חודשית יוצרת רשומת general_expenses אמיתית לכל חודש — idempotent
+//       הפקה חודשית יוצרת רשומת general_expenses אמיתית לכל חודש - idempotent
 //       (unique על recurring_expense_id+period_month מונע כפילות).
 //       הרשומות המופקות נכנסות לסיכום הכספי (routes/finance.js) כמו כל הוצאה כללית.
 import { Router } from 'express';
@@ -42,7 +42,7 @@ function buildTemplate(body) {
 }
 
 // ---------------------------------------------------------------------------
-// GET / — כל התבניות (פעילות תחילה) + סיכום עלות חודשית
+// GET / - כל התבניות (פעילות תחילה) + סיכום עלות חודשית
 // ---------------------------------------------------------------------------
 router.get('/', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
@@ -66,7 +66,7 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
-// POST / — יצירת תבנית הוצאה קבועה
+// POST / - יצירת תבנית הוצאה קבועה
 // ---------------------------------------------------------------------------
 router.post('/', asyncHandler(async (req, res) => {
   const { row, error: vErr } = buildTemplate(req.body);
@@ -85,7 +85,7 @@ router.post('/', asyncHandler(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
-// PUT /:id — עריכת תבנית
+// PUT /:id - עריכת תבנית
 // ---------------------------------------------------------------------------
 router.put('/:id', asyncHandler(async (req, res) => {
   const { row, error: vErr } = buildTemplate(req.body);
@@ -104,7 +104,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
-// DELETE /:id — מחיקת תבנית (השבתה רכה כדי לא לפגוע ברשומות שכבר הופקו)
+// DELETE /:id - מחיקת תבנית (השבתה רכה כדי לא לפגוע ברשומות שכבר הופקו)
 // ---------------------------------------------------------------------------
 router.delete('/:id', asyncHandler(async (req, res) => {
   const { error } = await supabase
@@ -116,7 +116,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
-// GET /generation-status?month=YYYY-MM — אילו תבניות פעילות כבר הופקו לחודש
+// GET /generation-status?month=YYYY-MM - אילו תבניות פעילות כבר הופקו לחודש
 // ---------------------------------------------------------------------------
 router.get('/generation-status', asyncHandler(async (req, res) => {
   const month = req.query.month;
@@ -150,7 +150,7 @@ router.get('/generation-status', asyncHandler(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
-// GET /generated?month=YYYY-MM — טבלת ההוצאות שכבר הופקו מתבניות קבועות.
+// GET /generated?month=YYYY-MM - טבלת ההוצאות שכבר הופקו מתבניות קבועות.
 // ללא month → כל ההוצאות המופקות (חדש→ישן). מחזיר גם סיכום ופירוט תשלום.
 // ---------------------------------------------------------------------------
 router.get('/generated', asyncHandler(async (req, res) => {
@@ -191,8 +191,8 @@ router.get('/generated', asyncHandler(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
-// POST /generate — הפקת הוצאות חודשיות מכל התבניות הפעילות לחודש נתון.
-// body: { month: "YYYY-MM" }. idempotent — מדלג על תבניות שכבר הופקו לחודש.
+// POST /generate - הפקת הוצאות חודשיות מכל התבניות הפעילות לחודש נתון.
+// body: { month: "YYYY-MM" }. idempotent - מדלג על תבניות שכבר הופקו לחודש.
 // ---------------------------------------------------------------------------
 router.post('/generate', asyncHandler(async (req, res) => {
   const month = req.body?.month;

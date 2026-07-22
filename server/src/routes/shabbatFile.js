@@ -12,7 +12,12 @@ import {
   buildVolunteerReport,
   buildWorkFile,
 } from '../services/shabbatFile.js';
-import { overrideTaskLead, clearOverride } from '../services/volunteerScheduling.js';
+import {
+  overrideTaskLead,
+  clearOverride,
+  overrideMealCook,
+  clearMealOverride,
+} from '../services/volunteerScheduling.js';
 import { HDate } from '@hebcal/core';
 import { parashaForDate } from '../lib/parasha.js';
 
@@ -257,6 +262,25 @@ router.post('/:id/volunteers/assign', asyncHandler(async (req, res) => {
 // המשימה חוזרת למתנדב הקבוע מהתבנית.
 router.post('/:id/volunteers/tasks/:taskId/reset', asyncHandler(async (req, res) => {
   await clearOverride(req.params.id, req.params.taskId);
+  res.json({ ok: true });
+}));
+
+// POST /api/admin/shabbat-files/:id/volunteers/meals/:mealId/assign - שיבוץ מבשל
+// מחליף למאכל בשבת זו (מתוך רשימת המתנדבים הכללית). volunteer_id ריק = הסרת המחליף.
+router.post('/:id/volunteers/meals/:mealId/assign', asyncHandler(async (req, res) => {
+  const { volunteer_id } = req.body || {};
+  if (!volunteer_id) {
+    await clearMealOverride(req.params.id, req.params.mealId);
+    return res.json({ ok: true });
+  }
+  const result = await overrideMealCook(req.params.id, req.params.mealId, volunteer_id);
+  res.json({ ok: true, assignment_id: result?.id || null });
+}));
+
+// POST /api/admin/shabbat-files/:id/volunteers/meals/:mealId/reset - הסרת דריסת מבשל
+// המאכל חוזר למבשלים הקבועים.
+router.post('/:id/volunteers/meals/:mealId/reset', asyncHandler(async (req, res) => {
+  await clearMealOverride(req.params.id, req.params.mealId);
   res.json({ ok: true });
 }));
 

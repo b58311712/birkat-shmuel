@@ -105,7 +105,7 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
                     const partial = Number(l.quantity_received) > 0 && !full;
                     return (
                       <tr key={l.id} className="border-b border-brand-cream-dark/50">
-                        <td className="p-2 font-medium">{l.item?.name || '—'} <span className="text-brand-burgundy/40">({l.item?.unit})</span></td>
+                        <td className="p-2 font-medium">{l.item?.name || '-'} <span className="text-brand-burgundy/40">({l.item?.unit})</span></td>
                         <td className="p-2" dir="ltr">{fmt(l.quantity)}</td>
                         <td className={`p-2 font-medium ${full ? 'text-green-700' : partial ? 'text-amber-700' : 'text-brand-burgundy/50'}`} dir="ltr">
                           {fmt(l.quantity_received)}
@@ -363,7 +363,7 @@ function Info({ label, value, ltr }) {
   return (
     <div>
       <div className="text-xs text-brand-burgundy/50">{label}</div>
-      <div className={ltr ? 'text-right' : ''} dir={ltr ? 'ltr' : undefined}>{value || '—'}</div>
+      <div className={ltr ? 'text-right' : ''} dir={ltr ? 'ltr' : undefined}>{value || '-'}</div>
     </div>
   );
 }

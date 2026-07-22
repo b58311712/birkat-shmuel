@@ -535,7 +535,7 @@ function RecipeEditor({ loading, portions, onPortionsChange, lines, onLinesChang
     const existing = inventoryItems.find((it) => (it.name || '').trim() === name);
     if (existing) {
       updateLine(idx, { inventory_item_id: existing.id, unit_id: existing.unit_id || unitId, unit: existing.unit_ref?.name || existing.unit });
-      return alert(`הפריט "${name}" כבר קיים במלאי — השורה קושרה אליו.`);
+      return alert(`הפריט "${name}" כבר קיים במלאי - השורה קושרה אליו.`);
     }
 
     setCreatingIdx(idx);
@@ -607,7 +607,7 @@ function RecipeEditor({ loading, portions, onPortionsChange, lines, onLinesChang
 
   const chooseItem = (idx, itemId) => {
     const item = inventoryItems.find((it) => it.id === itemId);
-    // בקישור לפריט מלאי — יורשים את יחידת הבסיס שלו כברירת מחדל למתכון
+    // בקישור לפריט מלאי - יורשים את יחידת הבסיס שלו כברירת מחדל למתכון
     updateLine(idx, {
       inventory_item_id: itemId,
       ingredient_name: item?.name || lines[idx].ingredient_name,
@@ -757,7 +757,7 @@ function RecipeEditor({ loading, portions, onPortionsChange, lines, onLinesChang
                         }}
                         className={inputCls}
                       >
-                        <option value="">— יחידה —</option>
+                        <option value="">- יחידה -</option>
                         {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
                     </td>
@@ -803,7 +803,7 @@ function RecipeEditor({ loading, portions, onPortionsChange, lines, onLinesChang
   );
 }
 
-// עורך כללי אריזה למאכל (סעיף 22): לכל שורה — אריזה (מפריטי המלאי המסומנים "אריזה")
+// עורך כללי אריזה למאכל (סעיף 22): לכל שורה - אריזה (מפריטי המלאי המסומנים "אריזה")
 // וכמה מנות נכנסות באריזה אחת. תיק השבת גוזר מזה כמה אריזות צריך לפי מספר המנות.
 function PackingEditor({ loading, rules, onRulesChange, inventoryItems, onInventoryItemCreated }) {
   const [creatingIdx, setCreatingIdx] = useState(null);
@@ -837,16 +837,16 @@ function PackingEditor({ loading, rules, onRulesChange, inventoryItems, onInvent
   };
 
   // יצירה מהירה של פריט אריזה חדש במלאי מתוך שורת האריזה (שם = תיאור האריזה,
-  // מסומן is_packaging), וקישור השורה אליו — בלי לצאת למסך המלאי.
+  // מסומן is_packaging), וקישור השורה אליו - בלי לצאת למסך המלאי.
   const createPackagingItem = async (idx) => {
     const name = String(rules[idx].packaging_label || '').trim();
     if (!name) return alert('יש להזין תיאור אריזה לפני יצירת פריט מלאי.');
 
-    // אם כבר קיים פריט מלאי בשם הזה — קושרים אליו במקום ליצור כפילות.
+    // אם כבר קיים פריט מלאי בשם הזה - קושרים אליו במקום ליצור כפילות.
     const existing = (inventoryItems || []).find((it) => (it.name || '').trim() === name);
     if (existing) {
       updateRule(idx, { packaging_item_id: existing.id });
-      return alert(`הפריט "${name}" כבר קיים במלאי — השורה קושרה אליו.`);
+      return alert(`הפריט "${name}" כבר קיים במלאי - השורה קושרה אליו.`);
     }
 
     setCreatingIdx(idx);
@@ -869,7 +869,7 @@ function PackingEditor({ loading, rules, onRulesChange, inventoryItems, onInvent
       <div>
         <h4 className="font-bold text-brand-burgundy">אריזה</h4>
         <p className="text-xs text-brand-burgundy/50 mt-1">
-          לכל סוג אריזה — כמה מנות נכנסות באריזה אחת. בתיק השבת המערכת תחשב כמה אריזות צריך לפי מספר המנות.
+          לכל סוג אריזה - כמה מנות נכנסות באריזה אחת. בתיק השבת המערכת תחשב כמה אריזות צריך לפי מספר המנות.
           האריזות נבחרות מפריטי המלאי המסומנים כ"אריזה".
         </p>
       </div>
@@ -958,7 +958,7 @@ function PackingEditor({ loading, rules, onRulesChange, inventoryItems, onInvent
           {packagingItems.length === 0 && (
             <p className="text-xs text-brand-burgundy/50">
               אין עדיין פריטי מלאי המסומנים כ"אריזה". הזיני תיאור אריזה בשורה,
-              ולחצי "➕ צור פריט אריזה במלאי" כדי להוסיף אותו למלאי ולקשר — או השאירי ללא קישור למלאי.
+              ולחצי "➕ צור פריט אריזה במלאי" כדי להוסיף אותו למלאי ולקשר - או השאירי ללא קישור למלאי.
             </p>
           )}
           <button type="button" onClick={addRule} className="btn-ghost">+ אריזה</button>
@@ -1129,7 +1129,7 @@ function CategoriesManager({ mealSlots, onErr, onChanged, canDelete }) {
 // שהוגדרה לה דריסה (למשל: "אוטומטית 80/50 · ליל שבת 80/50, בוקר 50/50").
 function splitSummary(category, mealSlots) {
   const mode = category.split_mode || (category.requires_portion_split ? 'equal' : 'none');
-  if (mode === 'equal') return 'ידנית — סך המנות = מנות הסעודה';
+  if (mode === 'equal') return 'ידנית - סך המנות = מנות הסעודה';
   if (mode !== 'additive') return 'ללא';
 
   const base = `אוטומטית ${category.primary_percent ?? 80}/${category.secondary_percent ?? 50}`;
@@ -1259,23 +1259,23 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel, embedded = false }
       </Field>
       <Field label="חלוקת מנות בין המאכלים">
         <select value={f.split_mode} onChange={(e) => set('split_mode', e.target.value)} className={inputCls}>
-          <option value="none">ללא — כל מאכל שנבחר מקבל את כל מנות הסעודה</option>
-          <option value="equal">חלוקה ידנית — הלקוח מזין כמות לכל מאכל, סך = מנות הסעודה (למשל מנה עיקרית)</option>
+          <option value="none">ללא - כל מאכל שנבחר מקבל את כל מנות הסעודה</option>
+          <option value="equal">חלוקה ידנית - הלקוח מזין כמות לכל מאכל, סך = מנות הסעודה (למשל מנה עיקרית)</option>
           <option value="additive">חלוקה אוטומטית לפי אחוזים</option>
         </select>
         {f.split_mode === 'additive' && (
           <div className="mt-2 space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="ברירת מחדל — אחוז למאכל העיקרי">
+              <Field label="ברירת מחדל - אחוז למאכל העיקרי">
                 <input type="number" min="1" max="100" value={f.primary_percent}
                   onChange={(e) => set('primary_percent', e.target.value)} className={inputCls} dir="ltr" />
               </Field>
-              <Field label="ברירת מחדל — אחוז (תוספת) למאכל המשני">
+              <Field label="ברירת מחדל - אחוז (תוספת) למאכל המשני">
                 <input type="number" min="1" max="100" value={f.secondary_percent}
                   onChange={(e) => set('secondary_percent', e.target.value)} className={inputCls} dir="ltr" />
               </Field>
               <p className="col-span-2 text-xs text-brand-burgundy/60">
-                מאכל יחיד מקבל 100% מהמנות. משנבחר גם מאכל משני — העיקרי מקבל את האחוז העיקרי והמשני תוספת של האחוז המשני
+                מאכל יחיד מקבל 100% מהמנות. משנבחר גם מאכל משני - העיקרי מקבל את האחוז העיקרי והמשני תוספת של האחוז המשני
                 (למשל 100 מנות ← 80 + 50 = 130). לא ניתן לבחור שני מאכלים עיקריים.
               </p>
             </div>
@@ -1303,7 +1303,7 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel, embedded = false }
             onChange={(e) => set('inherit_from_slot_id', e.target.value)}
             className={inputCls}
           >
-            <option value="">ללא ירושה — כל סעודה נבחרת בנפרד</option>
+            <option value="">ללא ירושה - כל סעודה נבחרת בנפרד</option>
             {mealSlots
               .filter((s) => f.meal_slot_ids.includes(s.id))
               .map((s) => (
@@ -1392,7 +1392,7 @@ function SlotSplitMatrix({ mealSlots, slotSplits, defaults, onChange }) {
                   <td className="py-1 pr-2 text-xs text-brand-burgundy/60">
                     {valid
                       ? `${Math.ceil(primary)} + ${Math.ceil(secondary)} = ${Math.ceil(primary) + Math.ceil(secondary)} מנות`
-                      : '—'}
+                      : '-'}
                   </td>
                 </tr>
               );
@@ -1763,7 +1763,7 @@ function PriceTracksManager({ mealSlots, onErr, canDelete }) {
     <div className="space-y-4">
       <p className="text-sm text-brand-burgundy/60">
         מחיר הבסיס נקבע לפי <b>צירוף הסעודות המדויק</b> שהלקוח בוחר. כל מסלול משויך לקבוצת סעודות
-        ולו מחיר <b>למנה אחת</b>, והמערכת מכפילה אותו בסך המנות. הזמנה שצירוף הסעודות שלה זהה בדיוק למסלול —
+        ולו מחיר <b>למנה אחת</b>, והמערכת מכפילה אותו בסך המנות. הזמנה שצירוף הסעודות שלה זהה בדיוק למסלול -
         תתומחר לפיו. אין להגדיר שני מסלולים לאותו צירוף, וצירוף ללא מסלול ייחסם בהזמנה.
       </p>
       <div className="flex flex-wrap items-center gap-3">
@@ -1793,7 +1793,7 @@ function PriceTracksManager({ mealSlots, onErr, canDelete }) {
             render: (track) => slotNames(track.meal_slot_ids, mealSlots),
           },
           { key: 'price_per_portion', label: 'מחיר למנה', type: 'number', className: 'font-medium', render: (track) => `₪${fmt(track.price_per_portion)}` },
-          { key: 'effective_from', label: 'תחולה מ־', type: 'date', render: (track) => track.effective_from || '—' },
+          { key: 'effective_from', label: 'תחולה מ־', type: 'date', render: (track) => track.effective_from || '-' },
           {
             key: 'is_active',
             label: 'סטטוס',
@@ -1888,7 +1888,7 @@ function PriceTrackForm({ initial, mealSlots, onSave, onCancel, embedded = false
           emptyText="אין סעודות פעילות."
         />
         <span className="text-xs text-brand-burgundy/50 block mt-1">
-          המחיר יחול על הזמנה שבחרה בדיוק את הסעודות המסומנות כאן — לא פחות ולא יותר.
+          המחיר יחול על הזמנה שבחרה בדיוק את הסעודות המסומנות כאן - לא פחות ולא יותר.
         </span>
       </Field>
       <Field label="תנאי מסלול (הערה)">

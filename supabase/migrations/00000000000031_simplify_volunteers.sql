@@ -1,10 +1,10 @@
 -- =============================================================================
--- מטבח החסד — מיגרציה 31: פישוט מודול המתנדבים והמשימות
+-- מטבח החסד - מיגרציה 31: פישוט מודול המתנדבים והמשימות
 -- =============================================================================
 -- מבטלים את מנגנון ה-snapshot הכבד (shabbat_volunteer_tasks) ואת תפקיד ה-candidate.
 -- המבנה החדש: תבנית גלובלית אחת. משימה = מתנדב קבוע (primary) + מחליפים (backup).
 -- שיבוץ בישול מחושב חי לפי המאכל שהוזמן. volunteer_assignments משמשת רק לדריסות
--- פר-שבת (is_override) — החלפת המתנדב הקבוע בשבת ספציפית.
+-- פר-שבת (is_override) - החלפת המתנדב הקבוע בשבת ספציפית.
 -- הנתונים כרגע דמו ולכן אין הגירת נתונים.
 
 -- ----------------------------------------------------------------------------
@@ -14,7 +14,7 @@ drop table if exists shabbat_volunteer_tasks cascade;
 alter table shabbat_files drop column if exists volunteer_snapshot_created_at;
 
 -- ----------------------------------------------------------------------------
--- 2. פישוט volunteer_assignments — רק דריסות פר-שבת
+-- 2. פישוט volunteer_assignments - רק דריסות פר-שבת
 -- ----------------------------------------------------------------------------
 -- מנקים שיבוצים ישנים שנוצרו במנגנון ה-snapshot (דמו).
 truncate table volunteer_assignments;
@@ -32,7 +32,7 @@ alter table volunteer_assignments
 alter table volunteer_assignments
   add column is_override boolean not null default false;
 
--- דריסה אחת לכל (שבת, משימה) — שורה ייחודית לכל משימה בשבת נתונה. השירות
+-- דריסה אחת לכל (שבת, משימה) - שורה ייחודית לכל משימה בשבת נתונה. השירות
 -- overrideTaskLead עושה delete-then-insert (לא ON CONFLICT), אז אינדקס חלקי מספיק.
 create unique index uq_volunteer_assignments_override
   on volunteer_assignments(shabbat_id, task_id)
@@ -49,7 +49,7 @@ alter table volunteer_task_links
   add constraint volunteer_task_links_role_check check (role in ('primary', 'backup'));
 
 -- ----------------------------------------------------------------------------
--- 4. עדכון ה-RPC — רק primary + backups (ללא candidates)
+-- 4. עדכון ה-RPC - רק primary + backups (ללא candidates)
 -- ----------------------------------------------------------------------------
 drop function if exists replace_volunteer_task_staffing(uuid, uuid, uuid[], uuid[]);
 

@@ -1,4 +1,4 @@
-// חיבור ל-Supabase עם מפתח service_role — עוקף RLS.
+// חיבור ל-Supabase עם מפתח service_role - עוקף RLS.
 // ⚠️ נשמר בשרת בלבד. לעולם לא נחשף לפרונט.
 import { createClient } from '@supabase/supabase-js';
 

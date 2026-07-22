@@ -78,7 +78,7 @@ export default function App() {
     <>
     <Toaster />
     <Routes>
-      {/* אזור ניהול — מאחורי כניסת מנהל (סעיף 5) */}
+      {/* אזור ניהול - מאחורי כניסת מנהל (סעיף 5) */}
       {!admin ? (
         <Route path="/admin/*" element={<AdminLogin onLogin={adminLogin} />} />
       ) : (

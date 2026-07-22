@@ -1,5 +1,5 @@
 // ניהול ספקים והזמנות רכש (סעיף 27-28). מאחורי אימות מנהל.
-//   - כרטיס ספק מלא: יצירה, עריכה, השבתה (מחיקה רכה — סעיף 32), מוצרים שהספק מספק (סעיף 25.3, 27.1)
+//   - כרטיס ספק מלא: יצירה, עריכה, השבתה (מחיקה רכה - סעיף 32), מוצרים שהספק מספק (סעיף 25.3, 27.1)
 //   - הזמנות רכש: יצירה, עריכה, שליחה, ביטול, קבלת סחורה → הוספה למלאי (סעיף 27.2-27.3)
 //   - תשלומים לספק לפי הזמנת רכש (סעיף 28.1)
 import { Router } from 'express';
@@ -69,10 +69,10 @@ async function deleteSupplier(supplierId) {
 }
 
 // ===========================================================================
-// ספקים — כרטיס ספק מלא (סעיף 27.1)
+// ספקים - כרטיס ספק מלא (סעיף 27.1)
 // ===========================================================================
 
-// GET /api/admin/suppliers?active= — רשימת ספקים
+// GET /api/admin/suppliers?active= - רשימת ספקים
 router.get('/', asyncHandler(async (req, res) => {
   let q = supabase.from('suppliers').select('*').order('name');
   if (req.query.active === 'true') q = q.eq('is_active', true);
@@ -82,14 +82,14 @@ router.get('/', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// GET /api/admin/suppliers/:id — כרטיס ספק בודד + מוצרים שהוא מספק + הזמנות רכש אחרונות
+// GET /api/admin/suppliers/:id - כרטיס ספק בודד + מוצרים שהוא מספק + הזמנות רכש אחרונות
 router.get('/:id', asyncHandler(async (req, res) => {
   const { data: supplier, error } = await supabase
     .from('suppliers').select('*').eq('id', req.params.id).maybeSingle();
   if (error) throw error;
   if (!supplier) return fail(res, 404, 'ספק לא נמצא.');
 
-  // מוצרים שהספק מספק (סעיף 25.3, 27.1) — שילוב item_suppliers + פריטים שהספק שלהם ברירת מחדל
+  // מוצרים שהספק מספק (סעיף 25.3, 27.1) - שילוב item_suppliers + פריטים שהספק שלהם ברירת מחדל
   const { data: links, error: lErr } = await supabase
     .from('item_suppliers')
     .select('inventory_item_id, last_purchase_price, inventory_items:inventory_item_id (id, name, unit, is_active, vat_exempt)')
@@ -119,7 +119,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   res.json({ supplier, items, orders });
 }));
 
-// POST /api/admin/suppliers — יצירת ספק
+// POST /api/admin/suppliers - יצירת ספק
 router.post('/', asyncHandler(async (req, res) => {
   const { name, contact_name, phone, email, preferred_channel, order_notes, default_price_includes_vat } = req.body || {};
   if (!name?.trim()) return fail(res, 400, 'חובה להזין שם ספק.');
@@ -138,7 +138,7 @@ router.post('/', asyncHandler(async (req, res) => {
   res.json({ ok: true, supplier: data });
 }));
 
-// PATCH /api/admin/suppliers/:id — עדכון/השבתת ספק
+// PATCH /api/admin/suppliers/:id - עדכון/השבתת ספק
 router.patch('/:id', asyncHandler(async (req, res) => {
   const allowed = ['name', 'contact_name', 'phone', 'email', 'preferred_channel', 'order_notes', 'default_price_includes_vat', 'is_active'];
   const patch = {};
@@ -170,10 +170,10 @@ router.delete('/:id', requireRole('developer'), asyncHandler(async (req, res) =>
 }));
 
 // ---------------------------------------------------------------------------
-// מוצרים שהספק מספק (סעיף 25.3) — ניהול item_suppliers מכרטיס הספק
+// מוצרים שהספק מספק (סעיף 25.3) - ניהול item_suppliers מכרטיס הספק
 // ---------------------------------------------------------------------------
 
-// PUT /api/admin/suppliers/:id/items — קביעת רשימת המוצרים שהספק מספק
+// PUT /api/admin/suppliers/:id/items - קביעת רשימת המוצרים שהספק מספק
 // body: { items: [{ inventory_item_id, last_purchase_price }] }
 router.put('/:id/items', asyncHandler(async (req, res) => {
   const { items } = req.body || {};
@@ -210,7 +210,7 @@ router.put('/:id/items', asyncHandler(async (req, res) => {
 // הזמנות רכש (סעיף 27.2-27.3)
 // ===========================================================================
 
-// GET /api/admin/suppliers/purchase-orders?supplier_id=&status= — רשימת הזמנות רכש
+// GET /api/admin/suppliers/purchase-orders?supplier_id=&status= - רשימת הזמנות רכש
 router.get('/purchase-orders/list', asyncHandler(async (req, res) => {
   let q = supabase
     .from('purchase_orders')
@@ -223,7 +223,7 @@ router.get('/purchase-orders/list', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// GET /api/admin/suppliers/purchase-orders/:id — הזמנת רכש מלאה + שורות + תשלום
+// GET /api/admin/suppliers/purchase-orders/:id - הזמנת רכש מלאה + שורות + תשלום
 router.get('/purchase-orders/:id', asyncHandler(async (req, res) => {
   const { data: po, error } = await supabase
     .from('purchase_orders')
@@ -249,7 +249,7 @@ router.get('/purchase-orders/:id', asyncHandler(async (req, res) => {
   res.json({ purchase_order: po, lines: lines || [], payment: payment || null });
 }));
 
-// POST /api/admin/suppliers/purchase-orders — יצירת הזמנת רכש (טיוטה)
+// POST /api/admin/suppliers/purchase-orders - יצירת הזמנת רכש (טיוטה)
 // body: { supplier_id, expected_delivery_date, notes, lines: [{ inventory_item_id, quantity, estimated_price }] }
 router.post('/purchase-orders', asyncHandler(async (req, res) => {
   const { supplier_id, expected_delivery_date, notes, lines } = req.body || {};
@@ -279,7 +279,7 @@ router.post('/purchase-orders', asyncHandler(async (req, res) => {
   const estimated_amount = clean.reduce(
     (sum, l) => sum + (l.estimated_price != null ? l.estimated_price * l.quantity : 0), 0);
 
-  // הקצאת מספר הזמנת רכש (מונה שנתי — RPC)
+  // הקצאת מספר הזמנת רכש (מונה שנתי - RPC)
   const year = new Date().getFullYear();
   const { data: poNumber, error: nErr } = await supabase.rpc('allocate_po_number', { p_year: year });
   if (nErr) throw nErr;
@@ -302,7 +302,7 @@ router.post('/purchase-orders', asyncHandler(async (req, res) => {
   res.json({ ok: true, purchase_order: po });
 }));
 
-// PATCH /api/admin/suppliers/purchase-orders/:id — עדכון פרטי הזמנת רכש (רק בטיוטה)
+// PATCH /api/admin/suppliers/purchase-orders/:id - עדכון פרטי הזמנת רכש (רק בטיוטה)
 // body: { expected_delivery_date, notes, lines }
 router.patch('/purchase-orders/:id', asyncHandler(async (req, res) => {
   const { data: po, error } = await supabase
@@ -317,7 +317,7 @@ router.patch('/purchase-orders/:id', asyncHandler(async (req, res) => {
   if ('expected_delivery_date' in (req.body || {})) patch.expected_delivery_date = expected_delivery_date || null;
   if ('notes' in (req.body || {})) patch.notes = notes?.trim() || null;
 
-  // אם נשלחו שורות — מחליפים אותן ומחשבים מחדש מחיר משוער
+  // אם נשלחו שורות - מחליפים אותן ומחשבים מחדש מחיר משוער
   if (Array.isArray(lines)) {
     const clean = [];
     for (const l of lines) {
@@ -361,8 +361,8 @@ router.delete('/purchase-orders/:id', requireRole('developer'), asyncHandler(asy
   res.json({ ok: true });
 }));
 
-// POST /api/admin/suppliers/purchase-orders/:id/status — שינוי סטטוס (שליחה/ביטול)
-// body: { status }  — קבלת סחורה נעשית דרך /receive (לא כאן)
+// POST /api/admin/suppliers/purchase-orders/:id/status - שינוי סטטוס (שליחה/ביטול)
+// body: { status }  - קבלת סחורה נעשית דרך /receive (לא כאן)
 router.post('/purchase-orders/:id/status', asyncHandler(async (req, res) => {
   const { status } = req.body || {};
   if (!['sent', 'cancelled', 'draft'].includes(status))
@@ -381,7 +381,7 @@ router.post('/purchase-orders/:id/status', asyncHandler(async (req, res) => {
   res.json({ ok: true, purchase_order: data });
 }));
 
-// POST /api/admin/suppliers/purchase-orders/:id/receive — קבלת סחורה → הוספה למלאי (סעיף 27.3)
+// POST /api/admin/suppliers/purchase-orders/:id/receive - קבלת סחורה → הוספה למלאי (סעיף 27.3)
 // body: { lines: [{ line_id, quantity_received, actual_price }] }
 // לכל שורה: מוסיף למלאי את ההפרש בין הכמות שכבר התקבלה לכמות המצטברת החדשה,
 // מתעד תנועת 'purchase_receipt', מעדכן last_purchase_price בכרטיס המוצר,
@@ -415,7 +415,7 @@ router.post('/purchase-orders/:id/receive', asyncHandler(async (req, res) => {
     if (wantTotal === null || wantTotal < 0) continue;
     const already = Number(line.quantity_received);
     const addQty = Number((wantTotal - already).toFixed(4)); // כמה להוסיף עכשיו
-    // מדלגים על שורות ללא תוספת חיובית — לא מפחיתים מלאי בקבלה
+    // מדלגים על שורות ללא תוספת חיובית - לא מפחיתים מלאי בקבלה
     // (הפחתה/תיקון של מלאי שנקלט בטעות נעשים דרך שינוי ידני במלאי, סעיף 25.5).
     if (addQty <= 0) continue;
     updates.push({
@@ -512,7 +512,7 @@ router.post('/purchase-orders/:id/receive', asyncHandler(async (req, res) => {
 // תשלום לספק לפי הזמנת רכש (סעיף 28.1)
 // ===========================================================================
 
-// PUT /api/admin/suppliers/purchase-orders/:id/payment — יצירה/עדכון תשלום להזמנה
+// PUT /api/admin/suppliers/purchase-orders/:id/payment - יצירה/עדכון תשלום להזמנה
 // body: { status, invoice_amount, invoice_number, invoice_date, paid_at, payment_method, amount_paid, notes }
 router.put('/purchase-orders/:id/payment', asyncHandler(async (req, res) => {
   const { data: po, error } = await supabase

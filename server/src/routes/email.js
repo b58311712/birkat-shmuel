@@ -1,4 +1,4 @@
-// ניהול נוסחי מייל + יומן שליחה (סעיף 18, 3 — דינמיות)
+// ניהול נוסחי מייל + יומן שליחה (סעיף 18, 3 - דינמיות)
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { asyncHandler, fail } from '../lib/helpers.js';
@@ -6,7 +6,7 @@ import { isDryRun } from '../services/email.js';
 
 const router = Router();
 
-// GET /api/admin/email/templates — כל נוסחי המייל
+// GET /api/admin/email/templates - כל נוסחי המייל
 router.get('/templates', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('email_templates').select('*').order('code');
@@ -14,7 +14,7 @@ router.get('/templates', asyncHandler(async (req, res) => {
   res.json({ templates: data || [], dry_run: isDryRun() });
 }));
 
-// PUT /api/admin/email/templates/:code — עדכון נוסח (נושא/גוף/פעיל)
+// PUT /api/admin/email/templates/:code - עדכון נוסח (נושא/גוף/פעיל)
 router.put('/templates/:code', asyncHandler(async (req, res) => {
   const { subject, body, is_active } = req.body;
   if (subject != null && !String(subject).trim()) return fail(res, 400, 'נושא המייל אינו יכול להיות ריק.');
@@ -33,7 +33,7 @@ router.put('/templates/:code', asyncHandler(async (req, res) => {
   res.json({ ok: true, template: data });
 }));
 
-// GET /api/admin/email/log — יומן שליחה אחרון (סעיף 18)
+// GET /api/admin/email/log - יומן שליחה אחרון (סעיף 18)
 router.get('/log', asyncHandler(async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500);
   const { data, error } = await supabase

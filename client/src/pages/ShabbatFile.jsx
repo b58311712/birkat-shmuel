@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
+import { DataTable } from '../components/DataTable.jsx';
 import { Badge, ORDER_STATUS, PAYMENT_STATUS } from '../lib/status.jsx';
 import { formatGregorianDate, formatShabbatHebrewDate, formatShabbatTitle } from '../lib/dates.js';
 
@@ -39,7 +40,7 @@ export default function ShabbatFile({ onAuthError }) {
     else console.error(e);
   }, [onAuthError]);
 
-  // הסיכום נטען תמיד — משמש גם לכותרת התיק
+  // הסיכום נטען תמיד - משמש גם לכותרת התיק
   useEffect(() => {
     api.shabbatSummary(id).then(setSummary).catch(handleErr);
   }, [id, handleErr]);
@@ -51,7 +52,7 @@ export default function ShabbatFile({ onAuthError }) {
       <div className="mb-4">
         <Link to="/admin/shabbat" className="text-sm text-brand-burgundy/60 hover:text-brand-burgundy">← כל התיקים</Link>
         <h1 className="text-2xl font-extrabold text-brand-burgundy mt-1">
-          {sh ? `תיק שבת — ${formatShabbatTitle(sh)}` : 'תיק שבת'}
+          {sh ? `תיק שבת - ${formatShabbatTitle(sh)}` : 'תיק שבת'}
         </h1>
         {sh && (
           <div className="flex flex-wrap items-center gap-3 text-brand-burgundy/70">
@@ -198,7 +199,7 @@ function SummaryTab({ summary, id, onNotes, onStatus }) {
   );
 }
 
-// ---- לשונית הזמנות (סעיף 9.3) — קישור מהיר לניהול הזמנות מסונן לשבת ----
+// ---- לשונית הזמנות (סעיף 9.3) - קישור מהיר לניהול הזמנות מסונן לשבת ----
 function OrdersTab({ id, onAuthError }) {
   const [orders, setOrders] = useState(null);
   useEffect(() => {
@@ -386,7 +387,7 @@ function InventoryTab({ id, onAuthError }) {
                       {it.missing > 0 ? it.missing : '✓'}
                     </td>
                     <td className="p-2 font-bold text-brand-gold-dark">
-                      {it.suggested_purchase > 0 ? it.suggested_purchase : '—'}
+                      {it.suggested_purchase > 0 ? it.suggested_purchase : '-'}
                     </td>
                     <td className="p-2 text-brand-burgundy/60">{it.unit}</td>
                   </tr>
@@ -401,7 +402,7 @@ function InventoryTab({ id, onAuthError }) {
         <div className="card border-r-4 border-brand-gold">
           <h3 className="font-bold text-brand-burgundy mb-1">חומרי גלם ללא קישור למלאי</h3>
           <p className="text-xs text-brand-burgundy/50 mb-2">
-            שורות מתכון שאינן מקושרות לפריט מלאי — לא ניתן לחשב חוסר או קנייה. שייך אותן לפריט מלאי כדי שייכנסו לדוח.
+            שורות מתכון שאינן מקושרות לפריט מלאי - לא ניתן לחשב חוסר או קנייה. שייך אותן לפריט מלאי כדי שייכנסו לדוח.
           </p>
           <table className="w-full text-sm">
             <thead className="text-brand-burgundy/60 text-xs">
@@ -474,7 +475,7 @@ function DeductionPanel({ id, onClose, onDone, onErr }) {
         <button onClick={onClose} className="text-brand-burgundy/60 hover:underline text-sm">סגירה</button>
       </div>
       <p className="text-xs text-brand-burgundy/50">
-        לאחר סיום ההכנות — אשר הפחתה מהמלאי לפי הצורך שחושב. ניתן לתקן כמויות ידנית לפני האישור.
+        לאחר סיום ההכנות - אשר הפחתה מהמלאי לפי הצורך שחושב. ניתן לתקן כמויות ידנית לפני האישור.
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -554,7 +555,7 @@ function PackingTab({ id, onAuthError }) {
                   <td className="p-2">{it.portions}</td>
                   <td className="p-2">
                     {it.packages.length === 0
-                      ? <span className="text-brand-burgundy/40">—</span>
+                      ? <span className="text-brand-burgundy/40">-</span>
                       : it.packages.map((p, j) => (
                           <span key={j} className="inline-block ml-2">
                             <span className="font-bold">{p.count}</span> × {p.packaging_label}
@@ -600,9 +601,9 @@ function TransportTab({ id, onAuthError }) {
               <td className="p-3">{o.customer_name}</td>
               <td className="p-3">{o.contact_name}</td>
               <td className="p-3 text-sm" dir="ltr">{o.contact_phone}</td>
-              <td className="p-3 text-sm">{[o.venue_name, o.venue_address].filter(Boolean).join(' · ') || '—'}</td>
+              <td className="p-3 text-sm">{[o.venue_name, o.venue_address].filter(Boolean).join(' · ') || '-'}</td>
               <td className="p-3 font-bold">{o.total_portions}</td>
-              <td className="p-3 text-sm text-brand-burgundy/60">{o.transport_notes || '—'}</td>
+              <td className="p-3 text-sm text-brand-burgundy/60">{o.transport_notes || '-'}</td>
             </tr>
           ))}
         </tbody>
@@ -616,7 +617,7 @@ const DAY_LABELS = { general: 'כללי', tuesday: 'יום ג׳', wednesday: 'י
 const SHIFT_LABELS = { morning: 'בוקר', noon: 'צהריים', evening: 'ערב', night: 'לילה' };
 
 // הצעות מתנדבים לדריסה: קודם המחליפים (backup) של המשימה, אחריהם שאר המתנדבים
-// באותו תחום — פרט למי שכבר האחראי בפועל.
+// באותו תחום - פרט למי שכבר האחראי בפועל.
 function overrideSuggestions(task, volunteers) {
   const leadId = task.lead?.volunteer_id || null;
   const backups = (task.backups || []).map((b) => ({ id: b.volunteer_id, full_name: b.volunteer_name, has_vehicle: b.has_vehicle, priority: b.priority }));
@@ -627,15 +628,225 @@ function overrideSuggestions(task, volunteers) {
   return [...backups, ...areaCandidates].filter((volunteer) => volunteer.id !== leadId);
 }
 
+// תיאור עיתוי המשימה (יום · משמרת · הערה) לתא בטבלה
+function timingLabel(t) {
+  const parts = [DAY_LABELS[t.execution_day] || 'כללי'];
+  if (t.shift) parts.push(SHIFT_LABELS[t.shift]);
+  if (t.timing_note) parts.push(t.timing_note);
+  return parts.join(' · ');
+}
+
+// תג משובץ/לא-משובץ בסגנון badge-dot של המערכת
+function AssignedBadge({ ok, yes, no }) {
+  return (
+    <span className={`badge ${ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'}`}>
+      <span className="badge-dot" aria-hidden="true" />
+      {ok ? yes : no}
+    </span>
+  );
+}
+
+// צ׳יפ מתנדב (שם + טלפון + רכב)
+function VolunteerChip({ name, phone, hasVehicle, tail }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 bg-white border border-brand-cream-dark rounded-full px-2.5 py-0.5 text-sm">
+      <span className="font-medium text-brand-burgundy">{name}</span>
+      {phone && <span className="text-brand-burgundy/50 text-xs" dir="ltr">{phone}</span>}
+      {hasVehicle && <span className="text-xs" title="יש רכב">🚗</span>}
+      {tail}
+    </span>
+  );
+}
+
+const pickerSelectCls =
+  'border border-brand-cream-dark rounded-lg px-3 py-1.5 text-sm text-brand-burgundy bg-white focus:border-brand-gold outline-none';
+
+// טופס מתנדב חדש אינליין (משותף לבורר הבישול ולבורר המשימות): שם/טלפון/תחום/רכב,
+// עם אפשרות לקשר ללקוח קיים (השם והטלפון מושלמים מכרטיס הלקוח, כמו בטופס המלא).
+// onCreate מקבל payload מוכן ל-api.createVolunteer.
+function NewVolunteerForm({ areas, customers, busy, defaultAreaId = '', onCreate, onCancel }) {
+  const areaList = areas || [];
+  const customerList = customers || [];
+  const [form, setForm] = useState({ customer_id: '', full_name: '', phone: '', has_vehicle: false, area_id: defaultAreaId });
+  const [customerSearch, setCustomerSearch] = useState('');
+
+  const normalizedSearch = customerSearch.trim().toLocaleLowerCase('he-IL');
+  const visibleCustomers = normalizedSearch
+    ? customerList.filter((c) => [c.full_name, c.phone, c.email].filter(Boolean)
+      .some((v) => String(v).toLocaleLowerCase('he-IL').includes(normalizedSearch)))
+    : customerList;
+  const linkedCustomer = customerList.find((c) => c.id === form.customer_id);
+
+  // בחירת לקוח קיים משלימה שם/טלפון מכרטיס הלקוח (בדומה לטופס המתנדב המלא)
+  function setCustomer(cid) {
+    const c = customerList.find((x) => x.id === cid);
+    setForm((prev) => ({ ...prev, customer_id: cid, full_name: c?.full_name || prev.full_name, phone: c?.phone || prev.phone }));
+  }
+
+  return (
+    <div className="rounded-lg border border-brand-cream-dark bg-white p-3 space-y-2">
+      <div className="text-sm font-medium text-brand-burgundy">מתנדב חדש</div>
+      {/* קישור ללקוח קיים - השם והטלפון מושלמים מכרטיס הלקוח */}
+      <div className="space-y-1.5">
+        <div className="text-xs text-brand-burgundy/60">קישור ללקוח קיים (לא חובה)</div>
+        <div className="flex flex-wrap gap-2">
+          <input type="search" value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)}
+            placeholder="חיפוש לקוח לפי שם / טלפון / מייל..." aria-label="חיפוש לקוח קיים" className={pickerSelectCls} />
+          <select value={form.customer_id} onChange={(e) => setCustomer(e.target.value)} className={pickerSelectCls}>
+            <option value="">- מתנדב עצמאי -</option>
+            {visibleCustomers.map((c) => (
+              <option key={c.id} value={c.id}>{c.full_name}{c.phone ? ` (${c.phone})` : ''}</option>
+            ))}
+            {visibleCustomers.length === 0 && <option disabled>לא נמצאו לקוחות מתאימים</option>}
+          </select>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <input value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+          placeholder="שם מלא *" className={pickerSelectCls} readOnly={!!linkedCustomer} />
+        <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+          placeholder="טלפון" dir="ltr" className={pickerSelectCls} readOnly={!!linkedCustomer} />
+        <select value={form.area_id} onChange={(e) => setForm((f) => ({ ...f, area_id: e.target.value }))} className={pickerSelectCls}>
+          <option value="">תחום...</option>
+          {areaList.map((a) => (
+            <option key={a.id} value={a.id}>{a.name}{a.is_cooking ? ' 🍲' : ''}</option>
+          ))}
+        </select>
+        <label className="inline-flex items-center gap-1.5 text-sm text-brand-burgundy/80">
+          <input type="checkbox" checked={form.has_vehicle}
+            onChange={(e) => setForm((f) => ({ ...f, has_vehicle: e.target.checked }))} />
+          יש רכב
+        </label>
+      </div>
+      <div className="flex items-center gap-2">
+        <button type="button" disabled={busy || !form.area_id || (!form.customer_id && !form.full_name.trim())}
+          onClick={() => onCreate({
+            customer_id: form.customer_id || undefined,
+            full_name: form.full_name.trim() || undefined,
+            phone: form.phone.trim() || undefined,
+            has_vehicle: form.has_vehicle,
+            area_ids: form.area_id ? [form.area_id] : [],
+          })}
+          className="btn-secondary text-sm disabled:opacity-50">הוספה ושיבוץ לשבת זו</button>
+        <button type="button" disabled={busy} onClick={onCancel}
+          className="text-xs text-brand-burgundy/60 underline">ביטול</button>
+      </div>
+      <p className="text-[11px] text-brand-burgundy/40">
+        המתנדב יתווסף לרשימה הכללית וישובץ לשבת זו בלבד. שיוך קבוע נעשה בניהול המתנדבים.
+      </p>
+    </div>
+  );
+}
+
+// בורר מחליף לבישול: בחירת מתנדב מתוך כל רשימת המתנדבים הפעילים לשבת זו בלבד,
+// או הוספת מתנדב חדש (טופס משותף) ושיבוצו מיד כמחליף.
+function MealCookPicker({ meal, volunteers, areas, customers, busy, onAssign, onReset, onCreateAndAssign }) {
+  const [sel, setSel] = useState('');
+  const [adding, setAdding] = useState(false);
+  const list = volunteers || [];
+  const defaultArea = (areas || []).find((a) => a.is_cooking)?.id || (areas || [])[0]?.id || '';
+
+  return (
+    <div className="space-y-3">
+      <div className="text-sm text-brand-burgundy/70">
+        שיבוץ מבשל מחליף לשבת זו למאכל <span className="font-medium">{meal.meal_name}</span> - מתוך רשימת המתנדבים הכללית.
+      </div>
+
+      {!adding ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={sel} onChange={(e) => setSel(e.target.value)} className={pickerSelectCls}>
+            <option value="">בחירת מתנדב...</option>
+            {list.map((v) => (
+              <option key={v.id} value={v.id}>{v.full_name}{v.has_vehicle ? ' 🚗' : ''}</option>
+            ))}
+          </select>
+          <button type="button" disabled={!sel || busy} onClick={() => onAssign(meal, sel)}
+            className="btn-secondary text-sm disabled:opacity-50">שיבוץ מחליף</button>
+          <button type="button" disabled={busy} onClick={() => setAdding(true)}
+            className="text-xs text-brand-burgundy/70 hover:text-brand-burgundy underline">+ מתנדב חדש</button>
+          {meal.is_override && (
+            <button type="button" disabled={busy} onClick={() => onReset(meal)}
+              className="text-xs text-brand-gold-dark underline">החזרה למבשלים הקבועים</button>
+          )}
+        </div>
+      ) : (
+        <NewVolunteerForm areas={areas} customers={customers} busy={busy} defaultAreaId={defaultArea}
+          onCreate={(payload) => onCreateAndAssign(meal, payload)} onCancel={() => setAdding(false)} />
+      )}
+
+      {meal.permanent_cooks?.length > 0 && (
+        <div className="text-xs text-brand-burgundy/50">
+          מבשלים קבועים: {meal.permanent_cooks.map((c) => c.volunteer_name).join(', ')}
+        </div>
+      )}
+      {list.length === 0 && !adding && (
+        <div className="text-xs text-brand-burgundy/40">אין מתנדבים פעילים - אפשר להוסיף מתנדב חדש.</div>
+      )}
+    </div>
+  );
+}
+
+// בורר החלפת אחראי למשימה לשבת זו (דריסה): הצעות מהירות (מחליפים ומתנדבי התחום),
+// בחירה מכל רשימת המתנדבים הכללית, או הוספת מתנדב חדש (טופס משותף).
+function TaskOverridePicker({ task, volunteers, areas, customers, busy, onOverride, onCreateAndAssign }) {
+  const [sel, setSel] = useState('');
+  const [adding, setAdding] = useState(false);
+  const suggestions = overrideSuggestions(task, volunteers);
+  const list = volunteers || [];
+
+  return (
+    <div className="space-y-3">
+      <div className="text-sm text-brand-burgundy/70">
+        החלפת האחראי למשימה <span className="font-medium">{task.name}</span> לשבת זו בלבד:
+      </div>
+
+      {!adding ? (
+        <>
+          {/* הצעות מהירות: מחליפים ומתנדבי התחום */}
+          {suggestions.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {suggestions.map((v) => (
+                <button key={v.id} type="button" onClick={() => onOverride(task, v.id)} disabled={busy}
+                  className="text-sm bg-brand-burgundy/5 hover:bg-brand-gold/20 border border-brand-cream-dark rounded-full px-3 py-1">
+                  {v.full_name}{v.priority ? ` · מחליף ${v.priority}` : ''}{v.has_vehicle ? ' 🚗' : ''}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* בחירה מכל רשימת המתנדבים + הוספת מתנדב חדש */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={sel} onChange={(e) => setSel(e.target.value)} className={pickerSelectCls}>
+              <option value="">בחירה מכל המתנדבים...</option>
+              {list.map((v) => (
+                <option key={v.id} value={v.id}>{v.full_name}{v.has_vehicle ? ' 🚗' : ''}</option>
+              ))}
+            </select>
+            <button type="button" disabled={!sel || busy} onClick={() => onOverride(task, sel)}
+              className="btn-secondary text-sm disabled:opacity-50">שיבוץ</button>
+            <button type="button" disabled={busy} onClick={() => setAdding(true)}
+              className="text-xs text-brand-burgundy/70 hover:text-brand-burgundy underline">+ מתנדב חדש</button>
+          </div>
+        </>
+      ) : (
+        <NewVolunteerForm areas={areas} customers={customers} busy={busy} defaultAreaId={task.area_id || ''}
+          onCreate={(payload) => onCreateAndAssign(task, payload)} onCancel={() => setAdding(false)} />
+      )}
+    </div>
+  );
+}
+
 function VolunteersTab({ id, onAuthError }) {
   const [data, setData] = useState(null);
   const [volunteers, setVolunteers] = useState(null); // כל המתנדבים הפעילים (לדריסה)
+  const [areas, setAreas] = useState(null); // תחומי ההתנדבות (ליצירת מתנדב חדש מהבורר)
+  const [customers, setCustomers] = useState(null); // לקוחות (לקישור מתנדב חדש ללקוח קיים)
   const [busy, setBusy] = useState(false);
   const [assigningTask, setAssigningTask] = useState(null); // task_id שנפתח לדריסה
+  const [assigningMeal, setAssigningMeal] = useState(null); // meal_id שנפתח לשיבוץ מחליף
 
   const load = useCallback(() => {
-    Promise.all([api.shabbatVolunteers(id), api.volunteers('?active=true')])
-      .then(([rep, vols]) => { setData(rep); setVolunteers(vols); })
+    Promise.all([api.shabbatVolunteers(id), api.volunteers('?active=true'), api.volunteerAreas(), api.adminCustomers()])
+      .then(([rep, vols, ars, custs]) => { setData(rep); setVolunteers(vols); setAreas(ars); setCustomers(custs); })
       .catch(onAuthError);
   }, [id, onAuthError]);
 
@@ -659,7 +870,7 @@ function VolunteersTab({ id, onAuthError }) {
     finally { setBusy(false); }
   }
 
-  // הסרת דריסה — חזרה לאחראי הקבוע מהתבנית
+  // הסרת דריסה - חזרה לאחראי הקבוע מהתבנית
   async function resetLead(task) {
     setBusy(true);
     try { await api.shabbatVolunteerReset(id, task.task_id); setAssigningTask(null); load(); }
@@ -667,107 +878,213 @@ function VolunteersTab({ id, onAuthError }) {
     finally { setBusy(false); }
   }
 
-  if (!data) return <p>טוען...</p>;
-  if (!data.tasks.length) {
-    return <div className="card text-center py-8 text-brand-burgundy/60">
-      אין משימות רלוונטיות לשבת זו. יש להגדיר משימות בניהול המתנדבים.
-    </div>;
+  // שיבוץ מבשל מחליף למאכל בשבת זו
+  async function overrideMeal(meal, volunteerId) {
+    setBusy(true);
+    try {
+      await api.shabbatVolunteerMealAssign(id, meal.meal_id, { volunteer_id: volunteerId });
+      setAssigningMeal(null);
+      load();
+    } catch (e) { alert(e.message); }
+    finally { setBusy(false); }
   }
 
-  // קיבוץ משימות לפי תחום (data.tasks כבר ממוין לפי סדר התחומים)
-  const byArea = {};
-  for (const task of data.tasks) {
-    const key = task.area_id || '—';
-    (byArea[key] ||= []).push(task);
+  // הסרת דריסת מבשל - חזרה למבשלים הקבועים
+  async function resetMeal(meal) {
+    setBusy(true);
+    try { await api.shabbatVolunteerMealReset(id, meal.meal_id); setAssigningMeal(null); load(); }
+    catch (e) { alert(e.message); }
+    finally { setBusy(false); }
   }
-  const areaGroups = Object.values(byArea);
+
+  // יצירת מתנדב חדש מתוך בורר המחליף ושיבוצו מיד כמבשל מחליף לשבת זו
+  async function createAndAssignMeal(meal, payload) {
+    setBusy(true);
+    try {
+      const res = await api.createVolunteer(payload);
+      const newId = res?.volunteer?.id;
+      if (!newId) throw new Error('יצירת המתנדב נכשלה.');
+      await api.shabbatVolunteerMealAssign(id, meal.meal_id, { volunteer_id: newId });
+      setAssigningMeal(null);
+      load();
+    } catch (e) { alert(e.message); }
+    finally { setBusy(false); }
+  }
+
+  // יצירת מתנדב חדש מתוך בורר המשימות ושיבוצו מיד כאחראי (דריסה) לשבת זו
+  async function createAndAssignTask(task, payload) {
+    setBusy(true);
+    try {
+      const res = await api.createVolunteer(payload);
+      const newId = res?.volunteer?.id;
+      if (!newId) throw new Error('יצירת המתנדב נכשלה.');
+      await api.shabbatVolunteerAssign(id, { task_id: task.task_id, volunteer_id: newId });
+      setAssigningTask(null);
+      load();
+    } catch (e) { alert(e.message); }
+    finally { setBusy(false); }
+  }
+
+  if (!data) return <p>טוען...</p>;
+
+  const cookingMeals = data.cooking_meals || [];
+  const tasks = data.tasks || [];
+
+  // אפשרויות סינון התחום (enum) מתוך התחומים שקיימים בפועל בשורות המשימות
+  const areaOptions = [...new Set(tasks.map((t) => t.area_name).filter(Boolean))]
+    .map((name) => ({ value: name, label: name }));
+
+  // עמודות טבלת הבישול (מאכל, מנות, מבשלים, משובץ)
+  const cookingColumns = [
+    { key: 'meal_name', label: 'מאכל', type: 'text',
+      render: (m) => <span className="font-medium text-brand-burgundy">{m.meal_name}</span> },
+    { key: 'portions', label: 'מנות', type: 'number',
+      render: (m) => <span className="font-bold text-brand-gold-dark">{m.portions}</span> },
+    { key: 'cooks', label: 'מבשלים', type: 'text',
+      value: (m) => m.cooks.map((c) => c.volunteer_name).join(', '),
+      render: (m) => (
+        m.is_unassigned ? (
+          <span className="text-red-700 text-sm font-medium">אין מתנדב משובץ לבישול</span>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {m.cooks.map((c) => (
+              <VolunteerChip key={c.volunteer_id} name={c.volunteer_name} phone={c.phone} hasVehicle={c.has_vehicle} />
+            ))}
+            {m.is_override && <span className="text-[10px] text-brand-gold-dark self-center" title="מחליף לשבת זו">מחליף</span>}
+          </div>
+        )
+      ) },
+    { key: 'assigned', label: 'משובץ', type: 'boolean',
+      trueLabel: 'יש מבשל', falseLabel: 'אין מבשל',
+      value: (m) => !m.is_unassigned,
+      render: (m) => <AssignedBadge ok={!m.is_unassigned} yes="יש מבשל" no="אין מבשל" /> },
+  ];
+
+  // עמודות טבלת המשימות (תחום, משימה, עיתוי, אחראי, מחליפים, משובץ)
+  const taskColumns = [
+    { key: 'area_name', label: 'תחום', type: 'enum', options: areaOptions,
+      render: (t) => <span className="text-brand-burgundy/80">{t.area_name || 'ללא תחום'}</span> },
+    { key: 'name', label: 'משימה', type: 'text',
+      render: (t) => (
+        <div>
+          <span className="font-medium text-brand-burgundy">{t.name}</span>
+          {t.linked_meal_name && <span className="text-xs text-brand-burgundy/50 mr-1">({t.linked_meal_name})</span>}
+          {t.meal_is_ordered && t.is_unassigned && (
+            <div className="text-xs text-red-700 font-bold">מוזמן בשבת, אין מתנדב</div>
+          )}
+        </div>
+      ) },
+    { key: 'timing', label: 'עיתוי', type: 'text',
+      value: (t) => timingLabel(t),
+      render: (t) => <span className="text-brand-burgundy/70">{timingLabel(t)}</span> },
+    { key: 'lead', label: 'אחראי בפועל', type: 'text',
+      value: (t) => t.lead?.volunteer_name || '',
+      render: (t) => (
+        t.lead ? (
+          <VolunteerChip name={t.lead.volunteer_name} phone={t.lead.phone} hasVehicle={t.lead.has_vehicle}
+            tail={
+              t.lead.source === 'override' ? <span className="text-[10px] text-brand-gold-dark" title="הוחלף לשבת זו">דריסה</span>
+                : t.lead.source === 'meal' ? <span className="text-[10px] text-brand-gold-dark" title="לפי שיוך מאכל">בישול</span>
+                  : null
+            } />
+        ) : <span className="text-brand-burgundy/40 text-sm">ללא אחראי</span>
+      ) },
+    { key: 'backups', label: 'מחליפים', filterable: false, sortable: false,
+      render: (t) => t.backups?.length
+        ? <span className="text-xs text-brand-burgundy/60">{t.backups.map((b) => b.volunteer_name).join(', ')}</span>
+        : <span className="text-brand-burgundy/30">-</span> },
+    { key: 'assigned', label: 'משובץ', type: 'boolean',
+      trueLabel: 'משובץ', falseLabel: 'לא משובץ',
+      value: (t) => !t.is_unassigned,
+      render: (t) => <AssignedBadge ok={!t.is_unassigned} yes="משובץ" no="לא משובץ" /> },
+  ];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="text-sm text-brand-burgundy/70">
-          משימות ללא שיבוץ: <span className={`font-bold ${data.unassigned_count > 0 ? 'text-red-700' : 'text-green-700'}`}>
+        <div className="text-sm text-brand-burgundy/70 flex flex-wrap gap-x-4 gap-y-1">
+          <span>משימות ללא שיבוץ: <span className={`font-bold ${data.unassigned_count > 0 ? 'text-red-700' : 'text-green-700'}`}>
             {data.unassigned_count}
-          </span>
+          </span></span>
+          <span>מאכלים ללא מבשל: <span className={`font-bold ${data.cooking_unassigned_count > 0 ? 'text-red-700' : 'text-green-700'}`}>
+            {data.cooking_unassigned_count || 0}
+          </span></span>
         </div>
         <button onClick={refresh} disabled={busy} className="btn-secondary text-sm">
           רענון
         </button>
       </div>
 
-      {areaGroups.map((areaTasks) => (
-        <div key={areaTasks[0].area_id || '—'} className="card">
-          <h3 className="font-bold text-brand-burgundy text-lg mb-3 pb-2 border-b border-brand-cream-dark">
-            {areaTasks[0].area_name || 'ללא תחום'}
+      {/* בישול - פירוט מאכלים: כל מאכל שהוזמן בשבת + מי מכין אותו (טבלה) */}
+      {cookingMeals.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="font-bold text-brand-burgundy text-lg">
+            בישול - פירוט מאכלים <span className="text-sm font-normal text-brand-burgundy/50">(מי מכין כל מאכל)</span>
           </h3>
-          <div className="space-y-3">
-            {areaTasks.map((t) => (
-              <div key={t.task_id} className={`rounded-lg p-3 ${t.is_unassigned ? 'bg-red-50/60' : 'bg-brand-cream/30'}`}>
-                <div className="flex items-baseline justify-between flex-wrap gap-1">
-                  <div className="font-medium text-brand-burgundy">
-                    {t.name}
-                    <span className="text-xs text-brand-burgundy/50 mr-2">
-                      {DAY_LABELS[t.execution_day] || 'כללי'}{t.shift ? ` · ${SHIFT_LABELS[t.shift]}` : ''}{t.timing_note ? ` · ${t.timing_note}` : ''}
-                    </span>
-                    {t.linked_meal_name && (
-                      <span className="text-xs text-brand-burgundy/50 mr-2">({t.linked_meal_name})</span>
-                    )}
-                    {t.meal_is_ordered && t.is_unassigned && (
-                      <span className="text-xs text-red-700 mr-2 font-bold">· מוזמן בשבת, אין מתנדב</span>
-                    )}
-                  </div>
-                  <button onClick={() => setAssigningTask(assigningTask === t.task_id ? null : t.task_id)}
-                    className="text-xs text-brand-burgundy/60 hover:text-brand-burgundy underline">החלפה לשבת זו</button>
-                </div>
+          <DataTable
+            rows={cookingMeals}
+            columns={cookingColumns}
+            rowKey={(m) => m.meal_id}
+            rowClassName={(m) => (m.is_unassigned ? 'bg-red-50/40' : '')}
+            actions={(m) => (
+              <button type="button"
+                onClick={() => setAssigningMeal(assigningMeal === m.meal_id ? null : m.meal_id)}
+                className="text-xs text-brand-burgundy/70 hover:text-brand-burgundy underline whitespace-nowrap">
+                {assigningMeal === m.meal_id ? 'סגירה' : 'שיבוץ מחליף'}
+              </button>
+            )}
+            actionsLabel="פעולות"
+            expandedId={assigningMeal}
+            renderExpanded={(m) => (
+              <MealCookPicker meal={m} volunteers={volunteers} areas={areas || []} customers={customers || []} busy={busy}
+                onAssign={overrideMeal} onReset={resetMeal} onCreateAndAssign={createAndAssignMeal} />
+            )}
+            empty="אין מאכלים בהכנה בשבת זו."
+          />
+          <p className="text-xs text-brand-burgundy/40">
+            השיוך הקבוע נעשה במסך ניהול המתנדבים (בכרטיס המתנדב, תחת תחום בישול). כאן אפשר לשבץ מחליף לשבת בודדת בלבד.
+          </p>
+        </section>
+      )}
 
-                {/* האחראי בפועל בשבת זו */}
-                {t.lead ? (
-                  <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <span className="inline-flex items-center gap-1.5 bg-white border border-brand-cream-dark rounded-full px-3 py-1 text-sm">
-                      <span className="font-medium text-brand-burgundy">{t.lead.volunteer_name}</span>
-                      {t.lead.phone && <span className="text-brand-burgundy/50 text-xs" dir="ltr">{t.lead.phone}</span>}
-                      {t.lead.has_vehicle && <span className="text-xs" title="יש רכב">🚗</span>}
-                      {t.lead.source === 'override' && <span className="text-[10px] text-brand-gold-dark" title="הוחלף לשבת זו">דריסה</span>}
-                      {t.lead.source === 'meal' && <span className="text-[10px] text-brand-gold-dark" title="לפי שיוך מאכל">בישול</span>}
-                    </span>
-                    {t.is_override && (
-                      <button type="button" onClick={() => resetLead(t)} disabled={busy}
-                        className="text-xs text-brand-gold-dark underline">החזרת האחראי הקבוע</button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-xs text-brand-burgundy/40 mt-1">ללא אחראי</div>
-                )}
-
-                {/* מחליפים (גיבוי) */}
-                {t.backups?.length > 0 && (
-                  <div className="text-xs text-brand-burgundy/50 mt-1">
-                    מחליפים: {t.backups.map((b) => b.volunteer_name).join(', ')}
-                  </div>
-                )}
-
-                {/* בורר דריסה ידנית */}
-                {assigningTask === t.task_id && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {overrideSuggestions(t, volunteers).map((v) => (
-                      <button key={v.id} onClick={() => override(t, v.id)} disabled={busy}
-                        className="text-sm bg-brand-burgundy/5 hover:bg-brand-gold/20 border border-brand-cream-dark rounded-full px-3 py-1">
-                        {v.full_name}{v.priority ? ` · מחליף ${v.priority}` : ''}{v.has_vehicle ? ' 🚗' : ''}
-                      </button>
-                    ))}
-                    {overrideSuggestions(t, volunteers).length === 0 && (
-                      <span className="text-xs text-brand-burgundy/40">אין מתנדבים פנויים בתחום זה.</span>
-                    )}
-                  </div>
+      {/* משימות מתנדבים (טבלה) */}
+      <section className="space-y-2">
+        <h3 className="font-bold text-brand-burgundy text-lg">משימות מתנדבים</h3>
+        {tasks.length === 0 ? (
+          <div className="card text-center py-8 text-brand-burgundy/60">
+            אין משימות רלוונטיות לשבת זו. יש להגדיר משימות בניהול המתנדבים.
+          </div>
+        ) : (
+          <DataTable
+            rows={tasks}
+            columns={taskColumns}
+            rowKey={(t) => t.task_id}
+            rowClassName={(t) => (t.is_unassigned ? 'bg-red-50/40' : '')}
+            actions={(t) => (
+              <div className="flex flex-col items-start gap-1">
+                <button type="button"
+                  onClick={() => setAssigningTask(assigningTask === t.task_id ? null : t.task_id)}
+                  className="text-xs text-brand-burgundy/70 hover:text-brand-burgundy underline whitespace-nowrap">
+                  {assigningTask === t.task_id ? 'סגירה' : 'החלפה לשבת זו'}
+                </button>
+                {t.is_override && (
+                  <button type="button" onClick={() => resetLead(t)} disabled={busy}
+                    className="text-xs text-brand-gold-dark underline whitespace-nowrap">החזרת הקבוע</button>
                 )}
               </div>
-            ))}
-          </div>
-        </div>
-      ))}
+            )}
+            actionsLabel="פעולות"
+            expandedId={assigningTask}
+            renderExpanded={(t) => (
+              <TaskOverridePicker task={t} volunteers={volunteers} areas={areas || []} customers={customers || []} busy={busy}
+                onOverride={override} onCreateAndAssign={createAndAssignTask} />
+            )}
+          />
+        )}
+      </section>
 
       <div className="text-xs text-brand-burgundy/40">
-        האחראי הקבוע נקבע במסך "משימות קבועות". שיבוץ בישול מחושב אוטומטית לפי המאכל שהוזמן. אפשר להחליף אחראי לשבת בודדת בלי לשנות את הקבוע.
+        האחראי הקבוע נקבע במסך "משימות קבועות". שיבוץ בישול מחושב אוטומטית לפי המאכל שהוזמן. אפשר להחליף אחראי או מבשל לשבת בודדת בלי לשנות את הקבוע.
       </div>
     </div>
   );
@@ -827,10 +1144,10 @@ function PrintTab({ id, onAuthError }) {
 
   return (
     <div>
-      {/* סרגל פעולות — לא מודפס */}
+      {/* סרגל פעולות - לא מודפס */}
       <div className="no-print flex items-center justify-between flex-wrap gap-2 mb-4 card">
         <div className="text-sm text-brand-burgundy/70">
-          תיק עבודה מרוכז לשבת — מוכן להדפסה. הופק: {genDate}
+          תיק עבודה מרוכז לשבת - מוכן להדפסה. הופק: {genDate}
         </div>
         <button onClick={() => window.print()} className="btn-primary">🖨️ הדפסת תיק העבודה</button>
       </div>
@@ -848,7 +1165,7 @@ function PrintTab({ id, onAuthError }) {
         <section className="print-section text-center py-10 print-avoid">
           <div className="text-brand-gold-dark font-bold text-lg mb-2">מטבח החסד · ברכת שמואל</div>
           <h1 className="text-4xl font-extrabold text-brand-burgundy mb-2">תיק עבודה לשבת</h1>
-          <div className="text-2xl text-brand-burgundy mt-4">{formatShabbatTitle(sh) || '—'}</div>
+          <div className="text-2xl text-brand-burgundy mt-4">{formatShabbatTitle(sh) || '-'}</div>
           <div className="text-sm font-medium text-brand-gold-dark/90 mt-1">{formatShabbatHebrewDate(sh)}</div>
           <div className="text-brand-burgundy/70">{formatGregorianDate(sh?.gregorian_date)}</div>
           <div className="inline-grid grid-cols-2 gap-x-8 gap-y-1 mt-8 text-brand-burgundy text-sm text-right">
@@ -947,7 +1264,7 @@ function PrintTab({ id, onAuthError }) {
                           {it.missing > 0 ? it.missing : '✓'}
                         </td>
                         <td className="border border-brand-cream-dark p-2 font-bold text-brand-gold-dark">
-                          {it.suggested_purchase > 0 ? it.suggested_purchase : '—'}
+                          {it.suggested_purchase > 0 ? it.suggested_purchase : '-'}
                         </td>
                         <td className="border border-brand-cream-dark p-2 text-brand-burgundy/60">{it.unit}</td>
                       </tr>
@@ -991,7 +1308,7 @@ function PrintTab({ id, onAuthError }) {
                       <td className="border border-brand-cream-dark p-2 text-brand-burgundy/60">{it.slot_name}</td>
                       <td className="border border-brand-cream-dark p-2">{it.portions}</td>
                       <td className="border border-brand-cream-dark p-2">
-                        {it.packages.length === 0 ? '—' : it.packages.map((p, j) => (
+                        {it.packages.length === 0 ? '-' : it.packages.map((p, j) => (
                           <span key={j} className="inline-block ml-2"><span className="font-bold">{p.count}</span> × {p.packaging_label}</span>
                         ))}
                       </td>
@@ -1015,16 +1332,45 @@ function PrintTab({ id, onAuthError }) {
                   <td className="border border-brand-cream-dark p-2">{o.customer_name}</td>
                   <td className="border border-brand-cream-dark p-2">{o.contact_name}</td>
                   <td className="border border-brand-cream-dark p-2" dir="ltr">{o.contact_phone}</td>
-                  <td className="border border-brand-cream-dark p-2">{[o.venue_name, o.venue_address].filter(Boolean).join(' · ') || '—'}</td>
+                  <td className="border border-brand-cream-dark p-2">{[o.venue_name, o.venue_address].filter(Boolean).join(' · ') || '-'}</td>
                   <td className="border border-brand-cream-dark p-2 font-bold">{o.total_portions}</td>
-                  <td className="border border-brand-cream-dark p-2 text-brand-burgundy/60">{o.transport_notes || '—'}</td>
+                  <td className="border border-brand-cream-dark p-2 text-brand-burgundy/60">{o.transport_notes || '-'}</td>
                 </tr>
               ))}
             </PrintTable>
           )}
         </ReportBlock>
 
-        {/* 8. דוח שיבוץ מתנדבים (סעיף 33.2) */}
+        {/* 8. פירוט בישול - מי מכין כל מאכל */}
+        {vol?.cooking_meals?.length > 0 && (
+          <ReportBlock title="פירוט בישול - מי מכין כל מאכל"
+            subtitle={`${vol.cooking_unassigned_count || 0} מאכלים ללא מבשל`}>
+            <PrintTable head={['מאכל', 'מנות', 'מבשל/ים']}>
+              {vol.cooking_meals.map((meal) => (
+                <tr key={meal.meal_id}>
+                  <td className="border border-brand-cream-dark p-2 font-medium">{meal.meal_name}</td>
+                  <td className="border border-brand-cream-dark p-2 font-bold">{meal.portions}</td>
+                  <td className="border border-brand-cream-dark p-2">
+                    {meal.is_unassigned
+                      ? <span className="text-red-700 font-bold">ללא מבשל</span>
+                      : (
+                        <>
+                          {meal.cooks.map((c) => (
+                            <span key={c.volunteer_id} className="inline-block ml-3">
+                              {c.volunteer_name}{c.phone && <span className="text-brand-burgundy/50 text-xs mr-1" dir="ltr">{c.phone}</span>}{c.has_vehicle ? ' 🚗' : ''}
+                            </span>
+                          ))}
+                          {meal.is_override && <span className="text-xs text-brand-gold-dark">(מחליף לשבת זו)</span>}
+                        </>
+                      )}
+                  </td>
+                </tr>
+              ))}
+            </PrintTable>
+          </ReportBlock>
+        )}
+
+        {/* 9. דוח שיבוץ מתנדבים (סעיף 33.2) */}
         <ReportBlock title="דוח שיבוץ מתנדבים"
           subtitle={vol ? `${vol.unassigned_count} משימות ללא שיבוץ` : ''}>
           {!vol?.tasks?.length ? (
@@ -1034,7 +1380,7 @@ function PrintTab({ id, onAuthError }) {
               {vol.tasks.map((t) => (
                 <tr key={t.task_id}>
                   <td className="border border-brand-cream-dark p-2 text-brand-burgundy/70">
-                    {t.area_name || '—'}
+                    {t.area_name || '-'}
                   </td>
                   <td className="border border-brand-cream-dark p-2 text-brand-burgundy/70">
                     {DAY_LABELS[t.execution_day] || 'כללי'}{t.shift ? ` · ${SHIFT_LABELS[t.shift]}` : ''}{t.timing_note ? ` · ${t.timing_note}` : ''}
@@ -1059,7 +1405,7 @@ function PrintTab({ id, onAuthError }) {
           )}
         </ReportBlock>
 
-        {/* 9. דפי פירוט ללקוח — כל הזמנה בעמוד נפרד (סעיף 33.6, ללא מחירים) */}
+        {/* 9. דפי פירוט ללקוח - כל הזמנה בעמוד נפרד (סעיף 33.6, ללא מחירים) */}
         {slips?.orders?.length > 0 && slips.orders.map((o) => (
           <section key={o.order_id} className="print-section print-avoid py-6">
             <div className="text-center mb-4">

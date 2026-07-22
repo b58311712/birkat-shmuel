@@ -1,9 +1,9 @@
 // =============================================================================
-// סקריפט חד-פעמי — הפקת GMAIL_REFRESH_TOKEN עבור שליחת מייל דרך Gmail API
+// סקריפט חד-פעמי - הפקת GMAIL_REFRESH_TOKEN עבור שליחת מייל דרך Gmail API
 // =============================================================================
 // למה: Render חוסמת פורטי SMTP יוצאים (587/465/25), ולכן שליחה דרך nodemailer
 // נכשלת בפרודקשן. Gmail API רץ על HTTPS/443 (לא חסום) ופותר את זה.
-// לשליחה דרך Gmail API צריך refresh_token עם scope gmail.send — הסקריפט הזה
+// לשליחה דרך Gmail API צריך refresh_token עם scope gmail.send - הסקריפט הזה
 // מפיק אותו פעם אחת דרך זרימת OAuth בדפדפן.
 //
 // הרצה (מתוך תיקיית server):
@@ -76,7 +76,7 @@ const server = http.createServer(async (req, res) => {
     console.log('✅ refresh_token הופק בהצלחה! העתיקו אותו ל-Render:');
     console.log('=============================================================\n');
     console.log('GMAIL_REFRESH_TOKEN=' + (tokens.refresh_token || '(חסר! ודאו prompt=consent)'));
-    console.log('\n(access_token זמני — לא צריך לשמור אותו, השרת מרענן אוטומטית)\n');
+    console.log('\n(access_token זמני - לא צריך לשמור אותו, השרת מרענן אוטומטית)\n');
     if (!tokens.refresh_token) {
       console.warn('⚠️ גוגל לא החזירה refresh_token. בטלו את הרשאת האפליקציה ב-');
       console.warn('   https://myaccount.google.com/permissions והריצו שוב.\n');
@@ -94,7 +94,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log('\n🔐 הפקת refresh_token ל-Gmail API');
   console.log('----------------------------------------------------------');
-  console.log('נפתח דפדפן לאישור. אם לא נפתח — פתחו ידנית את הקישור:\n');
+  console.log('נפתח דפדפן לאישור. אם לא נפתח - פתחו ידנית את הקישור:\n');
   console.log(authUrl + '\n');
   console.log(`ממתין ל-callback על ${REDIRECT_URI} ...\n`);
   openBrowser(authUrl);

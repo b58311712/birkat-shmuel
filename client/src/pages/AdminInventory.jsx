@@ -167,10 +167,10 @@ function ItemsManager({ onErr, canDelete }) {
           value={it.category_id || ''}
           ariaLabel="קטגוריה"
           type="select"
-          options={[{ value: '', label: '— ללא —' }, ...categories.map((category) => ({ value: category.id, label: category.name }))]}
+          options={[{ value: '', label: '- ללא -' }, ...categories.map((category) => ({ value: category.id, label: category.name }))]}
           onSave={(value) => saveInline(it.id, { category_id: value || null })}
         >
-          {it.category?.name || '—'}
+          {it.category?.name || '-'}
         </QuickEditCell>
       ),
     },
@@ -192,7 +192,7 @@ function ItemsManager({ onErr, canDelete }) {
             return saveInline(it.id, { unit_id: value });
           }}
         >
-          {it.unit_ref?.name || it.unit || '—'}
+          {it.unit_ref?.name || it.unit || '-'}
         </QuickEditCell>
       ),
     },
@@ -225,7 +225,7 @@ function ItemsManager({ onErr, canDelete }) {
           className="text-brand-burgundy/60"
           onSave={(value) => saveInline(it.id, { min_alert_quantity: value === '' ? null : Number(value) })}
         >
-          {it.min_alert_quantity != null ? fmt(it.min_alert_quantity) : '—'}
+          {it.min_alert_quantity != null ? fmt(it.min_alert_quantity) : '-'}
         </QuickEditCell>
       ),
     },
@@ -242,10 +242,10 @@ function ItemsManager({ onErr, canDelete }) {
           ariaLabel="ספק ברירת מחדל"
           type="select"
           className="text-brand-burgundy/60"
-          options={[{ value: '', label: '— ללא —' }, ...suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))]}
+          options={[{ value: '', label: '- ללא -' }, ...suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))]}
           onSave={(value) => saveInline(it.id, { default_supplier_id: value || null })}
         >
-          {it.default_supplier?.name || '—'}
+          {it.default_supplier?.name || '-'}
         </QuickEditCell>
       ),
     },
@@ -261,7 +261,7 @@ function ItemsManager({ onErr, canDelete }) {
             {formatWithVat(it.last_purchase_price, { exempt: it.vat_exempt })}
             {it.vat_exempt && <span className="text-xs text-brand-burgundy/45 mr-1">(פטור)</span>}
           </span>
-        ) : <span className="text-brand-burgundy/40">—</span>
+        ) : <span className="text-brand-burgundy/40">-</span>
       ),
     },
     {
@@ -472,7 +472,7 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
       // last_purchase_price כבר מגיע כמחיר בסיס מנורמל (או null) מרכיב PriceInput
       last_purchase_price: f.last_purchase_price === '' || f.last_purchase_price == null ? null : Number(f.last_purchase_price),
     };
-    // בעריכה — הכמות משתנה רק דרך "שינוי כמות" המתועד, לא בטופס הכרטיס
+    // בעריכה - הכמות משתנה רק דרך "שינוי כמות" המתועד, לא בטופס הכרטיס
     if (isEdit) delete payload.quantity_on_hand;
     else payload.quantity_on_hand = Number(f.quantity_on_hand) || 0;
     onSave(payload);
@@ -487,13 +487,13 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
         </Field>
         <Field label="יחידת מידה *">
           <select value={f.unit_id} onChange={(e) => set('unit_id', e.target.value)} className={inputCls}>
-            <option value="">— בחר יחידה —</option>
+            <option value="">- בחר יחידה -</option>
             {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
         </Field>
         <Field label="קטגוריה">
           <select value={f.category_id} onChange={(e) => set('category_id', e.target.value)} className={inputCls}>
-            <option value="">— ללא —</option>
+            <option value="">- ללא -</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Field>
@@ -503,7 +503,7 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
           </Field>
         ) : (
           <Field label="כמות קיימת">
-            <div className="p-2 text-brand-burgundy/60 text-sm">{fmt(initial.quantity_on_hand)} {baseUnitName} — לשינוי השתמש ב״שינוי כמות״</div>
+            <div className="p-2 text-brand-burgundy/60 text-sm">{fmt(initial.quantity_on_hand)} {baseUnitName} - לשינוי השתמש ב״שינוי כמות״</div>
           </Field>
         )}
         <Field label="כמות מינימום להתראה">
@@ -521,7 +521,7 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
         </Field>
         <Field label="ספק ברירת מחדל">
           <select value={f.default_supplier_id} onChange={(e) => set('default_supplier_id', e.target.value)} className={inputCls}>
-            <option value="">— ללא —</option>
+            <option value="">- ללא -</option>
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </Field>
@@ -546,7 +546,7 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
         </label>
       </div>
 
-      {/* טבלת המרות פר-פריט — זמינה רק לאחר שמירת הפריט (צריך item_id) */}
+      {/* טבלת המרות פר-פריט - זמינה רק לאחר שמירת הפריט (צריך item_id) */}
       {isEdit && (
         <ConversionsEditor
           itemId={f.id}
@@ -583,7 +583,7 @@ function AdjustForm({ item, onSubmit, onCancel, embedded = false }) {
 
   return (
     <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-burgundy'}>
-      {!embedded && <h3 className="font-bold text-brand-burgundy">שינוי כמות — {item.name}</h3>}
+      {!embedded && <h3 className="font-bold text-brand-burgundy">שינוי כמות - {item.name}</h3>}
       <p className="text-sm text-brand-burgundy/60">כמות נוכחית: {fmt(item.quantity_on_hand)} {item.unit}</p>
       <div className="flex gap-2">
         <button type="button" onClick={() => setMode('set')}
@@ -616,13 +616,13 @@ function AdjustForm({ item, onSubmit, onCancel, embedded = false }) {
   );
 }
 
-// היסטוריית תנועות של פריט (ביקורת — סעיף 25.5)
+// היסטוריית תנועות של פריט (ביקורת - סעיף 25.5)
 function HistoryPanel({ item, movements, onClose, embedded = false }) {
   return (
     <div className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-cream-dark'}>
       {!embedded && (
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-brand-burgundy">תנועות מלאי — {item.name}</h3>
+          <h3 className="font-bold text-brand-burgundy">תנועות מלאי - {item.name}</h3>
           <button onClick={onClose} className="text-brand-burgundy/60 hover:underline text-sm">סגירה</button>
         </div>
       )}
@@ -652,7 +652,7 @@ function HistoryPanel({ item, movements, onClose, embedded = false }) {
                   <td className="p-2" dir="ltr">{fmt(m.quantity_before)}</td>
                   <td className="p-2" dir="ltr">{fmt(m.quantity_after)}</td>
                   <td className="p-2 text-brand-burgundy/60">
-                    {m.shabbatot?.parasha ? `שבת ${m.shabbatot.parasha}` : (REASON_LABEL[m.reason] || m.reason || '—')}
+                    {m.shabbatot?.parasha ? `שבת ${m.shabbatot.parasha}` : (REASON_LABEL[m.reason] || m.reason || '-')}
                     {m.note && <span className="text-brand-burgundy/40"> · {m.note}</span>}
                   </td>
                 </tr>
@@ -845,10 +845,10 @@ function CategoryForm({ initial, onSave, onCancel, embedded = false }) {
 }
 
 // ===========================================================================
-// טבלת המרות יחידה פר-פריט (סעיף 25.4) — בתוך כרטיס הפריט
+// טבלת המרות יחידה פר-פריט (סעיף 25.4) - בתוך כרטיס הפריט
 // ===========================================================================
 // לכל פריט: אילו יחידות-מתכון ניתן להמיר ליחידת הבסיס שלו, ובאיזה פקטור.
-// דוגמה: פריט "סוכר" ביחידת בסיס "גרם" — המרה "כף" → 12.5 (1 כף = 12.5 גרם).
+// דוגמה: פריט "סוכר" ביחידת בסיס "גרם" - המרה "כף" → 12.5 (1 כף = 12.5 גרם).
 // יחידת הבסיס עצמה תמיד ניתנת לניכוי (פקטור 1) ואינה דורשת שורת המרה.
 function ConversionsEditor({ itemId, units, baseUnitId, baseUnitName, onErr }) {
   const [rows, setRows] = useState(null);
@@ -896,7 +896,7 @@ function ConversionsEditor({ itemId, units, baseUnitId, baseUnitName, onErr }) {
       <div>
         <h4 className="font-bold text-brand-burgundy">המרות יחידה למתכון</h4>
         <p className="text-xs text-brand-burgundy/55 mt-1">
-          כשמתכון משתמש ביחידה שונה מיחידת הבסיס ({baseUnitName || '—'}), הגדירו כאן כמה
+          כשמתכון משתמש ביחידה שונה מיחידת הבסיס ({baseUnitName || '-'}), הגדירו כאן כמה
           {' '}{baseUnitName || 'יחידות בסיס'} שוות ל-1 מהיחידה. נדרש לניכוי מלאי אוטומטי.
         </p>
       </div>
@@ -904,7 +904,7 @@ function ConversionsEditor({ itemId, units, baseUnitId, baseUnitName, onErr }) {
       {rows == null ? (
         <p className="text-sm text-brand-burgundy/50">טוען...</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-brand-burgundy/50">אין המרות מוגדרות. יחידת הבסיס ({baseUnitName || '—'}) תמיד זמינה.</p>
+        <p className="text-sm text-brand-burgundy/50">אין המרות מוגדרות. יחידת הבסיס ({baseUnitName || '-'}) תמיד זמינה.</p>
       ) : (
         <table className="w-full text-sm">
           <thead className="text-brand-burgundy/60 border-b border-brand-cream-dark">
@@ -917,7 +917,7 @@ function ConversionsEditor({ itemId, units, baseUnitId, baseUnitName, onErr }) {
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className="border-b border-brand-cream-dark/50">
-                <td className="p-2 font-medium">{r.from_unit_ref?.name || r.from_unit || '—'}</td>
+                <td className="p-2 font-medium">{r.from_unit_ref?.name || r.from_unit || '-'}</td>
                 <td className="p-2">
                   <InlineFactor value={r.factor_to_base} onSave={(v) => updateFactor(r.id, v)} />
                 </td>
@@ -935,7 +935,7 @@ function ConversionsEditor({ itemId, units, baseUnitId, baseUnitName, onErr }) {
         <label className="block">
           <span className="text-xs text-brand-burgundy/70 block mb-1">יחידת מקור</span>
           <select value={fromUnitId} onChange={(e) => setFromUnitId(e.target.value)} className={`${inputCls} min-w-[8rem]`}>
-            <option value="">— בחר —</option>
+            <option value="">- בחר -</option>
             {available.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
         </label>
@@ -1120,13 +1120,13 @@ function MergeUnitPanel({ source, units, onMerge, onCancel, embedded = false }) 
 
   return (
     <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-burgundy'}>
-      {!embedded && <h3 className="font-bold text-brand-burgundy">מיזוג יחידה — {source.name}</h3>}
+      {!embedded && <h3 className="font-bold text-brand-burgundy">מיזוג יחידה - {source.name}</h3>}
       <p className="text-sm text-brand-burgundy/60">
         כל {source.usage_count || 0} השימושים של "{source.name}" יועברו ליחידת היעד, והיחידה תימחק.
       </p>
       <Field label="למזג אל יחידת היעד">
         <select value={targetId} onChange={(e) => setTargetId(e.target.value)} className={inputCls}>
-          <option value="">— בחר יחידת יעד —</option>
+          <option value="">- בחר יחידת יעד -</option>
           {targets.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.usage_count || 0} שימושים)</option>)}
         </select>
       </Field>

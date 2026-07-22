@@ -6,7 +6,7 @@ import {
   Badge, ORDER_STATUS, PAYMENT_STATUS, REFUND_STATUS, DELIVERY_METHOD, PAYMENT_METHOD,
 } from '../lib/status.jsx';
 
-// פירוט הזמנה מלא לניהול — כל השדות כפי שהתקבלו מהטופס + פעולות (סעיף 9.3, 11)
+// פירוט הזמנה מלא לניהול - כל השדות כפי שהתקבלו מהטופס + פעולות (סעיף 9.3, 11)
 export default function AdminOrderView({ onAuthError, currentAdmin }) {
   const { id } = useParams();
   const nav = useNavigate();
@@ -79,10 +79,10 @@ export default function AdminOrderView({ onAuthError, currentAdmin }) {
           </div>
         </div>
 
-        {/* בקשת כמות מנות חריגה — לתשומת לב המנהל לפני אישור (סעיף 12.2) */}
+        {/* בקשת כמות מנות חריגה - לתשומת לב המנהל לפני אישור (סעיף 12.2) */}
         {order.portions_exception_requested && (
           <div className="mb-4 rounded-lg bg-amber-50 border border-amber-300 p-3">
-            <div className="font-bold text-amber-800">בקשת כמות מנות חריגה — נדרש אישור מודע</div>
+            <div className="font-bold text-amber-800">בקשת כמות מנות חריגה - נדרש אישור מודע</div>
             <p className="text-sm text-amber-800 mt-0.5">
               {order.portions_exception_note || 'אחת הסעודות מחוץ לטווח הרגיל (50–100 מנות).'}
             </p>
@@ -114,7 +114,7 @@ export default function AdminOrderView({ onAuthError, currentAdmin }) {
           )}
         </div>
 
-        {/* פרטי לקוח + אספקה — כפי שהתקבלו מהטופס */}
+        {/* פרטי לקוח + אספקה - כפי שהתקבלו מהטופס */}
         <div className="grid sm:grid-cols-2 gap-4 mb-5">
           <Section title="פרטי לקוח">
             <Field label="שם" value={order.customers?.full_name} />
@@ -229,7 +229,7 @@ function Field({ label, value }) {
   return (
     <div className="flex justify-between text-sm gap-3">
       <span className="text-brand-burgundy/60 shrink-0">{label}</span>
-      <span className="text-brand-burgundy font-medium text-left">{value || '—'}</span>
+      <span className="text-brand-burgundy font-medium text-left">{value || '-'}</span>
     </div>
   );
 }
@@ -243,7 +243,7 @@ function Row({ label, value }) {
   );
 }
 
-// פאנל הנחות וחיובים ידניים (סעיף 16) — הוספה/הסרה עם חישוב-מחדש בשרת
+// פאנל הנחות וחיובים ידניים (סעיף 16) - הוספה/הסרה עם חישוב-מחדש בשרת
 function DiscountsCharges({ order, disabled, onError, onChanged }) {
   const [busy, setBusy] = useState(false);
   const [dType, setDType] = useState('fixed_amount');
@@ -366,7 +366,7 @@ function DiscountsCharges({ order, disabled, onError, onChanged }) {
   );
 }
 
-// פאנל גבייה מלקוח (סעיף 17) — תיעוד תשלומים, סיכום יתרה, אישור חריגה
+// פאנל גבייה מלקוח (סעיף 17) - תיעוד תשלומים, סיכום יתרה, אישור חריגה
 function PaymentsPanel({ order, onError, onChanged }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -478,7 +478,7 @@ function PaymentsPanel({ order, onError, onChanged }) {
   );
 }
 
-// פאנל החזרים כספיים (סעיף 19) — פתיחה, ביצוע, ביטול. ניהול פנימי בלבד (19.3).
+// פאנל החזרים כספיים (סעיף 19) - פתיחה, ביצוע, ביטול. ניהול פנימי בלבד (19.3).
 function RefundsPanel({ order, onError, onChanged }) {
   const [refunds, setRefunds] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -536,7 +536,7 @@ function RefundsPanel({ order, onError, onChanged }) {
         <form onSubmit={createRefund} className="bg-brand-cream/40 rounded-xl p-3 mb-4 space-y-2">
           <div className="grid sm:grid-cols-2 gap-2">
             <div>
-              <label className="text-xs text-brand-burgundy/60">סכום להחזר (₪) — ריק = חישוב אוטומטי מהיתרה</label>
+              <label className="text-xs text-brand-burgundy/60">סכום להחזר (₪) - ריק = חישוב אוטומטי מהיתרה</label>
               <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)}
                 placeholder="אוטומטי" className="input w-full" />
             </div>

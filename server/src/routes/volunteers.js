@@ -2,12 +2,12 @@
 // השיבוץ לשבת ספציפית נעשה בנתיבי תיק שבת (routes/shabbatFile.js).
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
-import { asyncHandler, fail } from '../lib/helpers.js';
+import { asyncHandler, fail, splitFullName } from '../lib/helpers.js';
 import { requireRole } from '../lib/auth.js';
 
 const router = Router();
 
-const VOLUNTEER_SELECT = '*, meals:linked_meal_id (id, name), customers:customer_id (id, full_name, phone, email), area:area_id (id, name, is_cooking), volunteer_meal_links (meal_id, meals:meal_id (id, name)), volunteer_area_links (area_id)';
+const VOLUNTEER_SELECT = '*, meals:linked_meal_id (id, name), customers:customer_id (id, first_name, last_name, full_name, phone, email), area:area_id (id, name, is_cooking), volunteer_meal_links (meal_id, meals:meal_id (id, name)), volunteer_area_links (area_id)';
 const DAYS = ['general', 'tuesday', 'wednesday', 'thursday', 'friday', 'shabbat', 'motzei_shabbat'];
 const SHIFTS = [null, 'morning', 'noon', 'evening', 'night'];
 
@@ -116,7 +116,7 @@ function withStaffing(task) {
 // מתנדבים (סעיף 24.1)
 // ===========================================================================
 
-// GET /api/admin/volunteers?area=&active= — רשימת מתנדבים
+// GET /api/admin/volunteers?area=&active= - רשימת מתנדבים
 router.get('/', asyncHandler(async (req, res) => {
   let q = supabase
     .from('volunteers')
@@ -133,11 +133,15 @@ router.get('/', asyncHandler(async (req, res) => {
     : volunteers);
 }));
 
-// POST /api/admin/volunteers — יצירת מתנדב
+// POST /api/admin/volunteers - יצירת מתנדב
 router.post('/', asyncHandler(async (req, res) => {
-  const { full_name, phone, email, customer_id, area_id, area_ids, linked_meal_id, has_vehicle, is_regular, notes, meal_ids } = req.body || {};
+  const { first_name, last_name, full_name, phone, email, customer_id, area_id, area_ids, linked_meal_id, has_vehicle, is_regular, notes, meal_ids } = req.body || {};
   const linkedCustomerId = customer_id || null;
-  if (!linkedCustomerId && !full_name?.trim()) return fail(res, 400, 'חובה להזין שם מלא.');
+  // שם פרטי/משפחה מפוצלים, עם נפילה מ-full_name. כשמקושר ללקוח - טריגר ב-DB דורס מהלקוח.
+  let firstName = String(first_name ?? '').trim();
+  let lastName = last_name !== undefined ? (String(last_name || '').trim() || null) : null;
+  if (!firstName && full_name) { const s = splitFullName(full_name); firstName = s.first_name; lastName = s.last_name; }
+  if (!linkedCustomerId && !firstName) return fail(res, 400, 'חובה להזין שם פרטי.');
   const volunteerAreaIds = normalizedAreaIds(area_ids, area_id);
   const areaError = await validateAreaIds(volunteerAreaIds);
   if (areaError) return fail(res, 400, areaError);
@@ -150,7 +154,8 @@ router.post('/', asyncHandler(async (req, res) => {
 
   const { data, error } = await supabase.from('volunteers').insert({
     customer_id: linkedCustomerId,
-    full_name: full_name?.trim() || 'linked customer',
+    first_name: firstName || null,
+    last_name: lastName,
     phone: phone?.trim() || null,
     email: email?.trim() || null,
     area_id: volunteerAreaIds[0],
@@ -176,7 +181,7 @@ router.post('/', asyncHandler(async (req, res) => {
 }));
 
 // ===========================================================================
-// תחומי התנדבות — טבלה ניתנת-לניהול (מחליפה את הקטגוריות והתחומים הקבועים)
+// תחומי התנדבות - טבלה ניתנת-לניהול (מחליפה את הקטגוריות והתחומים הקבועים)
 // ===========================================================================
 router.get('/areas', asyncHandler(async (_req, res) => {
   const { data, error } = await supabase.from('volunteer_areas')
@@ -221,7 +226,7 @@ router.patch('/areas/:id', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/areas/:id', requireRole('developer'), asyncHandler(async (req, res) => {
-  // לא ניתן למחוק תחום בשימוש (מתנדבים/משימות/קישורים) — ניתן להשבית.
+  // לא ניתן למחוק תחום בשימוש (מתנדבים/משימות/קישורים) - ניתן להשבית.
   const [vols, tasks, links] = await Promise.all([
     supabase.from('volunteers').select('id', { count: 'exact', head: true }).eq('area_id', req.params.id),
     supabase.from('volunteer_tasks').select('id', { count: 'exact', head: true }).eq('area_id', req.params.id),
@@ -239,9 +244,9 @@ router.delete('/areas/:id', requireRole('developer'), asyncHandler(async (req, r
   res.json({ ok: true });
 }));
 
-// PATCH /api/admin/volunteers/:id — עדכון מתנדב (כולל השבתה — מחיקה רכה)
+// PATCH /api/admin/volunteers/:id - עדכון מתנדב (כולל השבתה - מחיקה רכה)
 router.patch('/:id', asyncHandler(async (req, res) => {
-  const allowed = ['customer_id', 'full_name', 'phone', 'email', 'area_id', 'linked_meal_id', 'has_vehicle', 'is_regular', 'is_active', 'notes'];
+  const allowed = ['customer_id', 'first_name', 'last_name', 'phone', 'email', 'area_id', 'linked_meal_id', 'has_vehicle', 'is_regular', 'is_active', 'notes'];
   const patch = {};
   for (const k of allowed) {
     if (k in (req.body || {})) patch[k] = req.body[k];
@@ -255,8 +260,11 @@ router.patch('/:id', asyncHandler(async (req, res) => {
     if (areaError) return fail(res, 400, areaError);
     patch.area_id = volunteerAreaIds[0];
   }
-  if ('full_name' in patch && !patch.customer_id && !patch.full_name?.trim()) return fail(res, 400, 'שם מלא לא יכול להיות ריק.');
-  if ('full_name' in patch && patch.full_name) patch.full_name = patch.full_name.trim();
+  if ('first_name' in patch) {
+    patch.first_name = String(patch.first_name || '').trim();
+    if (!patch.customer_id && !patch.first_name) return fail(res, 400, 'שם פרטי לא יכול להיות ריק.');
+  }
+  if ('last_name' in patch) patch.last_name = patch.last_name ? String(patch.last_name).trim() : null;
   if ('phone' in patch) patch.phone = patch.phone ? String(patch.phone).trim() : null;
   if ('email' in patch) patch.email = patch.email ? String(patch.email).trim() : null;
   if ('notes' in patch) patch.notes = patch.notes ? String(patch.notes).trim() : null;
@@ -269,7 +277,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   }
   if (Object.keys(patch).length === 0 && !syncMeals && !syncAreas) return fail(res, 400, 'אין שדות לעדכון.');
 
-  // אם אין שדות עמודה לעדכן אבל כן צריך לסנכרן קישורים — שולפים את המתנדב בלבד.
+  // אם אין שדות עמודה לעדכן אבל כן צריך לסנכרן קישורים - שולפים את המתנדב בלבד.
   const query = Object.keys(patch).length
     ? supabase.from('volunteers').update(patch).eq('id', req.params.id).select(VOLUNTEER_SELECT).maybeSingle()
     : supabase.from('volunteers').select(VOLUNTEER_SELECT).eq('id', req.params.id).maybeSingle();
@@ -319,7 +327,7 @@ router.delete('/:id', requireRole('developer'), asyncHandler(async (req, res) =>
 // משימות קבועות (סעיף 24.3)
 // ===========================================================================
 
-// GET /api/admin/volunteers/tasks — רשימת משימות קבועות
+// GET /api/admin/volunteers/tasks - רשימת משימות קבועות
 router.get('/tasks', asyncHandler(async (req, res) => {
   let q = supabase
     .from('volunteer_tasks')
@@ -332,7 +340,7 @@ router.get('/tasks', asyncHandler(async (req, res) => {
   res.json((data || []).map(withStaffing));
 }));
 
-// POST /api/admin/volunteers/tasks — יצירת משימה קבועה
+// POST /api/admin/volunteers/tasks - יצירת משימה קבועה
 router.post('/tasks', asyncHandler(async (req, res) => {
   const { name, area_id, linked_meal_id, execution_day = 'general', shift = null, timing_note, display_order } = req.body || {};
   if (!name?.trim()) return fail(res, 400, 'חובה להזין שם משימה.');
@@ -358,7 +366,7 @@ router.post('/tasks', asyncHandler(async (req, res) => {
   res.json({ ok: true, task: withStaffing({ ...data, volunteer_task_links: [] }) });
 }));
 
-// PATCH /api/admin/volunteers/tasks/:id — עדכון משימה קבועה
+// PATCH /api/admin/volunteers/tasks/:id - עדכון משימה קבועה
 router.patch('/tasks/:id', asyncHandler(async (req, res) => {
   const allowed = ['name', 'area_id', 'linked_meal_id', 'execution_day', 'shift', 'timing_note', 'display_order', 'is_active'];
   const patch = {};

@@ -1,13 +1,13 @@
 // טופס הזמנה פיזי להדפסה (סעיף 8 / דף הזמנה ידני).
 // ------------------------------------------------------------------------
 // מסך למנהל שמייצר דף הזמנה מודפס לחלוקה ללקוחות שאינם מזמינים דרך הממשק.
-// שואב את הקטלוג החי (GET /api/catalog) — אותו מקור של אשף ההזמנה — כך שהטופס
+// שואב את הקטלוג החי (GET /api/catalog) - אותו מקור של אשף ההזמנה - כך שהטופס
 // המודפס תמיד תואם למאכלים, לקטגוריות ולתוספות שבמערכת. משתמש בתשתית ההדפסה
 // הקיימת (.print-area / .no-print ב-index.css) כדי להדפיס רק את הטופס.
 //
 // המבנה מופרד לפי סעודה בדיוק כמו במסך ההזמנה של הלקוח (ליל שבת / יום שבת /
 // סעודה שלישית): בכל סעודה מופיעות רק הקטגוריות והמאכלים הזמינים בה, והכללים
-// המיוחדים משתקפים דינמית מהקטלוג —
+// המיוחדים משתקפים דינמית מהקטלוג -
 //   • חלוקה אוטומטית (split_mode='additive'): תיוג מאכל עיקרי / מאכל משני + כלל האחוזים
 //     (primary_percent / secondary_percent) בבחירת שני סוגים.
 //   • חלוקה ידנית (split_mode='equal'): הערה + שדה "מנות" לכל סוג.
@@ -60,7 +60,7 @@ function buildSlotLayout(catalog) {
 
   return slots.map((slot) => {
     const blocks = [];
-    // הפניות לסעודות-יעד של ירושה שסעודת-האב שלהן היא הסעודה הנוכחית — נאספות
+    // הפניות לסעודות-יעד של ירושה שסעודת-האב שלהן היא הסעודה הנוכחית - נאספות
     // כדי להציג הערה "יש לסמן בטור בוקר" בסעודת היעד.
     const inheritNotes = [];
 
@@ -74,7 +74,7 @@ function buildSlotLayout(catalog) {
       const isInheriting = !!parentSlotId;
 
       if (isInheriting && parentSlotId !== slot.id) {
-        // סעודת-יעד של ירושה: לא מציגים את הקטגוריה — היא מסומנת בסעודת-האב
+        // סעודת-יעד של ירושה: לא מציגים את הקטגוריה - היא מסומנת בסעודת-האב
         // (טור בוקר). נרשום הערת הפניה אחת לכל קטגוריה יורשת בסעודה זו.
         inheritNotes.push({
           categoryName: category.name,
@@ -92,7 +92,7 @@ function buildSlotLayout(catalog) {
         inheritTarget: isInheriting && parentSlotId === slot.id
           ? {
               // שם סעודת-היעד לצורך כותרת הטור: הסעודה הראשונה שאיננה האב
-              // שהקטגוריה זמינה בה. אם אין — מדלגים על הטור.
+              // שהקטגוריה זמינה בה. אם אין - מדלגים על הטור.
               targetSlotName: targetSlotNameFor(category, slot.id, catalog, slotById),
               extraAllowed: category.extra_allowed ?? null,
             }
@@ -147,11 +147,11 @@ export default function AdminPrintForm({ onAuthError }) {
     if (!card) return undefined;
 
     function measure() {
-      // אם מצב ההדפסה פעיל (למשל תצוגה מקדימה) — לא מודדים מחדש, כדי לא לחשב
+      // אם מצב ההדפסה פעיל (למשל תצוגה מקדימה) - לא מודדים מחדש, כדי לא לחשב
       // zoom חדש על בסיס פונט ההדפסה בזמן שההדפסה רצה. המדידה נעשית במצב מסך.
       if (window.matchMedia && window.matchMedia('print').matches) return;
 
-      // מודדים את פריסת ההדפסה: רוחב A4 שימושי, פונט הדפסה (13px — מסונכרן עם
+      // מודדים את פריסת ההדפסה: רוחב A4 שימושי, פונט הדפסה (13px - מסונכרן עם
       // הכלל @media print ב-index.css), בלי zoom.
       const prev = { width: card.style.width, maxWidth: card.style.maxWidth, zoom: card.style.zoom, fontSize: card.style.fontSize, lineHeight: card.style.lineHeight };
       card.style.zoom = '1';
@@ -167,7 +167,7 @@ export default function AdminPrintForm({ onAuthError }) {
       Object.assign(card.style, prev);
 
       // גובה היעד: 2 עמודים עם רזרבה קטנה (SAFETY). מכווצים רק אם צריך; zoom ≥ 0.7
-      // כדי לשמור על טקסט קריא (אם התוכן גדול מדי — עדיף שיגלוש מעט מלהקטין מדי).
+      // כדי לשמור על טקסט קריא (אם התוכן גדול מדי - עדיף שיגלוש מעט מלהקטין מדי).
       const SAFETY = 0.97;
       const budget = 2 * A4_PRINT_H * SAFETY;
       const zoom = h > budget ? Math.max(0.7, budget / h) : 1;
@@ -204,13 +204,13 @@ export default function AdminPrintForm({ onAuthError }) {
   return (
     <Page
       title="דף הזמנה להדפסה"
-      subtitle="טופס פיזי לחלוקה ללקוחות שאינם מזמינים דרך הממשק — נשאב מהקטלוג החי, מופרד לפי סעודה"
+      subtitle="טופס פיזי לחלוקה ללקוחות שאינם מזמינים דרך הממשק - נשאב מהקטלוג החי, מופרד לפי סעודה"
     >
-      {/* פס פעולות — לא מודפס */}
+      {/* פס פעולות - לא מודפס */}
       <div className="no-print mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-brand-burgundy/70">
           <p>
-            הטופס משקף את המאכלים והתוספות הפעילים במערכת, מופרד לפי סעודה. לעריכת התוכן — מסך
+            הטופס משקף את המאכלים והתוספות הפעילים במערכת, מופרד לפי סעודה. לעריכת התוכן - מסך
             <span className="font-semibold"> מאכלים וקטגוריות</span>.
           </p>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-xs">
@@ -230,7 +230,7 @@ export default function AdminPrintForm({ onAuthError }) {
         </button>
       </div>
 
-      {/* אזור ההדפסה — מכוון לדף דו-צדדי (עד 2 עמודי A4). מחלקה print-form
+      {/* אזור ההדפסה - מכוון לדף דו-צדדי (עד 2 עמודי A4). מחלקה print-form
           מפעילה דחיסה ייעודית בהדפסה (ראה index.css) בלי להשפיע על הדפסות אחרות.
           zoom מחושב ב-JS מבטיח שהתוכן נכנס ל-2 עמודים בכל גודל קטלוג. */}
       <div ref={printRef} className="print-area print-form">
@@ -242,7 +242,7 @@ export default function AdminPrintForm({ onAuthError }) {
 
           <OrderMetaFields />
 
-          {/* גוף התפריט — סעודה אחר סעודה. בכל סעודה הקטגוריות זורמות בשתי עמודות
+          {/* גוף התפריט - סעודה אחר סעודה. בכל סעודה הקטגוריות זורמות בשתי עמודות
               (.print-slot-body); ה-zoom מכווץ רק אם צריך כדי לא לחרוג מ-2 עמודים. */}
           <div className="mt-5 space-y-4">
             {slotSections.map((section) => (
@@ -250,7 +250,7 @@ export default function AdminPrintForm({ onAuthError }) {
             ))}
           </div>
 
-          {/* תוספות בתשלום + הנחיות — זורמות אחרי המנות (אין מעבר עמוד כפוי). */}
+          {/* תוספות בתשלום + הנחיות - זורמות אחרי המנות (אין מעבר עמוד כפוי). */}
           {catalog.extras?.length > 0 && (
             <ExtrasBlock extras={catalog.extras} />
           )}
@@ -293,7 +293,7 @@ function FormHeader({ priceLines }) {
   );
 }
 
-// שדות פרטי ההזמנה (שם / פרשה / אירוע / מס' מנות / אולם + אמצעי תשלום) — לכתיבה ידנית
+// שדות פרטי ההזמנה (שם / פרשה / אירוע / מס' מנות / אולם + אמצעי תשלום) - לכתיבה ידנית
 function OrderMetaFields() {
   return (
     <div className="mt-4 rounded-lg border border-brand-cream-dark bg-brand-cream/30 p-4">
@@ -310,7 +310,7 @@ function OrderMetaFields() {
         <BlankField label="מס׳ מנות יום שבת" small />
         <BlankField label="סה״כ מנות" small />
       </div>
-      {/* אמצעי תשלום — סימון (מקור: PAYMENT_METHOD) */}
+      {/* אמצעי תשלום - סימון (מקור: PAYMENT_METHOD) */}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-brand-cream-dark pt-3">
         <span className="text-sm font-semibold text-brand-burgundy-dark">אמצעי תשלום:</span>
         {Object.values(PAYMENT_METHOD).map((label) => (
@@ -363,7 +363,7 @@ function SlotSection({ section }) {
         <h3 className="text-base font-extrabold">{slot.name}</h3>
       </div>
       <div className="print-slot-body px-3 py-2">
-        {/* הפניית סלטי-הבוקר (וכל קטגוריה יורשת אחרת) — משתרעת על שתי העמודות */}
+        {/* הפניית סלטי-הבוקר (וכל קטגוריה יורשת אחרת) - משתרעת על שתי העמודות */}
         {inheritNotes.map((n) => (
           <div
             key={n.categoryName}
@@ -413,7 +413,7 @@ function CategoryBlock({ block, slot }) {
       )}
       {isEqual && (
         <p className="border-b border-brand-cream-dark/70 bg-brand-gold/10 px-3 py-1 text-[11px] leading-snug text-brand-burgundy-dark">
-          חלוקה ידנית — יש לרשום את מספר המנות לכל סוג שנבחר. סך המנות בקטגוריה חייב להתאים למספר מנות הסעודה.
+          חלוקה ידנית - יש לרשום את מספר המנות לכל סוג שנבחר. סך המנות בקטגוריה חייב להתאים למספר מנות הסעודה.
         </p>
       )}
 
@@ -492,7 +492,7 @@ function ExtrasBlock({ extras }) {
             <CheckBox />
             <span className="flex-1 text-sm font-medium text-black">
               {e.name}
-              <span className="text-brand-burgundy/70"> — {Number(e.unit_price)} ש״ח ל{e.billing_unit}</span>
+              <span className="text-brand-burgundy/70"> - {Number(e.unit_price)} ש״ח ל{e.billing_unit}</span>
               {e.customer_note && <span className="block text-[11px] text-brand-gold-dark">{e.customer_note}</span>}
             </span>
             <span className="shrink-0 text-xs text-brand-burgundy/60">כמות:</span>

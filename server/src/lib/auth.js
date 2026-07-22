@@ -1,4 +1,4 @@
-// אימות משתמשי מערכת (מנהל/רכז/מפתחת) — שלב ביניים לפני Supabase Auth.
+// אימות משתמשי מערכת (מנהל/רכז/מפתחת) - שלב ביניים לפני Supabase Auth.
 // כניסה: אימייל + סיסמה -> hash מושווה מול app_users.password_hash (bcrypt).
 // הצלחה מחזירה JWT חתום שנשלח בכל קריאה ל-/api/admin בכותרת Authorization.
 import jwt from 'jsonwebtoken';
@@ -8,9 +8,9 @@ import { fail } from './helpers.js';
 const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_TTL = process.env.JWT_TTL || '12h';
 
-// אזהרה קשה אם אין סוד — טוקנים לא בטוחים בלי סוד יציב.
+// אזהרה קשה אם אין סוד - טוקנים לא בטוחים בלי סוד יציב.
 if (!JWT_SECRET) {
-  console.error('\n❌ חסר משתנה סביבה JWT_SECRET — אזור הניהול לא יאובטח.');
+  console.error('\n❌ חסר משתנה סביבה JWT_SECRET - אזור הניהול לא יאובטח.');
   console.error('   הוסיפי JWT_SECRET (מחרוזת אקראית ארוכה) ל-server/.env\n');
 }
 

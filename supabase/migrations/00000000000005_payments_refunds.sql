@@ -1,12 +1,12 @@
 -- =============================================================================
--- מטבח החסד — מיגרציה 05: גבייה מלקוחות והחזרים
+-- מטבח החסד - מיגרציה 05: גבייה מלקוחות והחזרים
 -- =============================================================================
 
 -- ----------------------------------------------------------------------------
--- customer_payments — תיעוד תשלומי לקוחות (סעיף 17.2)
+-- customer_payments - תיעוד תשלומי לקוחות (סעיף 17.2)
 -- ----------------------------------------------------------------------------
 -- הלקוח אינו מעדכן תשלום בעצמו; מנהל/רכז מתעדים ידנית (סעיף 17.1).
--- כל תשלום הוא רשומה נפרדת — מאפשר תשלום חלקי / מספר תשלומים להזמנה.
+-- כל תשלום הוא רשומה נפרדת - מאפשר תשלום חלקי / מספר תשלומים להזמנה.
 create table customer_payments (
   id             uuid primary key default gen_random_uuid(),
   order_id       uuid not null references orders(id),
@@ -21,13 +21,13 @@ create table customer_payments (
 
 create index idx_customer_payments_order on customer_payments (order_id);
 
-comment on table customer_payments is 'תיעוד תשלומי לקוחות — נרשמים ידנית ע"י מנהל/רכז (סעיף 17.2)';
+comment on table customer_payments is 'תיעוד תשלומי לקוחות - נרשמים ידנית ע"י מנהל/רכז (סעיף 17.2)';
 
 -- ----------------------------------------------------------------------------
--- order_refunds — החזרים כספיים ללקוח (סעיף 19)
+-- order_refunds - החזרים כספיים ללקוח (סעיף 19)
 -- ----------------------------------------------------------------------------
--- החזר אפשרי גם ללא ביטול (הפחתת מנות, הסרת תוספת, טעות גבייה — סעיף 19.1).
--- ניהול פנימי בלבד — לא מוצג ללקוח (סעיף 19.3).
+-- החזר אפשרי גם ללא ביטול (הפחתת מנות, הסרת תוספת, טעות גבייה - סעיף 19.1).
+-- ניהול פנימי בלבד - לא מוצג ללקוח (סעיף 19.3).
 create table order_refunds (
   id                    uuid primary key default gen_random_uuid(),
   order_id              uuid not null references orders(id),
@@ -52,4 +52,4 @@ create index idx_order_refunds_status on order_refunds (status);
 create trigger trg_order_refunds_updated_at
   before update on order_refunds for each row execute function set_updated_at();
 
-comment on table order_refunds is 'החזרים כספיים ללקוח — ניהול פנימי בלבד (סעיף 19)';
+comment on table order_refunds is 'החזרים כספיים ללקוח - ניהול פנימי בלבד (סעיף 19)';

@@ -1,5 +1,5 @@
 -- =============================================================================
--- מטבח החסד — מיגרציה 35: המרת יחידות מתכון ליחידת מלאי + ניכוי מלאי אטומי
+-- מטבח החסד - מיגרציה 35: המרת יחידות מתכון ליחידת מלאי + ניכוי מלאי אטומי
 -- =============================================================================
 -- הבעיה: המתכון (recipe_lines) נכתב ביחידות נוחות למטבח כטקסט חופשי ("כף",
 -- "כוס", "יחידה"), בעוד המלאי (inventory_items.unit) מנוהל ביחידת בסיס אחת
@@ -7,8 +7,8 @@
 -- בסיס יש ב-1 יחידת מתכון (למשל 1 "כף" סוכר = 12.5 גרם → factor_to_base=12.5).
 --
 -- שני מרכיבים:
---   1. inventory_unit_conversions — טבלת המרה פר-פריט (from_unit → פקטור לבסיס).
---   2. deduct_shabbat_inventory(...) — RPC שמנכה את כל הצריכה של שבת בעסקה אחת
+--   1. inventory_unit_conversions - טבלת המרה פר-פריט (from_unit → פקטור לבסיס).
+--   2. deduct_shabbat_inventory(...) - RPC שמנכה את כל הצריכה של שבת בעסקה אחת
 --      אטומית: נועל את שורות המלאי (FOR UPDATE), מאמת מספיקוּת, מעדכן כמות,
 --      רושם inventory_movements, ומסמן את תיק השבת כ-deducted. הכל-או-כלום.
 -- =============================================================================
@@ -52,7 +52,7 @@ comment on column inventory_unit_conversions.factor_to_base is
 -- אטומיות: כל גוף הפונקציה רץ בעסקה אחת. FOR UPDATE נועל את שורות המלאי כך
 -- ששני ניכויים במקביל לא יקראו את אותה quantity_on_hand ויכתבו זה על זה
 -- (מונע race condition / oversell). כל שגיאה (מלאי חסר, שבת כבר נוכתה) מגלגלת
--- את כל השינויים אחורה — אין ניכוי חלקי.
+-- את כל השינויים אחורה - אין ניכוי חלקי.
 --
 -- p_lines: jsonb מהצורה [{ "item_id": uuid, "qty_base": numeric }, ...]
 create or replace function deduct_shabbat_inventory(
@@ -70,7 +70,7 @@ declare
   v_item_name  text;
   v_file_id    uuid;
 begin
-  -- נועלים את תיק השבת ומוודאים שלא נוכה כבר (אנטי-כפילות). אם אין תיק — שגיאה.
+  -- נועלים את תיק השבת ומוודאים שלא נוכה כבר (אנטי-כפילות). אם אין תיק - שגיאה.
   select id into v_file_id
     from shabbat_files
    where shabbat_id = p_shabbat_id
@@ -78,7 +78,7 @@ begin
 
   if v_file_id is null then
     raise exception 'no-shabbat-file' using
-      hint = 'אין תיק שבת לשבת זו — לא ניתן לנכות מלאי';
+      hint = 'אין תיק שבת לשבת זו - לא ניתן לנכות מלאי';
   end if;
 
   if exists (select 1 from shabbat_files where id = v_file_id and is_inventory_deducted) then
@@ -96,7 +96,7 @@ begin
       continue; -- מדלגים על צריכה אפסית/לא-תקינה (לא אמורה להגיע מהיישום)
     end if;
 
-    -- FOR UPDATE — נעילת השורה עד סוף העסקה. שם הפריט לשגיאה קריאה.
+    -- FOR UPDATE - נעילת השורה עד סוף העסקה. שם הפריט לשגיאה קריאה.
     select quantity_on_hand, name into v_before, v_item_name
       from inventory_items
      where id = v_line.item_id
@@ -132,7 +132,7 @@ begin
     return next;
   end loop;
 
-  -- מסמנים את תיק השבת כמנוכה (בתוך אותה עסקה — אטומי מול הניכוי עצמו).
+  -- מסמנים את תיק השבת כמנוכה (בתוך אותה עסקה - אטומי מול הניכוי עצמו).
   update shabbat_files
      set is_inventory_deducted = true,
          inventory_deducted_by  = p_performed_by,

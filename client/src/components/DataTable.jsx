@@ -3,30 +3,30 @@ import { DragHandle } from './DragHandle.jsx';
 
 // טבלה גנרית עם סינון פר-עמודה לפי טיפוס השדה. הסינון בזיכרון על השורות שנטענו.
 //
-// columns: מערך של הגדרות עמודה —
+// columns: מערך של הגדרות עמודה -
 //   { key, label, type, ... }
 //   type: 'text' | 'number' | 'date' | 'boolean' | 'enum' (ברירת מחדל: 'text')
-//   render(row)   — תוכן מותאם לתא (ברירת מחדל: הערך הגולמי). לא משפיע על הסינון.
-//   value(row)    — חילוץ הערך לסינון/מיון (ברירת מחדל: row[key]).
-//   accessor      — שם שדה חלופי לחילוץ (row[accessor]) כשאין value.
-//   dir           — 'ltr' לתאי טלפון/מייל/מספרים.
-//   map           — עבור type 'enum': מיפוי ערך→{label} (כמו CUSTOMER_STATUS). מזין את אפשרויות הסינון והתצוגה.
-//   options       — עבור type 'enum' ללא map: [{ value, label }] ידני.
-//   filterable    — false כדי לבטל סינון לעמודה (ברירת מחדל: true, למעט עמודות בלי key).
-//   className, headerClassName — מחלקות נוספות לתא/לכותרת.
-//   rawCell       — true: render(row) מחזיר <td> שלם משלו (הרכיב לא עוטף). לעריכה תוך-שורתית.
+//   render(row)   - תוכן מותאם לתא (ברירת מחדל: הערך הגולמי). לא משפיע על הסינון.
+//   value(row)    - חילוץ הערך לסינון/מיון (ברירת מחדל: row[key]).
+//   accessor      - שם שדה חלופי לחילוץ (row[accessor]) כשאין value.
+//   dir           - 'ltr' לתאי טלפון/מייל/מספרים.
+//   map           - עבור type 'enum': מיפוי ערך→{label} (כמו CUSTOMER_STATUS). מזין את אפשרויות הסינון והתצוגה.
+//   options       - עבור type 'enum' ללא map: [{ value, label }] ידני.
+//   filterable    - false כדי לבטל סינון לעמודה (ברירת מחדל: true, למעט עמודות בלי key).
+//   className, headerClassName - מחלקות נוספות לתא/לכותרת.
+//   rawCell       - true: render(row) מחזיר <td> שלם משלו (הרכיב לא עוטף). לעריכה תוך-שורתית.
 //
-// actions(row)  — פונקציה שמחזירה JSX של כפתורי פעולה בעמודה אחרונה (אופציונלי).
-// renderExpanded(row) — שורה מורחבת מתחת לשורה (למשל טופס עריכה-בשורה). מוצגת כאשר expandedId === rowKey(row).
-// rowKey(row)   — מזהה ייחודי לשורה (ברירת מחדל: row.id).
-// expandedId    — מזהה השורה שמורחבת כרגע.
-// rowClassName(row) — מחלקות נוספות לשורה.
-// empty, loading — טקסטים למצב ריק/טעינה. rows=null => טעינה.
+// actions(row)  - פונקציה שמחזירה JSX של כפתורי פעולה בעמודה אחרונה (אופציונלי).
+// renderExpanded(row) - שורה מורחבת מתחת לשורה (למשל טופס עריכה-בשורה). מוצגת כאשר expandedId === rowKey(row).
+// rowKey(row)   - מזהה ייחודי לשורה (ברירת מחדל: row.id).
+// expandedId    - מזהה השורה שמורחבת כרגע.
+// rowClassName(row) - מחלקות נוספות לשורה.
+// empty, loading - טקסטים למצב ריק/טעינה. rows=null => טעינה.
 //
 // גרירה-לסידור (אופציונלי):
-//   reorderable   — true מוסיף עמודת ידית-גרירה בהתחלה ומאפשר גרירת שורות.
-//   onReorder(orderedRows) — נקרא עם השורות בסדר החדש לאחר שחרור. באחריות הקורא לשמור.
-//   reorderHint / reorderDisabledHint — טקסטי עזר (עם/בלי סינון פעיל).
+//   reorderable   - true מוסיף עמודת ידית-גרירה בהתחלה ומאפשר גרירת שורות.
+//   onReorder(orderedRows) - נקרא עם השורות בסדר החדש לאחר שחרור. באחריות הקורא לשמור.
+//   reorderHint / reorderDisabledHint - טקסטי עזר (עם/בלי סינון פעיל).
 //   הגרירה מושבתת אוטומטית כשסינון פעיל (כי אי-אפשר לגזור סדר גלובלי מרשימה מסוננת),
 //   וגם כשיש שורה מורחבת בעריכה או מיון פעיל.
 //
@@ -126,8 +126,8 @@ export function DataTable({
   reorderHint = 'אפשר לגרור שורות כדי לשנות את הסדר',
   reorderDisabledHint = 'כדי לשנות סדר יש לנקות את הסינון',
   initialFilters,
-  onRowClick,          // לחיצה על שורה (מחוץ לפקדים אינטראקטיביים) — פותחת רשומה
-  onVisibleRowsChange, // נקרא עם השורות הגלויות (אחרי סינון+מיון) — לדפדוף בפאנל
+  onRowClick,          // לחיצה על שורה (מחוץ לפקדים אינטראקטיביים) - פותחת רשומה
+  onVisibleRowsChange, // נקרא עם השורות הגלויות (אחרי סינון+מיון) - לדפדוף בפאנל
 }) {
   const [filters, setFilters] = useState(initialFilters || {});
   const [showFilters, setShowFilters] = useState(!!initialFilters && Object.keys(initialFilters).length > 0);
@@ -399,9 +399,9 @@ export function DataTable({
 // תצוגת ברירת מחדל לתא כשאין render מותאם
 function cellDefault(col, row) {
   const v = getValue(col, row);
-  if (col.type === 'boolean') return v ? '✓' : '—';
-  if (col.type === 'enum' && col.map) return col.map[v]?.label ?? v ?? '—';
-  if (v == null || v === '') return '—';
+  if (col.type === 'boolean') return v ? '✓' : '-';
+  if (col.type === 'enum' && col.map) return col.map[v]?.label ?? v ?? '-';
+  if (v == null || v === '') return '-';
   return String(v);
 }
 

@@ -114,7 +114,7 @@ function Detail({ label, value }) {
   return (
     <div>
       <div className="text-xs text-brand-burgundy/50">{label}</div>
-      <div className="font-medium text-brand-burgundy">{value || '—'}</div>
+      <div className="font-medium text-brand-burgundy">{value || '-'}</div>
     </div>
   );
 }

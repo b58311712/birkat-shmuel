@@ -80,9 +80,22 @@ function parseCsv(text) {
   return rows.slice(1).map((values) => {
     const raw = {};
     headers.forEach((header, index) => { raw[header] = values[index] || ''; });
-    const fullName = pick(raw, 'fullName') || [pick(raw, 'givenName'), pick(raw, 'familyName')].filter(Boolean).join(' ');
+    const given = pick(raw, 'givenName');
+    const family = pick(raw, 'familyName');
+    const fullName = pick(raw, 'fullName') || [given, family].filter(Boolean).join(' ');
+    // אם יש שם פרטי/משפחה מפורשים בקובץ - משתמשים בהם; אחרת מפצלים את השם המלא.
+    let firstName = given;
+    let lastName = family;
+    if (!firstName) {
+      const trimmed = fullName.trim().replace(/\s+/g, ' ');
+      const idx = trimmed.indexOf(' ');
+      firstName = idx === -1 ? trimmed : trimmed.slice(0, idx);
+      lastName = idx === -1 ? '' : trimmed.slice(idx + 1);
+    }
     const address = [pick(raw, 'address'), pick(raw, 'city')].filter(Boolean).join(', ');
     return {
+      first_name: firstName,
+      last_name: lastName,
       full_name: fullName,
       phone: pick(raw, 'phone'),
       email: pick(raw, 'email'),
@@ -90,7 +103,7 @@ function parseCsv(text) {
       status: parseStatus(pick(raw, 'status')),
       internal_notes: pick(raw, 'notes'),
     };
-  }).filter((customer) => customer.full_name || customer.phone || customer.email || customer.address);
+  }).filter((customer) => customer.first_name || customer.full_name || customer.phone || customer.email || customer.address);
 }
 
 export default function AdminCustomers({ onAuthError, currentAdmin }) {
@@ -198,7 +211,7 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
   const columns = [
     {
       key: 'full_name',
-      label: 'שם',
+      label: 'שם מלא',
       type: 'text',
       className: 'font-medium',
       render: (customer) => (
@@ -208,6 +221,8 @@ export default function AdminCustomers({ onAuthError, currentAdmin }) {
         </>
       ),
     },
+    { key: 'first_name', label: 'שם פרטי', type: 'text', render: (c) => c.first_name || '-' },
+    { key: 'last_name', label: 'שם משפחה', type: 'text', render: (c) => c.last_name || '-' },
     { key: 'phone', label: 'טלפון', type: 'text', dir: 'ltr', render: (c) => c.phone || '-' },
     { key: 'email', label: 'מייל', type: 'text', dir: 'ltr', render: (c) => c.email || '-' },
     { key: 'address', label: 'כתובת', type: 'text', render: (c) => c.address || '-' },
@@ -338,7 +353,8 @@ function ImportResult({ result }) {
 function CustomerForm({ initial, onSave, onCancel, embedded = false }) {
   const [form, setForm] = useState({
     id: initial.id,
-    full_name: initial.full_name || '',
+    first_name: initial.first_name || '',
+    last_name: initial.last_name || '',
     phone: initial.phone || '',
     email: initial.email || '',
     address: initial.address || '',
@@ -350,10 +366,12 @@ function CustomerForm({ initial, onSave, onCancel, embedded = false }) {
 
   function submit(e) {
     e.preventDefault();
-    if (!form.full_name.trim()) return alert('חובה להזין שם מלא.');
+    if (!form.first_name.trim()) return alert('חובה להזין שם פרטי.');
     if (!form.phone.trim()) return alert('חובה להזין טלפון.');
     onSave({
       ...form,
+      first_name: form.first_name.trim(),
+      last_name: form.last_name.trim() || null,
       email: form.email || null,
       address: form.address || null,
       internal_notes: form.internal_notes || null,
@@ -365,8 +383,11 @@ function CustomerForm({ initial, onSave, onCancel, embedded = false }) {
     <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
       {!embedded && <h3 className="font-bold text-brand-burgundy">{isEdit ? 'עריכת לקוח' : 'לקוח חדש'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Field label="שם מלא *">
-          <input value={form.full_name} onChange={(e) => set('full_name', e.target.value)} className={inputCls} />
+        <Field label="שם פרטי *">
+          <input value={form.first_name} onChange={(e) => set('first_name', e.target.value)} className={inputCls} />
+        </Field>
+        <Field label="שם משפחה">
+          <input value={form.last_name} onChange={(e) => set('last_name', e.target.value)} className={inputCls} />
         </Field>
         <Field label="טלפון *">
           <input value={form.phone} onChange={(e) => set('phone', e.target.value)} className={inputCls} dir="ltr" />

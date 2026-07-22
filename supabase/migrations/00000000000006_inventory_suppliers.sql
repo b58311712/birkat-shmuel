@@ -1,9 +1,9 @@
 -- =============================================================================
--- מטבח החסד — מיגרציה 06: מלאי, ספקים, הזמנות רכש ותנועות מלאי
+-- מטבח החסד - מיגרציה 06: מלאי, ספקים, הזמנות רכש ותנועות מלאי
 -- =============================================================================
 
 -- ----------------------------------------------------------------------------
--- suppliers — ספקים / כרטיס ספק (סעיף 27.1)
+-- suppliers - ספקים / כרטיס ספק (סעיף 27.1)
 -- ----------------------------------------------------------------------------
 create table suppliers (
   id                uuid primary key default gen_random_uuid(),
@@ -21,10 +21,10 @@ create table suppliers (
 create trigger trg_suppliers_updated_at
   before update on suppliers for each row execute function set_updated_at();
 
-comment on table suppliers is 'ספקים — כרטיס ספק (סעיף 27.1)';
+comment on table suppliers is 'ספקים - כרטיס ספק (סעיף 27.1)';
 
 -- ----------------------------------------------------------------------------
--- inventory_categories — קטגוריות מלאי (סעיף 25.1)
+-- inventory_categories - קטגוריות מלאי (סעיף 25.1)
 -- ----------------------------------------------------------------------------
 -- חומרי גלם, קפואים, ירקות, אריזות, כלים חד-פעמיים, ניקיון, ציוד... דינמי.
 create table inventory_categories (
@@ -42,7 +42,7 @@ create trigger trg_inventory_categories_updated_at
 comment on table inventory_categories is 'קטגוריות מלאי דינמיות (חומרי גלם, אריזות, ניקיון...) (סעיף 25.1)';
 
 -- ----------------------------------------------------------------------------
--- inventory_items — כרטיס מוצר מלאי (סעיף 25.2)
+-- inventory_items - כרטיס מוצר מלאי (סעיף 25.2)
 -- ----------------------------------------------------------------------------
 -- אריזות מנוהלות כפריטי מלאי רגילים (סעיף 22.4).
 -- בשלב הראשון: אין תוקף/אצווה/מיקום (סעיף 25.2).
@@ -69,11 +69,11 @@ create index idx_inventory_items_packaging on inventory_items (is_packaging) whe
 create trigger trg_inventory_items_updated_at
   before update on inventory_items for each row execute function set_updated_at();
 
-comment on table inventory_items is 'כרטיס מוצר מלאי — כולל אריזות (סעיף 25.2, 22.4)';
+comment on table inventory_items is 'כרטיס מוצר מלאי - כולל אריזות (סעיף 25.2, 22.4)';
 comment on column inventory_items.is_packaging is 'true = פריט אריזה (קופסה, תבנית, שקית) המנוהל כמלאי';
 
 -- ----------------------------------------------------------------------------
--- item_suppliers — ספקים אפשריים למוצר (סעיף 25.3)
+-- item_suppliers - ספקים אפשריים למוצר (סעיף 25.3)
 -- ----------------------------------------------------------------------------
 -- מוצר יכול להיות משויך לכמה ספקים; אחד מהם הוא ברירת מחדל (בכרטיס המוצר).
 create table item_suppliers (
@@ -98,7 +98,7 @@ alter table packing_rules
   foreign key (packaging_item_id) references inventory_items(id);
 
 -- ----------------------------------------------------------------------------
--- purchase_orders — הזמנות רכש (סעיף 27.2)
+-- purchase_orders - הזמנות רכש (סעיף 27.2)
 -- ----------------------------------------------------------------------------
 create table purchase_orders (
   id                    uuid primary key default gen_random_uuid(),
@@ -145,7 +145,7 @@ end;
 $$;
 
 -- ----------------------------------------------------------------------------
--- purchase_order_lines — פריטי הזמנת רכש (סעיף 27.2)
+-- purchase_order_lines - פריטי הזמנת רכש (סעיף 27.2)
 -- ----------------------------------------------------------------------------
 create table purchase_order_lines (
   id                 uuid primary key default gen_random_uuid(),
@@ -164,7 +164,7 @@ create index idx_po_lines_po on purchase_order_lines (purchase_order_id);
 comment on table purchase_order_lines is 'פריטי הזמנת רכש (סעיף 27.2)';
 
 -- ----------------------------------------------------------------------------
--- supplier_payments — תשלומים לספק לפי הזמנת רכש (סעיף 28.1)
+-- supplier_payments - תשלומים לספק לפי הזמנת רכש (סעיף 28.1)
 -- ----------------------------------------------------------------------------
 create table supplier_payments (
   id                 uuid primary key default gen_random_uuid(),
@@ -192,7 +192,7 @@ create trigger trg_supplier_payments_updated_at
 comment on table supplier_payments is 'תשלומים לספקים לפי הזמנת רכש (סעיף 28.1)';
 
 -- ----------------------------------------------------------------------------
--- inventory_movements — תנועות מלאי (סעיף 25.4, 25.5)
+-- inventory_movements - תנועות מלאי (סעיף 25.4, 25.5)
 -- ----------------------------------------------------------------------------
 -- כל שינוי כמות מתועד: הפחתה לאחר הכנות, קבלת סחורה, בלאי, תיקון ספירה...
 -- delta חיובי = תוספת, שלילי = הפחתה. שומר כמות לפני/אחרי לביקורת.

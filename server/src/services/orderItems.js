@@ -1,4 +1,4 @@
-// בניית פריטי הזמנה + חישוב סכומים — משותף ליצירה (POST /orders) ולעריכה (PUT /admin/orders/:id)
+// בניית פריטי הזמנה + חישוב סכומים - משותף ליצירה (POST /orders) ולעריכה (PUT /admin/orders/:id)
 // כל המחירים מחושבים בשרת מהמחירון הפעיל הנוכחי ונשמרים "קפואים" (סעיף 15.3).
 import { supabase } from '../lib/supabase.js';
 import { calcBase, suggestExtraQuantity, calcFinal, round2 } from './pricing.js';
@@ -6,7 +6,7 @@ import { fetchSlotSplits, percentFor } from './categorySplits.js';
 import { roundUp } from '../lib/helpers.js';
 
 // טווח המנות הסטנדרטי לסעודה. כמות מחוץ לטווח מותרת רק כ"בקשת חריג" (סעיף 12.2)
-// הדורשת אישור מודע של מנהל. אין תקרה/רצפה קשיחה — כל כמות חיובית שלמה מותרת בחריג.
+// הדורשת אישור מודע של מנהל. אין תקרה/רצפה קשיחה - כל כמות חיובית שלמה מותרת בחריג.
 const MIN_PORTIONS = 50;
 const MAX_PORTIONS = 100;
 
@@ -18,17 +18,17 @@ function detectPortionsException(slots, slotNameById = {}) {
     .filter((s) => s.portions < MIN_PORTIONS || s.portions > MAX_PORTIONS);
   if (outOfRange.length === 0) return { requested: false, note: null };
   const note = outOfRange
-    .map((s) => `${slotNameById[s.id] || 'סעודה'}: ${s.portions} מנות (חריג — מחוץ לטווח ${MIN_PORTIONS}–${MAX_PORTIONS})`)
+    .map((s) => `${slotNameById[s.id] || 'סעודה'}: ${s.portions} מנות (חריג - מחוץ לטווח ${MIN_PORTIONS}–${MAX_PORTIONS})`)
     .join('; ');
   return { requested: true, note };
 }
 
 // מקבל את קלט ההזמנה (slots/meals/extras) ומחזיר את שורות המשנה המוכנות + הסכומים.
-// לא נוגע ב-DB של ההזמנה עצמה — רק קורא קטלוג ומחשב. הקורא אחראי על insert/update.
+// לא נוגע ב-DB של ההזמנה עצמה - רק קורא קטלוג ומחשב. הקורא אחראי על insert/update.
 //   input: { slots:[{meal_slot_id,portions}], meals:[{meal_slot_id,meal_id}], extras:[{extra_id,actual_quantity?}], orderId? }
-// אם מועבר orderId — נקראים סכומי ההנחות והחיובים הידניים הקיימים ומקופלים ל-final_amount,
+// אם מועבר orderId - נקראים סכומי ההנחות והחיובים הידניים הקיימים ומקופלים ל-final_amount,
 // כך שעריכת הזמנה לא מוחקת בטעות הנחות/חיובים שנרשמו בנפרד (סעיף 16).
-// מחזיר גם exception:{ requested, note } — סימון בקשת כמות חריגה (מחוץ ל-50–100).
+// מחזיר גם exception:{ requested, note } - סימון בקשת כמות חריגה (מחוץ ל-50–100).
 // זורק Error עם .userMessage כשיש כשל ולידציה (מנות לא חיוביות / companion-only).
 export async function buildOrderItems(input) {
   const slots = Array.isArray(input.slots) ? input.slots : [];
@@ -77,7 +77,7 @@ export async function buildOrderItems(input) {
   // --- מאכלים: snapshot של שם + תוספת מחיר אם דורש (סעיף 13.5) ---
   // בקטגוריות עם חלוקת מנות לכל מאכל כמות מנות משלו (order_meals.portions):
   //   - equal:    הלקוח מזין כמות לכל מאכל, וסך הכמויות = מנות הסעודה (100 = 60+40).
-  //   - additive: חלוקה אוטומטית — מאכל עיקרי מקבל primary_percent, מאכל משני (is_secondary)
+  //   - additive: חלוקה אוטומטית - מאכל עיקרי מקבל primary_percent, מאכל משני (is_secondary)
   //               מקבל תוספת של secondary_percent; מאכל יחיד מקבל 100% (כל מנות הסעודה).
   //               האחוזים ניתנים לדריסה פר-סעודה (category_slot_splits): למשל בלילה
   //               80%+50% ובבוקר 50%+50%. אין דריסה → האחוז ברמת הקטגוריה.
@@ -141,8 +141,8 @@ export async function buildOrderItems(input) {
         }
         continue;
       }
-      // equal — סכום הכמויות = מנות הסעודה (המצב הקודם)
-      if (entry.count === 1) continue; // סוג יחיד — יקבל את כל המנות בלולאה למטה
+      // equal - סכום הכמויות = מנות הסעודה (המצב הקודם)
+      if (entry.count === 1) continue; // סוג יחיד - יקבל את כל המנות בלולאה למטה
       if (!entry.allDeclared) {
         const err = new Error('portion-split-missing');
         err.userMessage = 'יש להזין מספר מנות לכל מאכל בקטגוריה שמחייבת חלוקת כמויות.';
@@ -179,7 +179,7 @@ export async function buildOrderItems(input) {
           const pct = percentFor(splitOverrides, cat, m.meal_slot_id, meal.is_secondary);
           mealPortions = roundUp(slotPortions * pct / 100); // אוטומטי, עיגול כלפי מעלה
         } else {
-          mealPortions = Number(m.portions);               // equal — כבר אומת למעלה
+          mealPortions = Number(m.portions);               // equal - כבר אומת למעלה
         }
       }
 
@@ -239,7 +239,7 @@ export async function buildOrderItems(input) {
     }
   }
 
-  // --- הנחות וחיובים ידניים קיימים (רק בעריכה, כשיש orderId) — סעיף 16 ---
+  // --- הנחות וחיובים ידניים קיימים (רק בעריכה, כשיש orderId) - סעיף 16 ---
   let manualCharges = 0;
   let discounts = 0;
   if (input.orderId) {
@@ -268,7 +268,7 @@ export async function buildOrderItems(input) {
     slotRows,
     mealRows,
     extraRows,
-    exception, // { requested, note } — בקשת כמות מנות חריגה (מחוץ ל-50–100)
+    exception, // { requested, note } - בקשת כמות מנות חריגה (מחוץ ל-50–100)
     amounts: {
       base_amount: baseAmount,
       extras_amount: round2(extrasAmount),

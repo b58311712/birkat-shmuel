@@ -1,7 +1,7 @@
 // ניהול מלאי CRUD (סעיף 25). מאחורי אימות מנהל.
-//   - כרטיס מוצר: יצירה, עריכה, השבתה (מחיקה רכה — סעיף 32)
+//   - כרטיס מוצר: יצירה, עריכה, השבתה (מחיקה רכה - סעיף 32)
 //   - קטגוריות מלאי דינמיות (סעיף 25.1)
-//   - ספקים לצורך בחירת ספק ברירת מחדל (סעיף 25.3; ניהול ספקים מלא — סעיף 27)
+//   - ספקים לצורך בחירת ספק ברירת מחדל (סעיף 25.3; ניהול ספקים מלא - סעיף 27)
 //   - שינוי ידני בכמות עם תיעוד תנועה (סעיף 25.5)
 //   - הפחתה בפועל מהמלאי לאחר ההכנות, לפי צורך השבת (סעיף 25.4)
 //   - תנועות מלאי לצפייה (היסטוריית שינויים)
@@ -36,7 +36,7 @@ function num(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-// פותר unit_id: מעדיף id מפורש; אחרת פותר משם-יחידה (טקסט) — מוצא קיים
+// פותר unit_id: מעדיף id מפורש; אחרת פותר משם-יחידה (טקסט) - מוצא קיים
 // (case-insensitive) או יוצר יחידה חדשה. תאימות-לאחור לקוד ששולח unit טקסט.
 // מחזיר unit_id או null אם לא סופקה יחידה כלל.
 async function resolveUnitId(unitId, unitText) {
@@ -104,7 +104,7 @@ async function deleteSupplier(supplierId) {
 // קטגוריות מלאי (סעיף 25.1)
 // ===========================================================================
 
-// GET /api/admin/inventory/categories — רשימת קטגוריות
+// GET /api/admin/inventory/categories - רשימת קטגוריות
 router.get('/categories', asyncHandler(async (req, res) => {
   let q = supabase.from('inventory_categories').select('*').order('display_order').order('name');
   if (req.query.active === 'true') q = q.eq('is_active', true);
@@ -113,7 +113,7 @@ router.get('/categories', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// POST /api/admin/inventory/categories — יצירת קטגוריה
+// POST /api/admin/inventory/categories - יצירת קטגוריה
 router.post('/categories', asyncHandler(async (req, res) => {
   const { name, display_order } = req.body || {};
   if (!name?.trim()) return fail(res, 400, 'חובה להזין שם קטגוריה.');
@@ -125,7 +125,7 @@ router.post('/categories', asyncHandler(async (req, res) => {
   res.json({ ok: true, category: data });
 }));
 
-// PATCH /api/admin/inventory/categories/:id — עדכון/השבתת קטגוריה
+// PATCH /api/admin/inventory/categories/:id - עדכון/השבתת קטגוריה
 router.patch('/categories/:id', asyncHandler(async (req, res) => {
   const allowed = ['name', 'display_order', 'is_active'];
   const patch = {};
@@ -159,11 +159,11 @@ router.delete('/categories/:id', requireRole('developer'), asyncHandler(async (r
 }));
 
 // ===========================================================================
-// יחידות מידה גלובליות (סעיף 25) — ערכים מנוהלים במקום טקסט חופשי
+// יחידות מידה גלובליות (סעיף 25) - ערכים מנוהלים במקום טקסט חופשי
 // ===========================================================================
 const UNIT_KINDS = ['weight', 'volume', 'count', 'length', 'other'];
 
-// GET /api/admin/inventory/units — רשימת יחידות
+// GET /api/admin/inventory/units - רשימת יחידות
 // ?with_usage=true מוסיף usage_count לכל יחידה (פריטי מלאי + מתכונים + המרות),
 // לזיהוי יחידות שאפשר למחוק/למזג. חישוב בזיכרון (טבלאות קטנות).
 router.get('/units', asyncHandler(async (req, res) => {
@@ -187,7 +187,7 @@ router.get('/units', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// POST /api/admin/inventory/units/:id/merge — [כלי מיזוג זמני]
+// POST /api/admin/inventory/units/:id/merge - [כלי מיזוג זמני]
 // ממזג את היחידה (:id = מקור) לתוך יחידת יעד: ממפה מחדש כל הרשומות ומוחק את
 // המקור, אטומית ב-RPC merge_units. body: { target_id }
 router.post('/units/:id/merge', asyncHandler(async (req, res) => {
@@ -207,7 +207,7 @@ router.post('/units/:id/merge', asyncHandler(async (req, res) => {
   res.json({ ok: true, ...data });
 }));
 
-// POST /api/admin/inventory/units — יצירת יחידה
+// POST /api/admin/inventory/units - יצירת יחידה
 router.post('/units', asyncHandler(async (req, res) => {
   const { name, kind, display_order } = req.body || {};
   if (!name?.trim()) return fail(res, 400, 'חובה להזין שם יחידה.');
@@ -223,7 +223,7 @@ router.post('/units', asyncHandler(async (req, res) => {
   res.json({ ok: true, unit: data });
 }));
 
-// PATCH /api/admin/inventory/units/:id — עדכון/השבתת יחידה
+// PATCH /api/admin/inventory/units/:id - עדכון/השבתת יחידה
 router.patch('/units/:id', asyncHandler(async (req, res) => {
   const allowed = ['name', 'kind', 'display_order', 'is_active'];
   const patch = {};
@@ -240,14 +240,14 @@ router.patch('/units/:id', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/units/:id', requireRole('developer'), asyncHandler(async (req, res) => {
-  // יחידה בשימוש (פריט/מתכון/המרה) לא נמחקת — מונע יתמות FK. עדיף השבתה.
+  // יחידה בשימוש (פריט/מתכון/המרה) לא נמחקת - מונע יתמות FK. עדיף השבתה.
   const [items, recipes, convs] = await Promise.all([
     supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('unit_id', req.params.id),
     supabase.from('recipe_lines').select('id', { count: 'exact', head: true }).eq('unit_id', req.params.id),
     supabase.from('inventory_unit_conversions').select('id', { count: 'exact', head: true }).eq('from_unit_id', req.params.id),
   ]);
   const inUse = (items.count || 0) + (recipes.count || 0) + (convs.count || 0);
-  if (inUse > 0) return fail(res, 409, `לא ניתן למחוק — היחידה בשימוש ב-${inUse} רשומות. ניתן להשבית אותה.`);
+  if (inUse > 0) return fail(res, 409, `לא ניתן למחוק - היחידה בשימוש ב-${inUse} רשומות. ניתן להשבית אותה.`);
 
   const { data, error } = await supabase.from('units').delete().eq('id', req.params.id).select('id').maybeSingle();
   if (error) throw error;
@@ -257,10 +257,10 @@ router.delete('/units/:id', requireRole('developer'), asyncHandler(async (req, r
 }));
 
 // ===========================================================================
-// המרות יחידה פר-פריט (סעיף 25.4) — יחידת-מתכון → פקטור ליחידת הבסיס
+// המרות יחידה פר-פריט (סעיף 25.4) - יחידת-מתכון → פקטור ליחידת הבסיס
 // ===========================================================================
 
-// GET /api/admin/inventory/items/:id/conversions — המרות של פריט + שם היחידה
+// GET /api/admin/inventory/items/:id/conversions - המרות של פריט + שם היחידה
 router.get('/items/:id/conversions', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('inventory_unit_conversions')
@@ -271,7 +271,7 @@ router.get('/items/:id/conversions', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// POST /api/admin/inventory/items/:id/conversions — הוספת המרה
+// POST /api/admin/inventory/items/:id/conversions - הוספת המרה
 // body: { from_unit_id, factor_to_base, note }
 router.post('/items/:id/conversions', asyncHandler(async (req, res) => {
   const { from_unit_id, factor_to_base, note } = req.body || {};
@@ -298,7 +298,7 @@ router.post('/items/:id/conversions', asyncHandler(async (req, res) => {
   res.json({ ok: true, conversion: data });
 }));
 
-// PATCH /api/admin/inventory/conversions/:id — עדכון פקטור/הערה
+// PATCH /api/admin/inventory/conversions/:id - עדכון פקטור/הערה
 router.patch('/conversions/:id', asyncHandler(async (req, res) => {
   const patch = {};
   if ('factor_to_base' in (req.body || {})) {
@@ -315,7 +315,7 @@ router.patch('/conversions/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true, conversion: data });
 }));
 
-// DELETE /api/admin/inventory/conversions/:id — מחיקת המרה
+// DELETE /api/admin/inventory/conversions/:id - מחיקת המרה
 router.delete('/conversions/:id', asyncHandler(async (req, res) => {
   const { data, error } = await supabase.from('inventory_unit_conversions')
     .delete().eq('id', req.params.id).select('id').maybeSingle();
@@ -325,11 +325,11 @@ router.delete('/conversions/:id', asyncHandler(async (req, res) => {
 }));
 
 // ===========================================================================
-// ספקים — לבחירת ספק ברירת מחדל בכרטיס המוצר (סעיף 25.3)
-// ניהול ספקים מלא (הזמנות רכש וכו') הוא סעיף 27 — כאן רק מינימום למלאי.
+// ספקים - לבחירת ספק ברירת מחדל בכרטיס המוצר (סעיף 25.3)
+// ניהול ספקים מלא (הזמנות רכש וכו') הוא סעיף 27 - כאן רק מינימום למלאי.
 // ===========================================================================
 
-// GET /api/admin/inventory/suppliers — רשימת ספקים
+// GET /api/admin/inventory/suppliers - רשימת ספקים
 router.get('/suppliers', asyncHandler(async (req, res) => {
   let q = supabase.from('suppliers').select('*').order('name');
   if (req.query.active === 'true') q = q.eq('is_active', true);
@@ -338,7 +338,7 @@ router.get('/suppliers', asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// POST /api/admin/inventory/suppliers — יצירת ספק
+// POST /api/admin/inventory/suppliers - יצירת ספק
 router.post('/suppliers', asyncHandler(async (req, res) => {
   const { name, contact_name, phone, email, preferred_channel, order_notes } = req.body || {};
   if (!name?.trim()) return fail(res, 400, 'חובה להזין שם ספק.');
@@ -356,7 +356,7 @@ router.post('/suppliers', asyncHandler(async (req, res) => {
   res.json({ ok: true, supplier: data });
 }));
 
-// PATCH /api/admin/inventory/suppliers/:id — עדכון/השבתת ספק
+// PATCH /api/admin/inventory/suppliers/:id - עדכון/השבתת ספק
 router.patch('/suppliers/:id', asyncHandler(async (req, res) => {
   const allowed = ['name', 'contact_name', 'phone', 'email', 'preferred_channel', 'order_notes', 'is_active'];
   const patch = {};
@@ -381,10 +381,10 @@ router.delete('/suppliers/:id', requireRole('developer'), asyncHandler(async (re
 }));
 
 // ===========================================================================
-// פריטי מלאי — כרטיס מוצר (סעיף 25.2)
+// פריטי מלאי - כרטיס מוצר (סעיף 25.2)
 // ===========================================================================
 
-// GET /api/admin/inventory/items?category_id=&active=&packaging=&low_stock= — רשימת פריטים
+// GET /api/admin/inventory/items?category_id=&active=&packaging=&low_stock= - רשימת פריטים
 router.get('/items', asyncHandler(async (req, res) => {
   let q = supabase
     .from('inventory_items')
@@ -398,7 +398,7 @@ router.get('/items', asyncHandler(async (req, res) => {
   const { data, error } = await q;
   if (error) throw error;
 
-  // סינון "מתחת למינימום" (סעיף 30.3) — לוגיקה בצד השרת, כי היא השוואה בין עמודות
+  // סינון "מתחת למינימום" (סעיף 30.3) - לוגיקה בצד השרת, כי היא השוואה בין עמודות
   let items = data;
   if (req.query.low_stock === 'true') {
     items = (data || []).filter((i) =>
@@ -407,7 +407,7 @@ router.get('/items', asyncHandler(async (req, res) => {
   res.json(items);
 }));
 
-// GET /api/admin/inventory/items/:id — כרטיס מוצר בודד + תנועות אחרונות
+// GET /api/admin/inventory/items/:id - כרטיס מוצר בודד + תנועות אחרונות
 router.get('/items/:id', asyncHandler(async (req, res) => {
   const { data: item, error } = await supabase
     .from('inventory_items')
@@ -427,7 +427,7 @@ router.get('/items/:id', asyncHandler(async (req, res) => {
   res.json({ item, movements });
 }));
 
-// POST /api/admin/inventory/items — יצירת פריט מלאי (סעיף 25.2)
+// POST /api/admin/inventory/items - יצירת פריט מלאי (סעיף 25.2)
 // יחידת המידה מגיעה כ-unit_id (FK ל-units). לתאימות-לאחור מקבלים גם unit טקסט:
 // אם הגיע רק טקסט, פותרים/יוצרים ממנו יחידה. עמודת unit הטקסטואלית ממולאת
 // אוטומטית בטריגר מ-unit_id, אז אין צורך לשלוח אותה כשיש unit_id.
@@ -457,7 +457,7 @@ router.post('/items', asyncHandler(async (req, res) => {
   res.json({ ok: true, item: data });
 }));
 
-// PATCH /api/admin/inventory/items/:id — עדכון כרטיס מוצר (כולל השבתה — סעיף 32)
+// PATCH /api/admin/inventory/items/:id - עדכון כרטיס מוצר (כולל השבתה - סעיף 32)
 // שים לב: עדכון ישיר של quantity_on_hand כאן מיועד לתיקון פרטי כרטיס בלבד.
 // שינוי כמות מתועד (בלאי/ספירה) נעשה דרך POST /items/:id/adjust (סעיף 25.5).
 router.patch('/items/:id', asyncHandler(async (req, res) => {
@@ -501,7 +501,7 @@ router.delete('/items/:id', requireRole('developer'), asyncHandler(async (req, r
 // שינוי ידני בכמות עם תיעוד תנועה (סעיף 25.5)
 // ===========================================================================
 
-// POST /api/admin/inventory/items/:id/adjust — שינוי ידני מתועד
+// POST /api/admin/inventory/items/:id/adjust - שינוי ידני מתועד
 // body: { new_quantity | delta, reason, note }
 // שומר תנועה עם כמות לפני/אחרי, מי ביצע וסיבה.
 router.post('/items/:id/adjust', asyncHandler(async (req, res) => {
@@ -551,7 +551,7 @@ router.post('/items/:id/adjust', asyncHandler(async (req, res) => {
 // הפחתה בפועל לאחר ההכנות, לפי צורך השבת (סעיף 25.4)
 // ===========================================================================
 
-// GET /api/admin/inventory/shabbat/:shabbatId/deduction-preview — תצוגה מקדימה
+// GET /api/admin/inventory/shabbat/:shabbatId/deduction-preview - תצוגה מקדימה
 // מחזיר לכל פריט: כמות נדרשת לשבת (מעוגלת), כמות במלאי, וכמות מוצעת להפחתה.
 // מבוסס על אותו חישוב של לשונית מלאי בתיק שבת (סעיף 26).
 router.get('/shabbat/:shabbatId/deduction-preview', asyncHandler(async (req, res) => {
@@ -569,7 +569,7 @@ router.get('/shabbat/:shabbatId/deduction-preview', asyncHandler(async (req, res
         is_packaging: it.is_packaging,
         required: it.required,          // כמות נדרשת מעוגלת לשבת
         on_hand: it.on_hand,            // כמות קיימת
-        suggested_deduction: it.required, // ברירת מחדל — להפחית את כל הנדרש
+        suggested_deduction: it.required, // ברירת מחדל - להפחית את כל הנדרש
         supplier_name: group.supplier_name,
       });
     }
@@ -578,8 +578,8 @@ router.get('/shabbat/:shabbatId/deduction-preview', asyncHandler(async (req, res
   res.json({ shabbat_id: req.params.shabbatId, items: rows });
 }));
 
-// POST /api/admin/inventory/shabbat/:shabbatId/deduct — ביצוע הפחתה בפועל
-// body: { lines: [{ item_id, quantity }] } — הכמויות ניתנות לתיקון ידני לפני ההפחתה (סעיף 25.4.3)
+// POST /api/admin/inventory/shabbat/:shabbatId/deduct - ביצוע הפחתה בפועל
+// body: { lines: [{ item_id, quantity }] } - הכמויות ניתנות לתיקון ידני לפני ההפחתה (סעיף 25.4.3)
 // כל שורה מפחיתה מהמלאי ומתעדת תנועה 'shabbat_deduction' מקושרת לשבת.
 router.post('/shabbat/:shabbatId/deduct', asyncHandler(async (req, res) => {
   const { lines } = req.body || {};
@@ -641,7 +641,7 @@ router.post('/shabbat/:shabbatId/deduct', asyncHandler(async (req, res) => {
   res.json({ ok: true, deducted: results.length, items: results });
 }));
 
-// POST /api/admin/inventory/shabbat/:shabbatId/deduct-auto — ניכוי אוטומטי מלא
+// POST /api/admin/inventory/shabbat/:shabbatId/deduct-auto - ניכוי אוטומטי מלא
 // מנכה את כל צריכת המלאי של השבת לפי המתכונים, בעסקה אחת אטומית (סעיף 25.4):
 //   - צובר צריכה מכל ההזמנות התפעוליות, ממיר יחידות מתכון ליחידת בסיס.
 //   - פקטור המרה חסר / מלאי לא מספיק → 400 עם הודעה מתארת, בלי ניכוי חלקי.
@@ -662,10 +662,10 @@ router.post('/shabbat/:shabbatId/deduct-auto', asyncHandler(async (req, res) => 
 }));
 
 // ===========================================================================
-// תנועות מלאי — צפייה כללית (סעיף 25.5, ביקורת)
+// תנועות מלאי - צפייה כללית (סעיף 25.5, ביקורת)
 // ===========================================================================
 
-// GET /api/admin/inventory/movements?item_id=&type=&limit= — היסטוריית תנועות
+// GET /api/admin/inventory/movements?item_id=&type=&limit= - היסטוריית תנועות
 router.get('/movements', asyncHandler(async (req, res) => {
   let q = supabase
     .from('inventory_movements')

@@ -238,8 +238,8 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
                   {visibleOrders.map((order) => (
                     <tr key={order.id} onClick={() => nav(`/admin/orders/${order.id}`)} className="cursor-pointer transition hover:bg-[#fbfaf8] focus-within:bg-[#fbfaf8]">
                       <td className="px-5 py-4"><span className="font-mono text-xs font-bold tabular-nums text-brand-burgundy">{order.order_number}</span>{order.portions_exception_requested && <span className="mr-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">חריג</span>}</td>
-                      <td className="px-4 py-4"><div className="flex flex-col items-start"><div className="font-bold text-[#3c3034]">{order.customers?.full_name || '—'}</div><div className="mt-0.5 text-xs text-[#948a8d]" dir="ltr">{order.customers?.phone || '—'}</div></div></td>
-                      <td className="px-4 py-4 text-sm font-medium text-[#63585c]">{order.shabbatot?.parasha || '—'}</td>
+                      <td className="px-4 py-4"><div className="flex flex-col items-start"><div className="font-bold text-[#3c3034]">{order.customers?.full_name || '-'}</div><div className="mt-0.5 text-xs text-[#948a8d]" dir="ltr">{order.customers?.phone || '-'}</div></div></td>
+                      <td className="px-4 py-4 text-sm font-medium text-[#63585c]">{order.shabbatot?.parasha || '-'}</td>
                       <td className="px-4 py-4 font-extrabold tabular-nums text-[#3c3034]">{Number(order.final_amount || 0).toLocaleString('he-IL', { maximumFractionDigits: 0 })} ₪</td>
                       <td className="px-4 py-4"><Badge map={ORDER_STATUS} value={order.order_status} /></td>
                       <td className="px-4 py-4"><Badge map={PAYMENT_STATUS} value={order.payment_status} /></td>
@@ -255,7 +255,7 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
                 <article key={order.id} className="p-4 transition hover:bg-[#fbfaf8]">
                   <button type="button" onClick={() => nav(`/admin/orders/${order.id}`)} className="w-full text-right focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold">
                     <div className="flex items-start justify-between gap-3">
-                      <div><p className="font-extrabold text-[#35292d]">{order.customers?.full_name || 'ללא שם'}</p><p className="mt-0.5 text-xs text-[#948a8d]" dir="ltr">{order.customers?.phone || '—'}</p><p className="mt-1 font-mono text-xs font-bold text-brand-burgundy/55">#{order.order_number}</p></div>
+                      <div><p className="font-extrabold text-[#35292d]">{order.customers?.full_name || 'ללא שם'}</p><p className="mt-0.5 text-xs text-[#948a8d]" dir="ltr">{order.customers?.phone || '-'}</p><p className="mt-1 font-mono text-xs font-bold text-brand-burgundy/55">#{order.order_number}</p></div>
                       <p className="shrink-0 text-base font-extrabold tabular-nums text-[#35292d]">{Number(order.final_amount || 0).toLocaleString('he-IL', { maximumFractionDigits: 0 })} ₪</p>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2"><Badge map={ORDER_STATUS} value={order.order_status} /><Badge map={PAYMENT_STATUS} value={order.payment_status} />{order.portions_exception_requested && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">חריג מנות</span>}{order.shabbatot?.parasha && <span className="text-xs font-semibold text-[#8a7f82]">פרשת {order.shabbatot.parasha}</span>}</div>

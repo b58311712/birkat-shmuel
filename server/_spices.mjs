@@ -22,7 +22,7 @@ async function main() {
     (byUnit[un] ||= []).push(it.name + (it.is_active ? '' : ' [לא פעיל]'));
   }
   for (const [un, names] of Object.entries(byUnit)) {
-    console.log(`\n  יחידת בסיס "${un}" — ${names.length} פריטים:`);
+    console.log(`\n  יחידת בסיס "${un}" - ${names.length} פריטים:`);
     console.log('    ' + names.join(', '));
   }
 

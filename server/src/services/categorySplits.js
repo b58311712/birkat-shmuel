@@ -1,4 +1,4 @@
-// דריסות אחוזי החלוקה האוטומטית (split_mode='additive') פר-סעודה — טבלת category_slot_splits.
+// דריסות אחוזי החלוקה האוטומטית (split_mode='additive') פר-סעודה - טבלת category_slot_splits.
 //
 // מודל: לכל (קטגוריה × סעודה) אפשר לקבוע אחוז עיקרי ואחוז משני משלה. ערך NULL
 // (או שורה חסרה) = נפילה-לאחור לאחוז ברמת הקטגוריה, ומשם לברירת המחדל (80/50).
@@ -44,7 +44,7 @@ export async function fetchSlotSplits(categoryIds = null) {
   return map;
 }
 
-// אותם נתונים בקיבוץ לפי קטגוריה: { [categoryId]: { [slotId]: {…} } } — לצירוף לתשובת API.
+// אותם נתונים בקיבוץ לפי קטגוריה: { [categoryId]: { [slotId]: {…} } } - לצירוף לתשובת API.
 export async function fetchSlotSplitsByCategory(categoryIds = null) {
   const flat = await fetchSlotSplits(categoryIds);
   const byCategory = {};
@@ -66,7 +66,7 @@ export function percentFor(splits, category, mealSlotId, isSecondary) {
 export async function replaceSlotSplits(categoryId, rows) {
   const del = await supabase.from('category_slot_splits').delete().eq('category_id', categoryId);
   if (del.error) {
-    // הטבלה חסרה ואין מה לשמור — שמירת הקטגוריה עצמה ממשיכה כרגיל.
+    // הטבלה חסרה ואין מה לשמור - שמירת הקטגוריה עצמה ממשיכה כרגיל.
     if (isMissingTable(del.error) && !rows.length) return;
     if (isMissingTable(del.error)) {
       const err = new Error('missing-category-slot-splits-table');

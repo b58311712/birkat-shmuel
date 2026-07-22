@@ -1,20 +1,20 @@
 // =============================================================================
-// שליחת מייל דרך Gmail API (HTTPS/443) — עוקף חסימת SMTP של Render
+// שליחת מייל דרך Gmail API (HTTPS/443) - עוקף חסימת SMTP של Render
 // =============================================================================
 // Render חוסמת פורטי SMTP יוצאים (587/465/25), ולכן nodemailer נכשל בפרודקשן
-// (ENETUNREACH / Connection timeout — הוכח בסשן 2026-07-15). Gmail API רץ על
+// (ENETUNREACH / Connection timeout - הוכח בסשן 2026-07-15). Gmail API רץ על
 // HTTPS/443 שאינו חסום, ושולח מאותה תיבת Gmail (b58311712@gmail.com) בלי דומיין.
 //
 // המנגנון:
 //   - OAuth2 עם refresh_token קבוע (scope gmail.send). ה-access_token מתחדש
-//     אוטומטית ע"י ספריית googleapis בכל שליחה — אין מה לשמור/לרענן ידנית.
+//     אוטומטית ע"י ספריית googleapis בכל שליחה - אין מה לשמור/לרענן ידנית.
 //   - בונים הודעת MIME multipart/alternative ידנית (Gmail API לא מקבל
 //     attachments array כמו nodemailer): חלק text וחלק html. המעטפת רשמית
-//     וטקסטואלית — אין תמונות/לוגו מצורפים.
+//     וטקסטואלית - אין תמונות/לוגו מצורפים.
 //   - שולחים דרך gmail.users.messages.send עם raw = base64url של ה-MIME.
 //
 // env נדרשים: GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN.
-// אם חסר אחד מהם — isGmailApiConfigured()=false והמערכת נופלת ל-SMTP/dry-run.
+// אם חסר אחד מהם - isGmailApiConfigured()=false והמערכת נופלת ל-SMTP/dry-run.
 // =============================================================================
 import { google } from 'googleapis';
 
@@ -42,7 +42,7 @@ function getGmailClient() {
   return cachedClient;
 }
 
-// --- קידוד base64url (RFC 4648 §5) — נדרש ל-raw של Gmail API ---
+// --- קידוד base64url (RFC 4648 §5) - נדרש ל-raw של Gmail API ---
 function toBase64Url(buf) {
   return Buffer.from(buf)
     .toString('base64')
@@ -55,7 +55,7 @@ function toBase64Url(buf) {
 // נושא/שם שולח בעברית חייבים encoding, אחרת נשברים בתיבת הדואר.
 function encodeHeader(text) {
   const s = String(text ?? '');
-  // ASCII נקי — אין צורך בקידוד.
+  // ASCII נקי - אין צורך בקידוד.
   if (/^[\x00-\x7F]*$/.test(s)) return s;
   return `=?UTF-8?B?${Buffer.from(s, 'utf8').toString('base64')}?=`;
 }
@@ -70,7 +70,7 @@ function encodeFrom(from) {
 }
 
 // =============================================================================
-// buildMimeMessage — בונה הודעת RFC 822 מלאה: multipart/alternative (text + html).
+// buildMimeMessage - בונה הודעת RFC 822 מלאה: multipart/alternative (text + html).
 // =============================================================================
 function buildMimeMessage({ from, to, subject, text, html }) {
   const altBoundary = 'alt_' + Math.random().toString(36).slice(2);
@@ -100,7 +100,7 @@ function buildMimeMessage({ from, to, subject, text, html }) {
 }
 
 // =============================================================================
-// sendViaGmailApi — שולח מייל אחד דרך Gmail API. זורק בכשל (הקורא תופס ומתעד).
+// sendViaGmailApi - שולח מייל אחד דרך Gmail API. זורק בכשל (הקורא תופס ומתעד).
 // =============================================================================
 export async function sendViaGmailApi({ from, to, subject, text, html }) {
   const gmail = getGmailClient();

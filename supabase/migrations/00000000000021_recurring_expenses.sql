@@ -1,10 +1,10 @@
 -- =============================================================================
--- מטבח החסד — מיגרציה 21: הוצאות קבועות חודשיות (Recurring Expenses)
+-- מטבח החסד - מיגרציה 21: הוצאות קבועות חודשיות (Recurring Expenses)
 -- =============================================================================
 -- תבניות של הוצאות תקורה חוזרות (שכירות, חשמל, מים, ארנונה, ביטוח, משכורות...).
 -- מגדירים תבנית פעם אחת; מנגנון ההפקה יוצר רשומת general_expenses אמיתית לכל חודש.
 --   • הרשומות המופקות נכנסות לסיכום הכספי (routes/finance.js) כמו כל הוצאה כללית.
---   • ההפקה idempotent — לא ניתן להפיק פעמיים לאותו חודש (unique על תבנית+חודש).
+--   • ההפקה idempotent - לא ניתן להפיק פעמיים לאותו חודש (unique על תבנית+חודש).
 -- =============================================================================
 
 create table recurring_expenses (
@@ -28,10 +28,10 @@ create index recurring_expenses_active_idx on recurring_expenses (is_active);
 create trigger trg_recurring_expenses_updated_at
   before update on recurring_expenses for each row execute function set_updated_at();
 
-comment on table recurring_expenses is 'תבניות הוצאה קבועה חודשית — מופקות אוטומטית ל-general_expenses לכל חודש (סעיף 29).';
+comment on table recurring_expenses is 'תבניות הוצאה קבועה חודשית - מופקות אוטומטית ל-general_expenses לכל חודש (סעיף 29).';
 
 -- ----------------------------------------------------------------------------
--- קישור בין הרשומה המופקת לתבנית שמקורה בה — מונע הפקה כפולה לאותו חודש.
+-- קישור בין הרשומה המופקת לתבנית שמקורה בה - מונע הפקה כפולה לאותו חודש.
 -- ----------------------------------------------------------------------------
 alter table general_expenses
   add column recurring_expense_id uuid references recurring_expenses(id) on delete set null,

@@ -21,7 +21,7 @@ async function ensureShabbatFile(shabbatId) {
 }
 
 // =====================================================================
-// POST /api/orders — יצירת הזמנה חדשה (מהלקוח)
+// POST /api/orders - יצירת הזמנה חדשה (מהלקוח)
 // body: { customer_id, shabbat_id, slots:[{meal_slot_id,portions}],
 //         meals:[{meal_slot_id, meal_id}], extras:[{extra_id, actual_quantity?}],
 //         delivery_method?, contact_name?, contact_phone?, venue_name,
@@ -104,7 +104,7 @@ router.post('/', asyncHandler(async (req, res) => {
   await supabase.from('order_history').insert({
     order_id: order.id,
     action: exception.requested
-      ? `נוצרה הזמנה חדשה ע"י הלקוח (בקשת חריג במספר מנות — ${exception.note})`
+      ? `נוצרה הזמנה חדשה ע"י הלקוח (בקשת חריג במספר מנות - ${exception.note})`
       : 'נוצרה הזמנה חדשה ע"י הלקוח',
   });
 
@@ -113,10 +113,10 @@ router.post('/', asyncHandler(async (req, res) => {
     entity_table: 'orders',
     entity_id: order.id,
     title: exception.requested
-      ? 'הזמנה חדשה עם בקשת חריג במנות — ממתינה לאישור'
+      ? 'הזמנה חדשה עם בקשת חריג במנות - ממתינה לאישור'
       : 'הזמנה חדשה ממתינה לאישור',
     body: exception.requested
-      ? `הזמנה ${order.order_number} — ${exception.note}`
+      ? `הזמנה ${order.order_number} - ${exception.note}`
       : `הזמנה ${order.order_number}`,
     link_path: `/admin/orders/${order.id}`,
   });
@@ -127,7 +127,7 @@ router.post('/', asyncHandler(async (req, res) => {
   // שההזמנה כבר נשמרה במערכת. sendTemplateEmail בולע כל כשל, כך שאין promise דחוי.
   res.status(201).json({ ok: true, order });
 
-  // --- מיילים (סעיף 18) — ברקע, לא חוסמים את התשובה ולא מפילים את הבקשה ---
+  // --- מיילים (סעיף 18) - ברקע, לא חוסמים את התשובה ולא מפילים את הבקשה ---
   sendOrderEmails({ order, shabbat, customerId: b.customer_id }).catch((e) =>
     console.warn('sendOrderEmails failed:', e.message)
   );
@@ -139,16 +139,16 @@ async function sendOrderEmails({ order, shabbat, customerId }) {
     .from('customers').select('full_name, email').eq('id', customerId).maybeSingle();
   const vars = orderVars({ order, customer, shabbat });
 
-  // 18.1 — סיכום הזמנה ללקוח (אם יש מייל)
+  // 18.1 - סיכום הזמנה ללקוח (אם יש מייל)
   await sendTemplateEmail({ code: 'order_summary', to: customer?.email, vars, orderId: order.id });
 
-  // 18.2 — התראה על הזמנה חדשה (בנוסף להתראה במסך שכבר נוצרה).
+  // 18.2 - התראה על הזמנה חדשה (בנוסף להתראה במסך שכבר נוצרה).
   // נשלחת *רק* לתיבת המשרד, לא לכל המשתמשים בהרשאת מנהל.
   await sendTemplateEmail({ code: 'new_order_manager_alert', to: officeEmail(), vars, orderId: order.id });
 }
 
 // =====================================================================
-// GET /api/orders/customer/:customerId — היסטוריית הזמנות של לקוח (סעיף 5.4)
+// GET /api/orders/customer/:customerId - היסטוריית הזמנות של לקוח (סעיף 5.4)
 // =====================================================================
 router.get('/customer/:customerId', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
@@ -161,7 +161,7 @@ router.get('/customer/:customerId', asyncHandler(async (req, res) => {
 }));
 
 // =====================================================================
-// GET /api/orders/:id — הזמנה מלאה עם כל הפריטים
+// GET /api/orders/:id - הזמנה מלאה עם כל הפריטים
 // =====================================================================
 router.get('/:id', asyncHandler(async (req, res) => {
   const { data: order, error } = await supabase

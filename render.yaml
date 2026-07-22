@@ -1,5 +1,5 @@
 # =============================================================================
-# מטבח החסד — Render Blueprint (שרת Node/Express בלבד)
+# מטבח החסד - Render Blueprint (שרת Node/Express בלבד)
 # הפרונט (React/Vite) מתארח בנפרד ב-Vercel.
 # =============================================================================
 services:
@@ -12,7 +12,7 @@ services:
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
-      # ערכים סודיים — יש למלא ידנית ב-Render Dashboard (Environment), לא כאן.
+      # ערכים סודיים - יש למלא ידנית ב-Render Dashboard (Environment), לא כאן.
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY

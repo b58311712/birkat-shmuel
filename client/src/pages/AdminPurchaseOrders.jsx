@@ -59,7 +59,7 @@ export default function AdminPurchaseOrders({ onAuthError, currentAdmin }) {
       type: 'enum',
       value: (po) => po.supplier_id || '',
       options: suppliers.map((s) => ({ value: s.id, label: s.name })),
-      render: (po) => po.supplier?.name || '—',
+      render: (po) => po.supplier?.name || '-',
     },
     {
       key: 'status',
@@ -68,9 +68,9 @@ export default function AdminPurchaseOrders({ onAuthError, currentAdmin }) {
       map: PO_STATUS,
       render: (po) => <Badge map={PO_STATUS} value={po.status} />,
     },
-    { key: 'expected_delivery_date', label: 'אספקה צפויה', type: 'date', dir: 'ltr', render: (po) => po.expected_delivery_date || '—' },
-    { key: 'estimated_amount', label: 'משוער (לפני מע"מ)', type: 'number', dir: 'ltr', render: (po) => (po.estimated_amount != null ? `₪${po.estimated_amount}` : '—') },
-    { key: 'actual_amount', label: 'בפועל (לפני מע"מ)', type: 'number', dir: 'ltr', render: (po) => (po.actual_amount != null ? `₪${po.actual_amount}` : '—') },
+    { key: 'expected_delivery_date', label: 'אספקה צפויה', type: 'date', dir: 'ltr', render: (po) => po.expected_delivery_date || '-' },
+    { key: 'estimated_amount', label: 'משוער (לפני מע"מ)', type: 'number', dir: 'ltr', render: (po) => (po.estimated_amount != null ? `₪${po.estimated_amount}` : '-') },
+    { key: 'actual_amount', label: 'בפועל (לפני מע"מ)', type: 'number', dir: 'ltr', render: (po) => (po.actual_amount != null ? `₪${po.actual_amount}` : '-') },
     { key: 'created_at', label: 'נוצרה', type: 'date', dir: 'ltr', className: 'text-brand-burgundy/60', render: (po) => new Date(po.created_at).toLocaleDateString('he-IL') },
   ];
 
@@ -110,7 +110,7 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
 
   useEffect(() => { api.invItems('?active=true').then(setAllItems).catch(onErr); }, [onErr]);
 
-  // כשבוחרים ספק — טוענים מחיר קנייה אחרון פר מוצר לספק (לברירת מחדל של מחיר משוער)
+  // כשבוחרים ספק - טוענים מחיר קנייה אחרון פר מוצר לספק (לברירת מחדל של מחיר משוער)
   // וגם את ברירת המחדל של המתג "לפני/כולל מע"מ" של הספק.
   const [supplierPrices, setSupplierPrices] = useState({}); // item_id -> price (בסיס)
   const [supplierIncludesVat, setSupplierIncludesVat] = useState(false);
@@ -178,7 +178,7 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Field label="ספק *">
           <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className={inputCls}>
-            <option value="">— בחר ספק —</option>
+            <option value="">- בחר ספק -</option>
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </Field>
@@ -200,7 +200,7 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
               return (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-center">
                   <select value={l.inventory_item_id} onChange={(e) => onPickItem(idx, e.target.value)} className={`${inputCls} col-span-12 sm:col-span-6`}>
-                    <option value="">— בחר מוצר —</option>
+                    <option value="">- בחר מוצר -</option>
                     {allItems
                       .filter((i) => i.id === l.inventory_item_id || !chosen.has(i.id))
                       .map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}

@@ -37,7 +37,7 @@ export const ACTIVE_STATUS = {
   inactive_female: { label: 'לא פעילה', cls: 'bg-gray-200 text-gray-600' },
 };
 
-// תיאורים בעברית לשדות שהתקבלו מהטופס (ללא צבע — טקסט בלבד)
+// תיאורים בעברית לשדות שהתקבלו מהטופס (ללא צבע - טקסט בלבד)
 export const DELIVERY_METHOD = {
   volunteer_transport: 'שינוע ע"י מתנדבים',
   self_pickup: 'איסוף עצמי מהמטבח',

@@ -7,7 +7,7 @@ export default function Login({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notFound, setNotFound] = useState(false);
-  const [reg, setReg] = useState({ full_name: '', email: '', address: '' });
+  const [reg, setReg] = useState({ first_name: '', last_name: '', email: '', address: '' });
   const [regDone, setRegDone] = useState(false);
 
   async function handleLogin(e) {
@@ -40,7 +40,7 @@ export default function Login({ onLogin }) {
           <p className="mt-4 text-sm font-bold tracking-[0.18em] text-brand-gold-dark">ברכת שמואל</p>
           <h1 className="mt-2 text-4xl font-extrabold tracking-tight text-[#2b2024] sm:text-5xl">מזמינים לשבת<br />בפשטות ובנחת</h1>
           <p className="mx-auto mt-4 max-w-md text-base leading-7 text-[#746a6d] lg:mx-0">
-            בוחרים שבת, סעודות ומאכלים — ואנחנו דואגים לכל השאר.
+            בוחרים שבת, סעודות ומאכלים - ואנחנו דואגים לכל השאר.
           </p>
         </div>
 
@@ -60,8 +60,10 @@ export default function Login({ onLogin }) {
             <form onSubmit={handleRegister} className="space-y-3">
               <h2 className="text-xl font-bold text-brand-burgundy">רישום לקוח חדש</h2>
               <p className="text-sm text-brand-burgundy/70">המספר {phone} לא נמצא. נא למלא פרטים לבקשת רישום.</p>
-              <input className="input" placeholder="שם מלא" required
-                value={reg.full_name} onChange={(e) => setReg({ ...reg, full_name: e.target.value })} />
+              <input className="input" placeholder="שם פרטי" required
+                value={reg.first_name} onChange={(e) => setReg({ ...reg, first_name: e.target.value })} />
+              <input className="input" placeholder="שם משפחה"
+                value={reg.last_name} onChange={(e) => setReg({ ...reg, last_name: e.target.value })} />
               <input className="input" placeholder="מייל (אופציונלי)"
                 value={reg.email} onChange={(e) => setReg({ ...reg, email: e.target.value })} />
               <input className="input" placeholder="כתובת (אופציונלי)"

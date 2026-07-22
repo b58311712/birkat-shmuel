@@ -5,12 +5,12 @@
 //      (מאכל × מנות × כמות-למנה), בדיוק כמו buildInventoryReport.
 //   2. ממירים כל שורת מתכון מיחידת-המתכון (recipe_lines.unit, טקסט חופשי)
 //      ליחידת הבסיס של הפריט (inventory_items.unit) דרך inventory_unit_conversions.
-//   3. מאמתים שכל שורה ניתנת להמרה — פקטור חסר => שגיאה מתארת, בלי לנכות כלום.
+//   3. מאמתים שכל שורה ניתנת להמרה - פקטור חסר => שגיאה מתארת, בלי לנכות כלום.
 //   4. קוראים ל-RPC deduct_shabbat_inventory שמבצע את הניכוי אטומית (נעילה,
 //      אימות מספיקוּת, עדכון, תיעוד תנועות, וסימון התיק).
 //
 // הניכוי הוא ברמת השבת (לא פר-הזמנה) ומופעל ידנית פעם אחת (סעיף 25.4). דגל
-// is_inventory_deducted בתיק השבת מונע ניכוי כפול — נאכף גם ב-RPC (אטומי).
+// is_inventory_deducted בתיק השבת מונע ניכוי כפול - נאכף גם ב-RPC (אטומי).
 import { supabase } from '../lib/supabase.js';
 import { isOperational } from './shabbatFile.js';
 
@@ -29,7 +29,7 @@ const normUnit = (u) => String(u || '').trim().toLowerCase();
 
 // צובר את הצריכה המדויקת (ביחידת המתכון) לכל פריט מלאי מקושר, על פני כל
 // ההזמנות התפעוליות של השבת. מחזיר מפה: item_id -> { unit -> qty }.
-// שורות מתכון בלי inventory_item_id אינן ניתנות לניכוי — נאספות בנפרד להתראה.
+// שורות מתכון בלי inventory_item_id אינן ניתנות לניכוי - נאספות בנפרד להתראה.
 async function collectConsumption(shabbatId) {
   const { data: orders, error: oErr } = await supabase
     .from('orders')
@@ -66,7 +66,7 @@ async function collectConsumption(shabbatId) {
   // צוברים לפי (פריט, יחידת-המתכון). המפתח הוא unit_id (מזהה יציב); שם היחידה
   // הטקסטואלי נשמר רק לצורך הודעות שגיאה קריאות.
   const byItem = {};   // item_id -> { unit_id -> { unit_id, unit_name, qty } }
-  const unlinked = []; // שורות בלי קישור למלאי — לא ניתנות לניכוי
+  const unlinked = []; // שורות בלי קישור למלאי - לא ניתנות לניכוי
   for (const rl of recipes || []) {
     const portions = portionsByMeal[rl.meal_id] || 0;
     const need = Number(rl.quantity_per_portion) * portions;
@@ -93,7 +93,7 @@ function convertToBase(byItem, itemById, conversionsByItem) {
   const missing = [];
   for (const [itemId, perUnit] of Object.entries(byItem)) {
     const item = itemById[itemId];
-    if (!item) continue; // פריט נמחק/מושבת — מדלגים (אין מה לנכות)
+    if (!item) continue; // פריט נמחק/מושבת - מדלגים (אין מה לנכות)
     const baseUnitId = item.unit_id;
     const factorByUnitId = conversionsByItem[itemId] || {};
 
@@ -120,7 +120,7 @@ export async function deductInventoryForShabbat(shabbatId, performedBy = null) {
   const itemIds = Object.keys(byItem);
   if (itemIds.length === 0) {
     throw new DeductionError('nothing-to-deduct',
-      'אין צריכת מלאי מקושרת בשבת זו — אין מה לנכות.');
+      'אין צריכת מלאי מקושרת בשבת זו - אין מה לנכות.');
   }
 
   // שולפים את הפריטים (עם unit_id ליחידת הבסיס) ואת טבלת ההמרה שלהם במקביל.
@@ -141,13 +141,13 @@ export async function deductInventoryForShabbat(shabbatId, performedBy = null) {
 
   const { lines, missing } = convertToBase(byItem, itemById, conversionsByItem);
 
-  // קצה 1: פקטור המרה חסר — לא נוגעים ב-DB, זורקים רשימה מתארת מה חסר.
+  // קצה 1: פקטור המרה חסר - לא נוגעים ב-DB, זורקים רשימה מתארת מה חסר.
   if (missing.length > 0) {
     const details = missing
       .map((m) => `${m.item_name}: אין המרה מ־"${m.from_unit}" ליחידת הבסיס "${m.base_unit}"`)
       .join('; ');
     throw new DeductionError(`missing-conversion: ${details}`,
-      `חסרות הגדרות המרת יחידות — יש להגדירן לפני ניכוי. ${details}`);
+      `חסרות הגדרות המרת יחידות - יש להגדירן לפני ניכוי. ${details}`);
   }
 
   if (lines.length === 0) {
@@ -155,7 +155,7 @@ export async function deductInventoryForShabbat(shabbatId, performedBy = null) {
       'אין צריכת מלאי לניכוי בשבת זו.');
   }
 
-  // הניכוי עצמו — RPC אטומי. אימות המספיקוּת והנעילה קורים בתוך העסקה ב-DB.
+  // הניכוי עצמו - RPC אטומי. אימות המספיקוּת והנעילה קורים בתוך העסקה ב-DB.
   const { data, error } = await supabase.rpc('deduct_shabbat_inventory', {
     p_shabbat_id: shabbatId,
     p_lines: lines,
@@ -167,7 +167,7 @@ export async function deductInventoryForShabbat(shabbatId, performedBy = null) {
     shabbat_id: shabbatId,
     deducted_items: (data || []).length,
     movements: data || [],
-    unlinked, // שורות מתכון בלי קישור למלאי — לא נוכו, להצגה כאזהרה
+    unlinked, // שורות מתכון בלי קישור למלאי - לא נוכו, להצגה כאזהרה
   };
 }
 
@@ -178,13 +178,13 @@ function mapRpcError(error) {
     return new DeductionError(msg, 'המלאי כבר הופחת עבור שבת זו.');
   }
   if (msg.includes('no-shabbat-file')) {
-    return new DeductionError(msg, 'אין תיק שבת לשבת זו — לא ניתן לנכות מלאי.');
+    return new DeductionError(msg, 'אין תיק שבת לשבת זו - לא ניתן לנכות מלאי.');
   }
   if (msg.includes('insufficient-inventory')) {
     // ה-HINT/DETAIL של Postgres כולל שם פריט + כמויות; מעבירים כפי שהוא.
-    return new DeductionError(msg, `אין מספיק מלאי לניכוי — ${msg.split('insufficient-inventory:')[1]?.trim() || ''}`);
+    return new DeductionError(msg, `אין מספיק מלאי לניכוי - ${msg.split('insufficient-inventory:')[1]?.trim() || ''}`);
   }
-  return error; // שגיאה לא צפויה — מגלגלים כמו שהיא ל-error middleware
+  return error; // שגיאה לא צפויה - מגלגלים כמו שהיא ל-error middleware
 }
 
 function round4(n) {

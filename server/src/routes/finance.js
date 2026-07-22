@@ -1,10 +1,10 @@
-// מודול כספי כללי (סעיף 29) — הכנסות, הוצאות ודוחות כספיים.
+// מודול כספי כללי (סעיף 29) - הכנסות, הוצאות ודוחות כספיים.
 // כל הקריאות מאחורי requireAdmin (נרשם ב-index.js תחת /api/admin/finance).
 //
 // מקורות אמת:
-//   הכנסות  — orders.final_amount (צפוי) מול customer_payments.amount (שולם).
-//   הוצאות  — supplier_payments.amount_paid + general_expenses.amount
-//             + petty_cash_transactions (kind='expense') — הוצאות הקופה הקטנה.
+//   הכנסות  - orders.final_amount (צפוי) מול customer_payments.amount (שולם).
+//   הוצאות  - supplier_payments.amount_paid + general_expenses.amount
+//             + petty_cash_transactions (kind='expense') - הוצאות הקופה הקטנה.
 // הזמנות מבוטלות אינן נספרות בצפוי (final_amount לא רלוונטי לגבייה).
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
@@ -24,7 +24,7 @@ function yearKey(dateStr) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/admin/finance/summary — תמונה כוללת: הכנסות, הוצאות ודוחות (סעיף 29)
+// GET /api/admin/finance/summary - תמונה כוללת: הכנסות, הוצאות ודוחות (סעיף 29)
 // ---------------------------------------------------------------------------
 router.get('/summary', asyncHandler(async (req, res) => {
   // הזמנות פעילות עם השבת שלהן (לצורך קיבוץ הכנסות לפי שבת/חודש/שנה)
@@ -59,7 +59,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
   for (const p of payments) {
     paidByOrder.set(p.order_id, round2((paidByOrder.get(p.order_id) || 0) + Number(p.amount || 0)));
   }
-  // סך שולם — רק על הזמנות פעילות (מתעלם מתשלומים על הזמנות מבוטלות)
+  // סך שולם - רק על הזמנות פעילות (מתעלם מתשלומים על הזמנות מבוטלות)
   const activeOrderIds = new Set(orders.map((o) => o.id));
   const paidTotal = round2(
     payments
@@ -83,7 +83,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
     if (sKey) {
       const cur = byShabbat.get(sKey) || {
         shabbat_id: sKey,
-        label: o.shabbatot?.parasha || '—',
+        label: o.shabbatot?.parasha || '-',
         date: gdate,
         expected: 0, paid: 0,
       };
@@ -122,7 +122,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
   const generalExpensesTotal = round2(
     expenses.reduce((s, e) => s + Number(e.amount || 0), 0),
   );
-  // הוצאות הקופה הקטנה (סעיף קופה קטנה) — נספרות בסך ההוצאות.
+  // הוצאות הקופה הקטנה (סעיף קופה קטנה) - נספרות בסך ההוצאות.
   const pettyCashTotal = round2(
     pettyExpenses.reduce((s, t) => s + Number(t.amount || 0), 0),
   );
@@ -140,19 +140,19 @@ router.get('/summary', asyncHandler(async (req, res) => {
   const bySupplier = new Map(); // supplier_id -> { name, amount }
   for (const p of supPayments) {
     if (!p.supplier_id) continue;
-    const cur = bySupplier.get(p.supplier_id) || { supplier_id: p.supplier_id, name: p.suppliers?.name || '—', amount: 0 };
+    const cur = bySupplier.get(p.supplier_id) || { supplier_id: p.supplier_id, name: p.suppliers?.name || '-', amount: 0 };
     cur.amount = round2(cur.amount + Number(p.amount_paid || 0));
     bySupplier.set(p.supplier_id, cur);
   }
   for (const e of expenses) {
     if (!e.supplier_id) continue;
-    const cur = bySupplier.get(e.supplier_id) || { supplier_id: e.supplier_id, name: e.suppliers?.name || '—', amount: 0 };
+    const cur = bySupplier.get(e.supplier_id) || { supplier_id: e.supplier_id, name: e.suppliers?.name || '-', amount: 0 };
     cur.amount = round2(cur.amount + Number(e.amount || 0));
     bySupplier.set(e.supplier_id, cur);
   }
   for (const t of pettyExpenses) {
     if (!t.supplier_id) continue;
-    const cur = bySupplier.get(t.supplier_id) || { supplier_id: t.supplier_id, name: t.suppliers?.name || '—', amount: 0 };
+    const cur = bySupplier.get(t.supplier_id) || { supplier_id: t.supplier_id, name: t.suppliers?.name || '-', amount: 0 };
     cur.amount = round2(cur.amount + Number(t.amount || 0));
     bySupplier.set(t.supplier_id, cur);
   }

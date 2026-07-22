@@ -1,11 +1,11 @@
 import { supabase } from '../lib/supabase.js';
 
-// שיבוץ מתנדבים (סעיף 24) — מבנה מפושט: תבנית גלובלית אחת.
+// שיבוץ מתנדבים (סעיף 24) - מבנה מפושט: תבנית גלובלית אחת.
 // המשימות (volunteer_tasks) מגדירות מתנדב קבוע (primary) + מחליפים (backup).
 // המתנדב המשובץ בפועל מחושב חי ב-buildVolunteerReport (shabbatFile.js) בלי snapshot.
 // כאן נשארות: שליפת המאכלים שהוזמנו בשבת, ודריסה ידנית פר-שבת (is_override).
 
-// מזהי המאכלים שהוזמנו בשבת (מהזמנות שאינן מבוטלות) — כדי לדעת אילו משימות בישול
+// מזהי המאכלים שהוזמנו בשבת (מהזמנות שאינן מבוטלות) - כדי לדעת אילו משימות בישול
 // רלוונטיות בפועל בשבת זו.
 export async function orderedMealIds(shabbatId) {
   const { data: orders, error } = await supabase
@@ -18,7 +18,7 @@ export async function orderedMealIds(shabbatId) {
 }
 
 // דריסה ידנית של המתנדב הקבוע למשימה בשבת ספציפית (למשל אם הקבוע חולה).
-// שומר שורת is_override אחת ל-(שבת, משימה) ע"י delete-then-insert (הטבלה זעירה —
+// שומר שורת is_override אחת ל-(שבת, משימה) ע"י delete-then-insert (הטבלה זעירה -
 // שורה אחת פר משימה בשבת). volunteerId=null מסיר את הדריסה.
 export async function overrideTaskLead(shabbatId, taskId, volunteerId) {
   if (!taskId) return null;
@@ -39,7 +39,7 @@ export async function overrideTaskLead(shabbatId, taskId, volunteerId) {
   return data;
 }
 
-// הסרת דריסה — המשימה חוזרת למתנדב הקבוע מהתבנית.
+// הסרת דריסה - המשימה חוזרת למתנדב הקבוע מהתבנית.
 export async function clearOverride(shabbatId, taskId) {
   if (!taskId) return null;
   const { error } = await supabase
@@ -47,6 +47,40 @@ export async function clearOverride(shabbatId, taskId) {
     .delete()
     .eq('shabbat_id', shabbatId)
     .eq('task_id', taskId);
+  if (error) throw error;
+  return { ok: true };
+}
+
+// דריסת המבשל למאכל בשבת ספציפית (סעיף בישול - פירוט מאכלים): שיבוץ מחליף לשבת זו
+// מתוך רשימת המתנדבים הכללית, בלי לשנות את השיוך הקבוע (volunteer_meal_links).
+// שומר שורת is_override אחת ל-(שבת, מאכל) ע"י delete-then-insert. volunteerId=null מסיר.
+export async function overrideMealCook(shabbatId, mealId, volunteerId) {
+  if (!mealId) return null;
+  await clearMealOverride(shabbatId, mealId);
+  if (!volunteerId) return { ok: true };
+  const { data, error } = await supabase
+    .from('volunteer_assignments')
+    .insert({
+      shabbat_id: shabbatId,
+      meal_id: mealId,
+      volunteer_id: volunteerId,
+      is_override: true,
+      is_auto: false,
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// הסרת דריסת מבשל - המאכל חוזר למבשלים הקבועים (השיוך הגלובלי).
+export async function clearMealOverride(shabbatId, mealId) {
+  if (!mealId) return null;
+  const { error } = await supabase
+    .from('volunteer_assignments')
+    .delete()
+    .eq('shabbat_id', shabbatId)
+    .eq('meal_id', mealId);
   if (error) throw error;
   return { ok: true };
 }

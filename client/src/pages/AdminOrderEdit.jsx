@@ -8,7 +8,7 @@ import { calcMealSurcharges, slotComboKey } from '../lib/pricing.js';
 const MIN_PORTIONS = 50;
 const MAX_PORTIONS = 100;
 
-// עריכה מלאה של הזמנה קיימת ע"י מנהל — פרטי לקוח, אספקה, סעודות, מנות, מאכלים, תוספות.
+// עריכה מלאה של הזמנה קיימת ע"י מנהל - פרטי לקוח, אספקה, סעודות, מנות, מאכלים, תוספות.
 // המחיר מחושב מחדש בשרת בעת השמירה (הערכה בלבד כאן).
 export default function AdminOrderEdit({ onAuthError }) {
   const { id } = useParams();
@@ -78,7 +78,7 @@ export default function AdminOrderEdit({ onAuthError }) {
     [slots]
   );
 
-  // סעודות בכמות חריגה (מחוץ ל-50–100) — מותרות למנהל אך יסומנו כחריג לתיעוד.
+  // סעודות בכמות חריגה (מחוץ ל-50–100) - מותרות למנהל אך יסומנו כחריג לתיעוד.
   const exceptionSlots = useMemo(
     () => selectedSlots.filter((s) => s.portions < MIN_PORTIONS || s.portions > MAX_PORTIONS),
     [selectedSlots]
@@ -115,7 +115,7 @@ export default function AdminOrderEdit({ onAuthError }) {
     });
   }, [catalog, visibleExtras]);
 
-  // אומדן מחיר בצד לקוח (השרת סמכותי) — בחירת מסלול לפי צירוף הסעודות המדויק (סעיף 15)
+  // אומדן מחיר בצד לקוח (השרת סמכותי) - בחירת מסלול לפי צירוף הסעודות המדויק (סעיף 15)
   const priceEstimate = useMemo(() => {
     if (!catalog) return { base: 0, extras: 0, total: 0, noMatch: false };
     const selectedKey = slotComboKey(selectedSlots.map((s) => s.meal_slot_id));
@@ -165,8 +165,8 @@ export default function AdminOrderEdit({ onAuthError }) {
   }
 
   // ולידציה לקטגוריות מחלקות:
-  //   equal    — בכל קבוצה עם 2+ מאכלים, סך הכמויות = מנות הסעודה.
-  //   additive — לכל היותר מאכל עיקרי אחד (לא-משני) בקבוצה.
+  //   equal    - בכל קבוצה עם 2+ מאכלים, סך הכמויות = מנות הסעודה.
+  //   additive - לכל היותר מאכל עיקרי אחד (לא-משני) בקבוצה.
   const splitErrors = useMemo(() => {
     if (!catalog) return [];
     const portionsBySlot = Object.fromEntries(selectedSlots.map((s) => [s.meal_slot_id, s.portions]));
@@ -227,14 +227,14 @@ export default function AdminOrderEdit({ onAuthError }) {
 
     setSaving(true);
     try {
-      // 1) פרטי לקוח — רק אם השתנו
+      // 1) פרטי לקוח - רק אם השתנו
       if (customerChanged) {
         await api.updateOrderCustomer(id, {
           full_name: custName, phone: custPhone, email: custEmail, address: custAddress,
         });
       }
 
-      // 2) גוף ההזמנה — מחיר מחושב מחדש בשרת
+      // 2) גוף ההזמנה - מחיר מחושב מחדש בשרת
       // כל מפתח שקיים במפה הוא מאכל שנבחר (הערך יכול להיות 0 בקטגוריה שמחלקת).
       const mealsPayload = Object.entries(meals).map(([k, v]) => {
         const [meal_slot_id, meal_id] = k.split(':');
@@ -307,7 +307,7 @@ export default function AdminOrderEdit({ onAuthError }) {
           <label className="block">
             <span className="text-sm text-brand-burgundy/60">אמצעי תשלום *</span>
             <select className="input w-full" value={payMethod} onChange={(e) => setPayMethod(e.target.value)} required>
-              <option value="">— נא לבחור —</option>
+              <option value="">- נא לבחור -</option>
               <option value="bank_transfer">העברה בנקאית</option>
               <option value="cash">מזומן</option>
               <option value="check">צ׳ק</option>
@@ -356,7 +356,7 @@ export default function AdminOrderEdit({ onAuthError }) {
         </div>
         {exceptionSlots.length > 0 && (
           <div className="mt-3 rounded-lg bg-amber-50 border border-amber-300 p-2.5 text-sm text-amber-800">
-            כמות מנות חריגה (מחוץ לטווח {MIN_PORTIONS}–{MAX_PORTIONS}) — תישמר ותסומן כחריג בהזמנה.
+            כמות מנות חריגה (מחוץ לטווח {MIN_PORTIONS}–{MAX_PORTIONS}) - תישמר ותסומן כחריג בהזמנה.
           </div>
         )}
       </section>
@@ -396,7 +396,7 @@ export default function AdminOrderEdit({ onAuthError }) {
             <div key={e.id} className="flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-brand-cream/40">
               <div>
                 <span className="font-medium">{e.name}</span>
-                <span className="text-sm text-brand-burgundy/60"> — {e.unit_price}₪ ל{e.billing_unit}</span>
+                <span className="text-sm text-brand-burgundy/60"> - {e.unit_price}₪ ל{e.billing_unit}</span>
               </div>
               <input type="number" min="0" className="input w-24 py-1 text-center" placeholder="0"
                 value={extras[e.id] || ''} onChange={(ev) => setExtras({ ...extras, [e.id]: ev.target.value })} />

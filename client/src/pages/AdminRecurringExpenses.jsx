@@ -23,7 +23,7 @@ export default function AdminRecurringExpenses({ onAuthError }) {
   const [genStatus, setGenStatus] = useState(null); // { pending_count, pending_total, ... }
   const [genMsg, setGenMsg] = useState('');
   const [genBusy, setGenBusy] = useState(false);
-  const [generated, setGenerated] = useState(null); // { expenses, summary } — הוצאות שכבר הופקו לחודש
+  const [generated, setGenerated] = useState(null); // { expenses, summary } - הוצאות שכבר הופקו לחודש
 
   const handleAuth = (err, fallback) => {
     if (err.name === 'AdminAuthError') onAuthError?.();
@@ -127,7 +127,7 @@ export default function AdminRecurringExpenses({ onAuthError }) {
       setGenMsg(
         res.created_count > 0
           ? `הופקו ${res.created_count} הוצאות לחודש ${monthLabel}${res.skipped_count ? ` (${res.skipped_count} כבר קיימות)` : ''}.`
-          : `אין מה להפיק — כל ההוצאות הקבועות כבר קיימות לחודש ${monthLabel}.`,
+          : `אין מה להפיק - כל ההוצאות הקבועות כבר קיימות לחודש ${monthLabel}.`,
       );
       loadGenStatus(genMonth);
     } catch (err) {
@@ -185,7 +185,7 @@ export default function AdminRecurringExpenses({ onAuthError }) {
           <div>
             <h2 id="gen-title" className="text-lg font-extrabold text-[#2b2024]">הפקת הוצאות החודש</h2>
             <p className="mt-1 text-sm text-[#7c7175]">
-              יוצר רשומת הוצאה אמיתית לכל הוצאה קבועה פעילה, בסטטוס "לא שולם". ניתן להריץ שוב — רשומות קיימות לא ישוכפלו.
+              יוצר רשומת הוצאה אמיתית לכל הוצאה קבועה פעילה, בסטטוס "לא שולם". ניתן להריץ שוב - רשומות קיימות לא ישוכפלו.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-3">
@@ -214,7 +214,7 @@ export default function AdminRecurringExpenses({ onAuthError }) {
       <section className="pilot-panel mt-5 overflow-hidden">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black/[0.05] px-5 py-4">
           <div>
-            <h2 className="font-extrabold text-[#33272b]">הוצאות שהופקו — {genMonth}</h2>
+            <h2 className="font-extrabold text-[#33272b]">הוצאות שהופקו - {genMonth}</h2>
             <p className="mt-0.5 text-xs font-semibold text-[#958b8e]">
               {generatedRows.length} רשומות שנוצרו מהתבניות הקבועות. נכנסות לסך ההוצאות במודול הכספי.
             </p>
@@ -240,9 +240,9 @@ export default function AdminRecurringExpenses({ onAuthError }) {
                 {generatedRows.map((r) => (
                   <tr key={r.id}>
                     <td className="whitespace-nowrap px-5 py-4 text-sm text-[#82777b]" dir="ltr">{r.expense_date}</td>
-                    <td className="px-4 py-4 font-medium text-[#3d3135]">{r.name || r.note || '—'}</td>
-                    <td className="px-4 py-4 text-sm text-[#655b5f]">{r.category || '—'}</td>
-                    <td className="px-4 py-4 text-sm text-[#655b5f]">{r.supplier_name || '—'}</td>
+                    <td className="px-4 py-4 font-medium text-[#3d3135]">{r.name || r.note || '-'}</td>
+                    <td className="px-4 py-4 text-sm text-[#655b5f]">{r.category || '-'}</td>
+                    <td className="px-4 py-4 text-sm text-[#655b5f]">{r.supplier_name || '-'}</td>
                     <td className="whitespace-nowrap px-4 py-4 font-bold tabular-nums text-[#3d3135]" dir="ltr">{nis(r.amount)}</td>
                     <td className="px-4 py-4"><Badge map={SUPPLIER_PAYMENT_STATUS} value={r.payment_status} /></td>
                   </tr>
@@ -283,9 +283,9 @@ export default function AdminRecurringExpenses({ onAuthError }) {
                     <td className="px-5 py-4 font-medium text-[#3d3135]">{t.name}</td>
                     <td className="whitespace-nowrap px-4 py-4 font-bold tabular-nums text-[#3d3135]" dir="ltr">{nis(t.amount)}</td>
                     <td className="px-4 py-4 text-sm tabular-nums text-[#655b5f]" dir="ltr">{t.day_of_month}</td>
-                    <td className="px-4 py-4 text-sm text-[#655b5f]">{t.category || '—'}</td>
-                    <td className="px-4 py-4 text-sm text-[#655b5f]">{t.supplier_name || '—'}</td>
-                    <td className="px-4 py-4 text-sm text-[#655b5f]">{t.payment_method || '—'}</td>
+                    <td className="px-4 py-4 text-sm text-[#655b5f]">{t.category || '-'}</td>
+                    <td className="px-4 py-4 text-sm text-[#655b5f]">{t.supplier_name || '-'}</td>
+                    <td className="px-4 py-4 text-sm text-[#655b5f]">{t.payment_method || '-'}</td>
                     <td className="px-4 py-4">
                       {t.is_active
                         ? <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">פעילה</span>
@@ -351,7 +351,7 @@ function RecurringExpenseForm({ form, setForm, suppliers, onSubmit, onCancel, bu
           <select value={form.supplier_id}
             onChange={(e) => setForm((f) => ({ ...f, supplier_id: e.target.value }))}
             className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-gold">
-            <option value="">— ללא ספק —</option>
+            <option value="">- ללא ספק -</option>
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </Field>

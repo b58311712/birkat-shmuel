@@ -5,7 +5,7 @@
 ## סדר הפעולות
 
 ### 1. דחיפת הקוד ל-GitHub
-כבר בוצע — הקוד ב-repo הפרטי שלך.
+כבר בוצע - הקוד ב-repo הפרטי שלך.
 
 ### 2. העלאת השרת ל-Render
 1. היכנס ל-[render.com](https://render.com) והתחבר עם GitHub.
@@ -14,7 +14,7 @@
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `JWT_SECRET`
-   - `CLIENT_ORIGIN` — למלא אחרי שלב 3 (כתובת ה-Vercel).
+   - `CLIENT_ORIGIN` - למלא אחרי שלב 3 (כתובת ה-Vercel).
 4. לחץ **Apply**. בסוף תקבל כתובת כמו `https://matbach-hachesed-server.onrender.com`.
 
 ### 3. העלאת הפרונט ל-Vercel
@@ -32,6 +32,6 @@
 
 ## הערות
 - **השרת ב-Render (חינם) נרדם** אחרי 15 דק' חוסר פעילות. הבקשה הראשונה תיקח ~30–50 שנ' ואז מהיר. מתאים להדגמה.
-- **Supabase (חינם)** משהה פרויקט אחרי ~שבוע ללא פעילות — כניסה ל-Dashboard מעירה אותו.
+- **Supabase (חינם)** משהה פרויקט אחרי ~שבוע ללא פעילות - כניסה ל-Dashboard מעירה אותו.
 - כניסה לניהול (דמו): `manager@demo.local` / `Demo1234!`. כניסת לקוח (דמו): `050-123-4567`.
 - לעדכון גרסה: `git push` → Render ו-Vercel בונים מחדש אוטומטית.

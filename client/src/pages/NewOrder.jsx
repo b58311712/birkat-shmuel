@@ -54,7 +54,7 @@ export default function NewOrder({ customer }) {
     [slots]
   );
 
-  // סעודות בכמות חריגה (מחוץ ל-50–100) — מותרות אך יסומנו כבקשת חריג לאישור מנהל.
+  // סעודות בכמות חריגה (מחוץ ל-50–100) - מותרות אך יסומנו כבקשת חריג לאישור מנהל.
   const exceptionSlots = useMemo(
     () => selectedSlots.filter((s) => s.portions < MIN_PORTIONS || s.portions > MAX_PORTIONS),
     [selectedSlots]
@@ -137,7 +137,7 @@ export default function NewOrder({ customer }) {
     return map;
   }, [catalog]);
 
-  // מפתחות המאכלים שנוצרו ע"י ירושה (`childSlotId:mealId`) — מסומנים בבורר כנעולים
+  // מפתחות המאכלים שנוצרו ע"י ירושה (`childSlotId:mealId`) - מסומנים בבורר כנעולים
   // ואינם נספרים במכסת התוספת. הערך במפה עבורם הוא הסמל 'inherited'.
   const inheritedKeys = useMemo(() => {
     const s = new Set();
@@ -151,7 +151,7 @@ export default function NewOrder({ customer }) {
   // מסונכרנים אוטומטית. תוספות ידניות בבוקר (ערך true) לא נגעות.
   useEffect(() => {
     if (!catalog || Object.keys(inheritByCategory).length === 0) return;
-    // מזהי הסעודות שנבחרו כרגע (יש בהן מנות) — רק אליהן משוכפלת הירושה.
+    // מזהי הסעודות שנבחרו כרגע (יש בהן מנות) - רק אליהן משוכפלת הירושה.
     const activeSlotIds = new Set(selectedSlots.map((s) => s.meal_slot_id));
 
     setMeals((prev) => {
@@ -195,7 +195,7 @@ export default function NewOrder({ customer }) {
     return {
       slots: selectedSlots.map(({ meal_slot_id, portions }) => {
         const slot = catalog.meal_slots.find((s) => s.id === meal_slot_id);
-        // כמה מאכלים נבחרו בכל קטגוריה בסעודה זו — לחישוב "מאכל יחיד → 100%" ב-additive.
+        // כמה מאכלים נבחרו בכל קטגוריה בסעודה זו - לחישוב "מאכל יחיד → 100%" ב-additive.
         const countByCategory = {};
         for (const key of Object.keys(meals)) {
           if (!key.startsWith(`${meal_slot_id}:`)) continue;
@@ -254,7 +254,7 @@ export default function NewOrder({ customer }) {
   function toggleMeal(slotId, mealId) {
     const key = `${slotId}:${mealId}`;
     setMeals((m) => {
-      // מאכל ירוש נעול — לא ניתן לבטלו ידנית (מבוטל רק ע"י ביטול בסעודת-האב).
+      // מאכל ירוש נעול - לא ניתן לבטלו ידנית (מבוטל רק ע"י ביטול בסעודת-האב).
       if (m[key] === 'inherited') return m;
       const next = { ...m };
       // "נבחר" = המפתח קיים (הערך יכול להיות 0 בקטגוריה במצב equal).
@@ -274,8 +274,8 @@ export default function NewOrder({ customer }) {
   }
 
   // ולידציה לקטגוריות מחלקות:
-  //   equal    — בכל קבוצה עם 2+ מאכלים, סך הכמויות = מנות הסעודה.
-  //   additive — לכל היותר מאכל עיקרי אחד (לא-משני) בקבוצה.
+  //   equal    - בכל קבוצה עם 2+ מאכלים, סך הכמויות = מנות הסעודה.
+  //   additive - לכל היותר מאכל עיקרי אחד (לא-משני) בקבוצה.
   const splitErrors = useMemo(() => {
     if (!catalog) return [];
     const portionsBySlot = Object.fromEntries(selectedSlots.map((s) => [s.meal_slot_id, s.portions]));
@@ -458,7 +458,7 @@ export default function NewOrder({ customer }) {
                   <span className="text-xs font-medium text-red-600">מספר לא תקין</span>
                 )}
                 {isException && (
-                  <span className="text-xs font-medium text-amber-700">חריג — יידרש אישור מנהל</span>
+                  <span className="text-xs font-medium text-amber-700">חריג - יידרש אישור מנהל</span>
                 )}
               </div>
             );
@@ -539,7 +539,7 @@ export default function NewOrder({ customer }) {
             <label className="block mt-3 sm:max-w-sm">
               <span className="text-sm text-brand-burgundy/60">אמצעי תשלום *</span>
               <select className="input w-full" value={payMethod} onChange={(e) => setPayMethod(e.target.value)} required>
-                <option value="">— נא לבחור —</option>
+                <option value="">- נא לבחור -</option>
                 {Object.entries(PAYMENT_METHOD).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
@@ -714,7 +714,7 @@ function PreviewField({ label, value, dir }) {
   return (
     <div>
       <div className="text-xs text-brand-burgundy/50">{label}</div>
-      <div className="font-medium text-brand-burgundy text-right" dir={dir}>{value || '—'}</div>
+      <div className="font-medium text-brand-burgundy text-right" dir={dir}>{value || '-'}</div>
     </div>
   );
 }

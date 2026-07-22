@@ -22,7 +22,7 @@ async function sumPaid(orderId) {
 }
 
 // גוזר סטטוס תשלום מתוך הסכום ששולם מול הסכום הסופי, ומעדכן את ראש ההזמנה.
-// לא דורס 'payment_override' — חריגה שאושרה ידנית נשארת עד שמנהל משנה אותה (סעיף 17.4).
+// לא דורס 'payment_override' - חריגה שאושרה ידנית נשארת עד שמנהל משנה אותה (סעיף 17.4).
 async function recomputePaymentStatus(orderId) {
   const { data: order, error } = await supabase
     .from('orders').select('final_amount, payment_status').eq('id', orderId).single();
@@ -44,7 +44,7 @@ async function recomputePaymentStatus(orderId) {
   return { paid, final, balance: round2(final - paid), payment_status: status };
 }
 
-// טוען הזמנה קיימת (או משיב 404). לא חוסם מבוטלת — תשלום/החזר אפשריים גם אחריה (סעיף 19.1).
+// טוען הזמנה קיימת (או משיב 404). לא חוסם מבוטלת - תשלום/החזר אפשריים גם אחריה (סעיף 19.1).
 async function loadOrder(res, orderId) {
   const { data: order, error } = await supabase
     .from('orders').select('id, order_number, final_amount, payment_status, order_status').eq('id', orderId).single();
@@ -62,7 +62,7 @@ async function logHistory(orderId, action, changes, actorId) {
 // תשלומי לקוחות (סעיף 17)
 // ===========================================================================
 
-// GET /orders/:id/payments — רשימת תשלומים + סיכום גבייה
+// GET /orders/:id/payments - רשימת תשלומים + סיכום גבייה
 router.get('/orders/:id/payments', asyncHandler(async (req, res) => {
   const order = await loadOrder(res, req.params.id);
   if (!order) return;
@@ -82,7 +82,7 @@ router.get('/orders/:id/payments', asyncHandler(async (req, res) => {
   });
 }));
 
-// POST /orders/:id/payments — תיעוד תשלום חדש (סעיף 17.2)
+// POST /orders/:id/payments - תיעוד תשלום חדש (סעיף 17.2)
 router.post('/orders/:id/payments', asyncHandler(async (req, res) => {
   const order = await loadOrder(res, req.params.id);
   if (!order) return;
@@ -108,7 +108,7 @@ router.post('/orders/:id/payments', asyncHandler(async (req, res) => {
   res.status(201).json({ ok: true, payment, summary });
 }));
 
-// DELETE /orders/:id/payments/:pid — מחיקת תיעוד תשלום (תיקון טעות)
+// DELETE /orders/:id/payments/:pid - מחיקת תיעוד תשלום (תיקון טעות)
 router.delete('/orders/:id/payments/:pid', asyncHandler(async (req, res) => {
   const order = await loadOrder(res, req.params.id);
   if (!order) return;
@@ -123,8 +123,8 @@ router.delete('/orders/:id/payments/:pid', asyncHandler(async (req, res) => {
   res.json({ ok: true, summary });
 }));
 
-// POST /orders/:id/payment-override — אישור חריגת תשלום ידני (סעיף 17.4 / 11.2)
-// מנהל מסמן שהסכום מאושר על אף שלא נגבה במלואו (או להיפך — מבטל את החריגה).
+// POST /orders/:id/payment-override - אישור חריגת תשלום ידני (סעיף 17.4 / 11.2)
+// מנהל מסמן שהסכום מאושר על אף שלא נגבה במלואו (או להיפך - מבטל את החריגה).
 router.post('/orders/:id/payment-override', asyncHandler(async (req, res) => {
   const order = await loadOrder(res, req.params.id);
   if (!order) return;
@@ -135,7 +135,7 @@ router.post('/orders/:id/payment-override', asyncHandler(async (req, res) => {
     await logHistory(order.id, 'אושרה חריגת תשלום', null, req.appUser?.sub);
     return res.json({ ok: true, summary: { payment_status: 'payment_override' } });
   }
-  // ביטול החריגה — גוזרים מחדש מהסכומים בפועל
+  // ביטול החריגה - גוזרים מחדש מהסכומים בפועל
   await supabase.from('orders').update({ payment_status: 'unpaid' }).eq('id', order.id);
   const summary = await recomputePaymentStatus(order.id);
   await logHistory(order.id, 'בוטלה חריגת תשלום', null, req.appUser?.sub);
@@ -146,7 +146,7 @@ router.post('/orders/:id/payment-override', asyncHandler(async (req, res) => {
 // החזרים כספיים (סעיף 19)
 // ===========================================================================
 
-// GET /orders/:id/refunds — רשימת החזרים להזמנה
+// GET /orders/:id/refunds - רשימת החזרים להזמנה
 router.get('/orders/:id/refunds', asyncHandler(async (req, res) => {
   const order = await loadOrder(res, req.params.id);
   if (!order) return;
@@ -160,7 +160,7 @@ router.get('/orders/:id/refunds', asyncHandler(async (req, res) => {
   res.json(data || []);
 }));
 
-// POST /orders/:id/refunds — פתיחת החזר חדש בסטטוס "ממתין להחזר" (סעיף 19.1, 19.5)
+// POST /orders/:id/refunds - פתיחת החזר חדש בסטטוס "ממתין להחזר" (סעיף 19.1, 19.5)
 // אוטומטית: ממלא סכום-ששולם וסכום-סופי מהמצב הנוכחי, ומחשב סכום-להחזר כברירת מחדל.
 router.post('/orders/:id/refunds', asyncHandler(async (req, res) => {
   const order = await loadOrder(res, req.params.id);
@@ -210,7 +210,7 @@ async function syncOrderRefundStatus(orderId) {
   await supabase.from('orders').update({ refund_status: status }).eq('id', orderId);
 }
 
-// PATCH /refunds/:rid — עדכון פרטי החזר בסטטוס "ממתין" (סיבה/סכום/הערה)
+// PATCH /refunds/:rid - עדכון פרטי החזר בסטטוס "ממתין" (סיבה/סכום/הערה)
 router.patch('/refunds/:rid', asyncHandler(async (req, res) => {
   const refund = await loadRefund(res, req.params.rid);
   if (!refund) return;
@@ -233,7 +233,7 @@ router.patch('/refunds/:rid', asyncHandler(async (req, res) => {
   res.json({ ok: true, refund: data });
 }));
 
-// POST /refunds/:rid/execute — ביצוע החזר בפועל (סעיף 19.4, 19.5)
+// POST /refunds/:rid/execute - ביצוע החזר בפועל (סעיף 19.4, 19.5)
 // קובע סטטוס full/partial לפי הסכום שהוחזר מול הסכום להחזר.
 router.post('/refunds/:rid/execute', asyncHandler(async (req, res) => {
   const refund = await loadRefund(res, req.params.rid);
@@ -274,7 +274,7 @@ router.post('/refunds/:rid/execute', asyncHandler(async (req, res) => {
   res.json({ ok: true, refund: data });
 }));
 
-// POST /refunds/:rid/cancel — ביטול החזר / סימון שלא יבוצע (סעיף 19.4)
+// POST /refunds/:rid/cancel - ביטול החזר / סימון שלא יבוצע (סעיף 19.4)
 router.post('/refunds/:rid/cancel', asyncHandler(async (req, res) => {
   const refund = await loadRefund(res, req.params.rid);
   if (!refund) return;
