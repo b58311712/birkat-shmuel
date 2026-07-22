@@ -28,7 +28,13 @@ import { DragHandle } from './DragHandle.jsx';
 //   onReorder(orderedRows) — נקרא עם השורות בסדר החדש לאחר שחרור. באחריות הקורא לשמור.
 //   reorderHint / reorderDisabledHint — טקסטי עזר (עם/בלי סינון פעיל).
 //   הגרירה מושבתת אוטומטית כשסינון פעיל (כי אי-אפשר לגזור סדר גלובלי מרשימה מסוננת),
-//   וגם כשיש שורה מורחבת בעריכה.
+//   וגם כשיש שורה מורחבת בעריכה או מיון פעיל.
+//
+// מיון בלחיצה על כותרת עמודה:
+//   לחיצה ממיינת בסדר עולה, לחיצה נוספת יורד, ולחיצה שלישית מבטלת את המיון.
+//   ההשוואה לפי type: number/date מספרית, enum לפי התווית המוצגת, אחרת טקסט עברי
+//   (localeCompare עם numeric). ערכים ריקים תמיד בסוף. המיון בזיכרון, אחרי הסינון.
+//   sortable: false מבטל מיון לעמודה (ברירת מחדל: כל עמודה עם key ניתנת למיון).
 
 function getValue(col, row) {
   if (col.value) return col.value(row);
@@ -44,6 +50,41 @@ function enumOptions(col) {
 
 function isFilterable(col) {
   return col.filterable !== false && !!col.key && col.type !== 'actions';
+}
+
+function isSortable(col) {
+  return col.sortable !== false && !!col.key && col.type !== 'actions';
+}
+
+function enumLabel(col, v) {
+  if (col.map) return col.map[v]?.label ?? String(v ?? '');
+  const opt = (col.options || []).find((o) => String(o.value) === String(v));
+  return opt?.label ?? String(v ?? '');
+}
+
+// השוואת שני ערכים לא-ריקים לפי טיפוס העמודה (ריקים מסוננים לפני הקריאה)
+function compareCells(col, a, b) {
+  switch (col.type) {
+    case 'number': {
+      const na = Number(a);
+      const nb = Number(b);
+      if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+      break;
+    }
+    case 'date': {
+      const ta = new Date(a).getTime();
+      const tb = new Date(b).getTime();
+      if (!Number.isNaN(ta) && !Number.isNaN(tb)) return ta - tb;
+      break;
+    }
+    case 'boolean':
+      return (a ? 1 : 0) - (b ? 1 : 0);
+    case 'enum':
+      return enumLabel(col, a).localeCompare(enumLabel(col, b), 'he', { numeric: true });
+    default:
+      break;
+  }
+  return String(a).localeCompare(String(b), 'he', { numeric: true, sensitivity: 'base' });
 }
 
 function matchesText(cell, term) {
@@ -89,6 +130,7 @@ export function DataTable({
   const [filters, setFilters] = useState(initialFilters || {});
   const [showFilters, setShowFilters] = useState(!!initialFilters && Object.keys(initialFilters).length > 0);
   const [draggingId, setDraggingId] = useState(null);
+  const [sort, setSort] = useState(null); // { key, dir: 'asc' | 'desc' } או null
 
   const leadCols = reorderable ? 1 : 0;
   const colSpan = leadCols + columns.length + (actions ? 1 : 0);
@@ -96,6 +138,13 @@ export function DataTable({
   const setFilter = (key, patch) =>
     setFilters((f) => ({ ...f, [key]: { ...f[key], ...patch } }));
   const clearFilters = () => setFilters({});
+
+  // עולה -> יורד -> ביטול
+  const toggleSort = (col) =>
+    setSort((s) => {
+      if (!s || s.key !== col.key) return { key: col.key, dir: 'asc' };
+      return s.dir === 'asc' ? { key: col.key, dir: 'desc' } : null;
+    });
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
@@ -141,16 +190,32 @@ export function DataTable({
     return result;
   }, [rows, columns, filters]);
 
-  // גרירה זמינה רק כשאין סינון פעיל ואין שורה בעריכה — אחרת אי-אפשר לגזור סדר גלובלי אמין.
-  const canReorder = reorderable && !!onReorder && activeFilterCount === 0 && expandedId == null;
+  // מיון בזיכרון על השורות המסוננות. ריקים תמיד בסוף, בשני הכיוונים.
+  const sorted = useMemo(() => {
+    if (!filtered || !sort) return filtered;
+    const col = columns.find((c) => c.key === sort.key);
+    if (!col) return filtered;
+    const mul = sort.dir === 'desc' ? -1 : 1;
+    return [...filtered].sort((ra, rb) => {
+      const a = getValue(col, ra);
+      const b = getValue(col, rb);
+      const aEmpty = a == null || a === '';
+      const bEmpty = b == null || b === '';
+      if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1;
+      return compareCells(col, a, b) * mul;
+    });
+  }, [filtered, sort, columns]);
+
+  // גרירה זמינה רק כשאין סינון או מיון פעילים ואין שורה בעריכה - אחרת אי-אפשר לגזור סדר גלובלי אמין.
+  const canReorder = reorderable && !!onReorder && activeFilterCount === 0 && sort == null && expandedId == null;
 
   function handleDrop(targetKey) {
     if (!canReorder || draggingId == null || draggingId === targetKey) return;
-    const fromIndex = filtered.findIndex((r) => rowKey(r) === draggingId);
-    const toIndex = filtered.findIndex((r) => rowKey(r) === targetKey);
+    const fromIndex = sorted.findIndex((r) => rowKey(r) === draggingId);
+    const toIndex = sorted.findIndex((r) => rowKey(r) === targetKey);
     setDraggingId(null);
     if (fromIndex < 0 || toIndex < 0) return;
-    const reordered = [...filtered];
+    const reordered = [...sorted];
     const [moved] = reordered.splice(fromIndex, 1);
     reordered.splice(toIndex, 0, moved);
     onReorder(reordered);
@@ -177,9 +242,18 @@ export function DataTable({
             ניקוי סינון
           </button>
         )}
+        {sort && (
+          <button type="button" onClick={() => setSort(null)} className="text-sm text-brand-burgundy/50 hover:underline">
+            ביטול מיון
+          </button>
+        )}
         {reorderable && (
           <span className="text-xs text-brand-burgundy/50">
-            {canReorder ? reorderHint : reorderDisabledHint}
+            {canReorder
+              ? reorderHint
+              : activeFilterCount === 0 && sort
+                ? 'כדי לשנות סדר יש לבטל את המיון'
+                : reorderDisabledHint}
           </span>
         )}
         {rows && (
@@ -195,11 +269,31 @@ export function DataTable({
           <thead className="bg-brand-burgundy text-brand-cream text-sm">
             <tr>
               {reorderable && <th className="p-3 text-right w-10" aria-label="סדר" />}
-              {columns.map((col, i) => (
-                <th key={col.key || `col-${i}`} className={`p-3 text-right ${col.headerClassName || ''}`}>
-                  {col.label}
-                </th>
-              ))}
+              {columns.map((col, i) => {
+                const sortable = isSortable(col);
+                const active = sortable && sort?.key === col.key;
+                return (
+                  <th
+                    key={col.key || `col-${i}`}
+                    className={`p-3 text-right ${col.headerClassName || ''}`}
+                    aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
+                  >
+                    {sortable ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleSort(col)}
+                        title={active ? (sort.dir === 'asc' ? 'מיון יורד' : 'ביטול המיון') : 'מיון לפי עמודה זו'}
+                        className="group inline-flex items-center gap-1 text-right hover:text-brand-gold"
+                      >
+                        {col.label}
+                        <SortIcon dir={active ? sort.dir : null} />
+                      </button>
+                    ) : (
+                      col.label
+                    )}
+                  </th>
+                );
+              })}
               {actions && <th className="p-3 text-right">{actionsLabel}</th>}
             </tr>
             {showFilters && (
@@ -217,10 +311,10 @@ export function DataTable({
           <tbody>
             {!rows ? (
               <tr><td colSpan={colSpan} className="p-6 text-center text-brand-burgundy/50">{loading}</td></tr>
-            ) : filtered.length === 0 ? (
+            ) : sorted.length === 0 ? (
               <tr><td colSpan={colSpan} className="p-6 text-center text-brand-burgundy/50">{empty}</td></tr>
             ) : (
-              filtered.map((row) => {
+              sorted.map((row) => {
                 const key = rowKey(row);
                 const dragging = draggingId === key;
                 return (
@@ -335,6 +429,23 @@ function FilterControl({ col, value = {}, onChange }) {
           placeholder="חיפוש" className={filterInputCls} dir={col.dir} />
       );
   }
+}
+
+// אינדיקציית מיון: חץ כפול עמום כשלא פעיל (מתחזק ב-hover), חץ יחיד כשפעיל
+function SortIcon({ dir }) {
+  if (dir) {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-3.5 w-3.5 text-brand-gold" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        {dir === 'asc' ? <path d="m6 15 6-6 6 6" /> : <path d="m6 9 6 6 6-6" />}
+      </svg>
+    );
+  }
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-3.5 w-3.5 opacity-30 group-hover:opacity-70" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m7 9 5-5 5 5" />
+      <path d="m7 15 5 5 5-5" />
+    </svg>
+  );
 }
 
 function FilterIcon() {

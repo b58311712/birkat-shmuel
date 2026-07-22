@@ -18,6 +18,13 @@ const SUGGESTION_BASES = [
 const suggestionBasisLabel = (basis) =>
   SUGGESTION_BASES.find(([v]) => v === (basis || ''))?.[1] || basis;
 
+// סימוני כרטיס המאכל (צ'קבוקסים) - כל אחד גם עמודה נפרדת וניתנת לסינון בטבלת המאכלים.
+const MEAL_FLAGS = [
+  { key: 'has_recipe', label: 'מתכון' },
+  { key: 'has_quantity', label: 'כמות' },
+  { key: 'has_packaging', label: 'אריזה' },
+];
+
 export default function AdminCatalog({ onAuthError, currentAdmin }) {
   const [view, setView] = useState('meals');
   const [mealSlots, setMealSlots] = useState([]);
@@ -211,6 +218,15 @@ function MealsManager({ categories, mealSlots, onErr, onChanged, canDelete }) {
       value: (meal) => (meal.requires_extra_charge ? `תוספת ₪${fmt(meal.extra_charge_amount)}` : (meal.included_in_base ? 'כלול בבסיס' : 'לא כלול')),
       render: (meal) => (meal.requires_extra_charge ? `תוספת ₪${fmt(meal.extra_charge_amount)}` : (meal.included_in_base ? 'כלול בבסיס' : 'לא כלול')),
     },
+    ...MEAL_FLAGS.map((flag) => ({
+      key: flag.key,
+      label: flag.label,
+      type: 'boolean',
+      trueLabel: 'מסומן',
+      falseLabel: 'לא מסומן',
+      value: (meal) => !!meal[flag.key],
+      render: (meal) => (meal[flag.key] ? <span className="text-brand-gold-dark font-bold">✓</span> : ''),
+    })),
     {
       key: 'is_active',
       label: 'סטטוס',
@@ -297,6 +313,9 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, units, onInv
     is_secondary: initial.is_secondary || false,
     requires_extra_charge: initial.requires_extra_charge || false,
     extra_charge_amount: initial.extra_charge_amount ?? '',
+    has_recipe: initial.has_recipe || false,
+    has_quantity: initial.has_quantity || false,
+    has_packaging: initial.has_packaging || false,
     kitchen_prep_notes: initial.kitchen_prep_notes || '',
     kitchen_report_notes: initial.kitchen_report_notes || '',
     preparation_instructions: initial.preparation_instructions || '',
@@ -439,6 +458,17 @@ function MealForm({ initial, categories, mealSlots, inventoryItems, units, onInv
           </Field>
         )}
       </div>
+
+      <Field label="סימונים">
+        <div className="flex flex-wrap gap-4 p-2 border border-brand-cream-dark rounded-lg">
+          {MEAL_FLAGS.map((flag) => (
+            <label key={flag.key} className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={f[flag.key]} onChange={(e) => set(flag.key, e.target.checked)} />
+              {flag.label}
+            </label>
+          ))}
+        </div>
+      </Field>
 
       <Field label="זמין בסעודות">
         <CheckboxGrid

@@ -8,7 +8,7 @@ import { fetchSlotSplitsByCategory, replaceSlotSplits } from '../services/catego
 const router = Router();
 
 const CATEGORY_SELECT = 'id, name, internal_description, display_order, recommended_min, max_allowed, requires_portion_split, split_mode, primary_percent, secondary_percent, inherit_from_slot_id, extra_allowed, is_active, created_at, updated_at';
-const MEAL_SELECT = 'id, name, category_id, included_in_base, requires_extra_charge, extra_charge_amount, is_secondary, kitchen_prep_notes, kitchen_report_notes, preparation_instructions, display_order, is_active, created_at, updated_at, category:category_id (id, name)';
+const MEAL_SELECT = 'id, name, category_id, included_in_base, requires_extra_charge, extra_charge_amount, is_secondary, has_recipe, has_quantity, has_packaging, kitchen_prep_notes, kitchen_report_notes, preparation_instructions, display_order, is_active, created_at, updated_at, category:category_id (id, name)';
 
 const SPLIT_MODES = ['none', 'equal', 'additive'];
 const EXTRA_SELECT = 'id, name, unit_price, billing_unit, suggestion_ratio, suggestion_basis, customer_note, display_order, is_active, created_at, updated_at';
@@ -110,6 +110,10 @@ function normalizeMeal(body, { partial = false } = {}) {
   if (!partial || body.included_in_base !== undefined) patch.included_in_base = body.included_in_base !== false;
   if (!partial || body.is_secondary !== undefined) patch.is_secondary = Boolean(body.is_secondary);
   if (!partial || body.requires_extra_charge !== undefined) patch.requires_extra_charge = Boolean(body.requires_extra_charge);
+  // סימוני כרטיס המאכל: מתכון / כמות / אריזה
+  if (!partial || body.has_recipe !== undefined) patch.has_recipe = Boolean(body.has_recipe);
+  if (!partial || body.has_quantity !== undefined) patch.has_quantity = Boolean(body.has_quantity);
+  if (!partial || body.has_packaging !== undefined) patch.has_packaging = Boolean(body.has_packaging);
   if (!partial || body.extra_charge_amount !== undefined) patch.extra_charge_amount = num(body.extra_charge_amount);
   if (!partial || body.kitchen_prep_notes !== undefined) {
     patch.kitchen_prep_notes = body.kitchen_prep_notes ? String(body.kitchen_prep_notes).trim() : null;

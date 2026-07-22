@@ -14,7 +14,7 @@
   }
 
   h1, h2, h3, h4 {
-    @apply text-ink;
+    @apply font-display text-ink;
   }
 
   ::selection {
@@ -288,10 +288,11 @@
   }
 
   .admin-pilot table:not(.pilot-table) td {
-    color: #4a3e43;
+    color: #3b3136;
   }
 
-  /* צפיפות מקצועית: שורות של כ-40px, טקסט נתונים 13px */
+  /* צפיפות מקצועית: שורות של כ-42px. נתונים ב-14px כהה - עברית צריכה
+     גודל מעט גדול מהמקבילה הלטינית כדי להישאר קריאה בצפיפות. */
   .admin-pilot table th {
     padding-top: 0.5rem;
     padding-bottom: 0.5rem;
@@ -300,7 +301,9 @@
   .admin-pilot table td {
     padding-top: 0.55rem;
     padding-bottom: 0.55rem;
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
+    color: #3b3136;
+    line-height: 1.45;
   }
 
   .admin-pilot table:not(.pilot-table) tbody tr + tr {
@@ -555,7 +558,7 @@ header a:has(img[src="/logo.png"]) img {
 }
 
 main {
-  color: #4a3e43;
+  color: #3f353a;
 }
 
 label > span,

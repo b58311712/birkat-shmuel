@@ -39,8 +39,11 @@ export default {
           body: '#4A3E43',
         },
       },
+      /* זוג פונטים: Noto Sans Hebrew לטקסט רץ ונתונים (קריאות מרבית בגדלים קטנים),
+         IBM Plex Sans Hebrew לכותרות בלבד (האופי ה"מהונדס" של השפה) */
       fontFamily: {
-        sans: ['"IBM Plex Sans Hebrew"', '"Segoe UI"', 'system-ui', 'sans-serif'],
+        sans: ['"Noto Sans Hebrew"', '"Segoe UI"', 'system-ui', 'sans-serif'],
+        display: ['"IBM Plex Sans Hebrew"', '"Noto Sans Hebrew"', '"Segoe UI"', 'sans-serif'],
       },
       /* צל קיים רק בשכבות שבאמת מעל הדף: תפריטים ודיאלוגים.
          shadow-card נשאר כשם — אבל הערך הופך לקו-מתאר עדין במקום צל צף. */
