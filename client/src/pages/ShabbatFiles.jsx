@@ -19,6 +19,13 @@ const SHABBAT_STATUS_OPTIONS = [
   { value: 'cancelled', label: 'מבוטלת / המטבח לא פעיל' },
 ];
 
+const EMPTY_NEW_SHABBAT = {
+  gregorian_date: '',
+  parasha: '',
+  status: 'open',
+  payment_deadline: '',
+};
+
 export default function ShabbatFiles({ onAuthError, currentAdmin }) {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +35,10 @@ export default function ShabbatFiles({ onAuthError, currentAdmin }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [sortBy, setSortBy] = useState('date-desc');
+  const [showCreate, setShowCreate] = useState(false);
+  const [newShabbat, setNewShabbat] = useState(EMPTY_NEW_SHABBAT);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
   const canDelete = currentAdmin?.role === 'developer';
 
   const visibleFiles = useMemo(() => {
@@ -108,8 +119,108 @@ export default function ShabbatFiles({ onAuthError, currentAdmin }) {
     }
   }
 
+  function closeCreate() {
+    if (creating) return;
+    setShowCreate(false);
+    setCreateError('');
+    setNewShabbat(EMPTY_NEW_SHABBAT);
+  }
+
+  function updateNewShabbat(field, value) {
+    setCreateError('');
+    setNewShabbat((current) => ({ ...current, [field]: value }));
+  }
+
+  async function createShabbat(event) {
+    event.preventDefault();
+    setCreating(true);
+    setCreateError('');
+    try {
+      const created = await api.createShabbat(newShabbat);
+      setFiles((current) => [created, ...current]);
+      setShowCreate(false);
+      setNewShabbat(EMPTY_NEW_SHABBAT);
+      setSearch('');
+      setStatusFilter('');
+      setSortBy('date-desc');
+    } catch (e) {
+      if (e.name === 'AdminAuthError') onAuthError?.();
+      else setCreateError(e.message);
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <Page title="תיקי שבת" subtitle="מסך העבודה המרכזי לכל שבת: כמויות, אריזה, שינוע">
+      <div className="mb-4 flex justify-end">
+        <button type="button" className="btn-primary" onClick={() => setShowCreate((open) => !open)}>
+          <span aria-hidden="true" className="text-lg leading-none">+</span>
+          {showCreate ? 'סגירת טופס' : 'הוספת שבת ידנית'}
+        </button>
+      </div>
+
+      {showCreate && (
+        <form className="card mb-4 p-4" onSubmit={createShabbat}>
+          <div className="mb-3">
+            <h2 className="font-bold text-brand-burgundy">הוספת שבת לתיקי שבת</h2>
+            <p className="mt-1 text-sm text-brand-burgundy/60">הפרשה והתאריך העברי יחושבו אוטומטית. בחג אפשר להזין שם שבת ידני.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-brand-burgundy/60">תאריך שבת *</span>
+              <input
+                type="date"
+                required
+                value={newShabbat.gregorian_date}
+                onChange={(e) => updateNewShabbat('gregorian_date', e.target.value)}
+                className="input w-full"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-brand-burgundy/60">פרשה / שם השבת</span>
+              <input
+                type="text"
+                value={newShabbat.parasha}
+                onChange={(e) => updateNewShabbat('parasha', e.target.value)}
+                placeholder="יחושב אוטומטית"
+                className="input w-full"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-brand-burgundy/60">מועד אחרון לתשלום</span>
+              <input
+                type="date"
+                value={newShabbat.payment_deadline}
+                max={newShabbat.gregorian_date || undefined}
+                onChange={(e) => updateNewShabbat('payment_deadline', e.target.value)}
+                className="input w-full"
+              />
+              <span className="mt-1 block text-xs text-brand-burgundy/50">ברירת מחדל: שבוע לפני</span>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-brand-burgundy/60">סטטוס</span>
+              <select
+                value={newShabbat.status}
+                onChange={(e) => updateNewShabbat('status', e.target.value)}
+                className="input w-full"
+              >
+                {SHABBAT_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {createError && <div role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{createError}</div>}
+          <div className="mt-4 flex gap-2">
+            <button type="submit" className="btn-primary" disabled={creating}>
+              {creating ? 'מוסיף שבת…' : 'הוספת שבת'}
+            </button>
+            <button type="button" className="btn-secondary" onClick={closeCreate} disabled={creating}>ביטול</button>
+          </div>
+        </form>
+      )}
+
       <div className="card mb-4 p-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1fr)_180px_220px_auto] gap-3 items-end">
           <label className="block">
@@ -134,12 +245,12 @@ export default function ShabbatFiles({ onAuthError, currentAdmin }) {
           <label className="block">
             <span className="block text-xs font-bold text-brand-burgundy/60 mb-1">מיון</span>
             <select className="input w-full" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-              <option value="date-desc">תאריך — מהחדש לישן</option>
-              <option value="date-asc">תאריך — מהישן לחדש</option>
-              <option value="parasha-asc">פרשה — א׳ עד ת׳</option>
-              <option value="parasha-desc">פרשה — ת׳ עד א׳</option>
-              <option value="orders-desc">הזמנות — מהגבוה לנמוך</option>
-              <option value="orders-asc">הזמנות — מהנמוך לגבוה</option>
+              <option value="date-desc">תאריך - מהחדש לישן</option>
+              <option value="date-asc">תאריך - מהישן לחדש</option>
+              <option value="parasha-asc">פרשה - א׳ עד ת׳</option>
+              <option value="parasha-desc">פרשה - ת׳ עד א׳</option>
+              <option value="orders-desc">הזמנות - מהגבוה לנמוך</option>
+              <option value="orders-asc">הזמנות - מהנמוך לגבוה</option>
               <option value="status">סטטוס</option>
             </select>
           </label>

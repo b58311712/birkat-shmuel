@@ -42,7 +42,7 @@ export function consumeAdminAuthNotice() {
   return notice;
 }
 
-// נזרק כשטוקן המנהל חסר/פג — מאפשר לפרונט להפנות חזרה לכניסה.
+// נזרק כשטוקן המנהל חסר/פג - מאפשר לפרונט להפנות חזרה לכניסה.
 export class AdminAuthError extends Error {
   constructor(message) { super(message); this.name = 'AdminAuthError'; }
 }
@@ -59,7 +59,7 @@ async function request(path, options = {}) {
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    // טוקן מנהל פג/לא תקין — מנקים ומאותתים לפרונט. 403 הוא כשל הרשאה, לא כשל התחברות.
+    // טוקן מנהל פג/לא תקין - מנקים ומאותתים לפרונט. 403 הוא כשל הרשאה, לא כשל התחברות.
     if (admin && res.status === 401) {
       adminAuth.clear();
       setAdminAuthNotice('פג תוקף ההתחברות. יש להתחבר מחדש; שינויים בנוסחי המייל נשמרו כטיוטה.');
@@ -192,6 +192,7 @@ export const api = {
 
   // תיק שבת (סעיף 9)
   shabbatFiles: () => request('/admin/shabbat-files'),
+  createShabbat: (payload) => request('/admin/shabbat-files', { method: 'POST', body: JSON.stringify(payload) }),
   shabbatSummary: (id) => request(`/admin/shabbat-files/${id}/summary`),
   shabbatKitchen: (id) => request(`/admin/shabbat-files/${id}/kitchen`),
   shabbatInventory: (id) => request(`/admin/shabbat-files/${id}/inventory`),
