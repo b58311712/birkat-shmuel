@@ -420,7 +420,7 @@ export async function buildInventoryReport(shabbatId) {
 // לשונית מתנדבים (סעיף 9.8, 24) - מבנה מפושט, חישוב חי בלי snapshot:
 //   - משימות קבועות פעילות (volunteer_tasks) + מי משובץ אליהן בשבת זו
 //   - המשובץ = דריסה ידנית (is_override) אם קיימת, אחרת המתנדב הקבוע (primary),
-//     ולמשימת בישול - נפילה למתנדב המקושר למאכל (volunteer_meal_links)
+//     ולמשימת בישול - נפילה למבשל הקבוע של המאכל (volunteer_meal_links, role=primary)
 //   - משימת בישול שהמאכל שלה לא הוזמן בשבת - לא רלוונטית ומוסתרת
 //   - מחליפים (backup) מוצגים כרשימת גיבוי לבחירה
 export async function buildVolunteerReport(shabbatId) {
@@ -438,7 +438,7 @@ export async function buildVolunteerReport(shabbatId) {
     { data: mealLinks, error: mealLinkError },
   ] = await Promise.all([
     supabase.from('volunteer_tasks')
-      .select('id, name, area_id, linked_meal_id, execution_day, shift, timing_note, display_order, meals:linked_meal_id (id, name)')
+      .select('id, name, area_id, linked_meal_id, execution_day, shift, timing_note, display_order, meals:linked_meal_id (id, name), volunteer_task_meal_links (meal_id, meals:meal_id (id, name))')
       .eq('is_active', true).order('display_order').order('name'),
     supabase.from('volunteer_areas').select('id, name, is_cooking, display_order'),
     supabase.from('volunteer_task_links')
@@ -447,7 +447,7 @@ export async function buildVolunteerReport(shabbatId) {
       .select('id, task_id, meal_id, volunteer_id, notes, volunteers:volunteer_id (id, full_name, phone, area_id, has_vehicle)')
       .eq('shabbat_id', shabbatId).eq('is_override', true),
     supabase.from('volunteer_meal_links')
-      .select('meal_id, volunteers:volunteer_id (id, full_name, phone, area_id, has_vehicle, is_active)'),
+      .select('meal_id, role, volunteers:volunteer_id (id, full_name, phone, area_id, has_vehicle, is_active)'),
   ]);
   for (const result of [taskError, areaError, staffingError, overrideError, mealLinkError]) {
     if (result) throw result;
@@ -464,20 +464,41 @@ export async function buildVolunteerReport(shabbatId) {
     if (o.task_id) overrideByTask[o.task_id] = o;
     else if (o.meal_id) overrideByMeal[o.meal_id] = o;
   }
-  // מתנדבי בישול פעילים לפי מאכל (לנפילה כשאין primary)
+  // מתנדבי בישול פעילים לפי מאכל, מופרדים לפי תפקיד (סעיף 24.2):
+  //   primary = מבשל קבוע, הוא המשובץ בפועל (וגם הנפילה לאחראי משימת בישול).
+  //   backup  = מחליף קבוע, הצעה מהירה בלבד - אינו משובץ אוטומטית.
   const mealVolunteersByMeal = {};
+  const mealBackupsByMeal = {};
   for (const link of mealLinks || []) {
-    if (link.volunteers?.is_active) (mealVolunteersByMeal[link.meal_id] ||= []).push(link.volunteers);
+    if (!link.volunteers?.is_active) continue;
+    const bucket = link.role === 'backup' ? mealBackupsByMeal : mealVolunteersByMeal;
+    (bucket[link.meal_id] ||= []).push(link.volunteers);
   }
 
   const dayOrder = ['general', 'tuesday', 'wednesday', 'thursday', 'friday', 'shabbat', 'motzei_shabbat'];
   const shiftOrder = [null, 'morning', 'noon', 'evening', 'night'];
 
-  const relevantTasks = (tasks || []).filter((task) =>
-    !task.linked_meal_id || orderedMeals.has(task.linked_meal_id));
+  // המאכלים המקושרים למשימה (סמנטיקת "או"): המשימה רלוונטית בשבת אם הוזמן לפחות
+  // אחד מהם. אין קישורים כלל = משימה ללא התניית מאכל, תמיד רלוונטית.
+  // נפילה ל-linked_meal_id הבודד למשימות ישנות שטרם קיבלו שורות קישור.
+  const taskMeals = (task) => {
+    const links = task.volunteer_task_meal_links || [];
+    if (links.length) {
+      return links.map((link) => ({ id: link.meal_id, name: link.meals?.name || nameByMeal[link.meal_id] || null }));
+    }
+    if (!task.linked_meal_id) return [];
+    return [{ id: task.linked_meal_id, name: task.meals?.name || nameByMeal[task.linked_meal_id] || null }];
+  };
 
-  const enriched = relevantTasks.map((task) => {
+  const relevantTasks = (tasks || [])
+    .map((task) => ({ task, linkedMeals: taskMeals(task) }))
+    .filter(({ linkedMeals }) => !linkedMeals.length || linkedMeals.some((meal) => orderedMeals.has(meal.id)));
+
+  const enriched = relevantTasks.map(({ task, linkedMeals }) => {
     const area = areaById[task.area_id];
+    // המאכלים שבגללם המשימה רלוונטית - הם שמוצגים לצד שם המשימה
+    const orderedLinked = linkedMeals.filter((meal) => orderedMeals.has(meal.id));
+    const shownMeals = orderedLinked.length ? orderedLinked : linkedMeals;
     const links = staffingByTask[task.id] || [];
     const primaryLink = links.find((l) => l.role === 'primary' && l.volunteers?.is_active);
     const backups = links
@@ -495,9 +516,12 @@ export async function buildVolunteerReport(shabbatId) {
     } else if (primaryLink?.volunteers) {
       lead = primaryLink.volunteers;
       source = 'primary';
-    } else if (area?.is_cooking && task.linked_meal_id) {
-      lead = (mealVolunteersByMeal[task.linked_meal_id] || [])[0] || null;
-      if (lead) source = 'meal';
+    } else if (area?.is_cooking && shownMeals.length) {
+      // המאכל הראשון (מבין המוזמנים) שיש לו מבשל קבוע קובע את האחראי
+      for (const meal of shownMeals) {
+        lead = (mealVolunteersByMeal[meal.id] || [])[0] || null;
+        if (lead) { source = 'meal'; break; }
+      }
     }
 
     return {
@@ -511,9 +535,10 @@ export async function buildVolunteerReport(shabbatId) {
       shift: task.shift,
       timing_note: task.timing_note,
       display_order: task.display_order,
-      linked_meal_id: task.linked_meal_id,
-      linked_meal_name: task.meals?.name || nameByMeal[task.linked_meal_id] || null,
-      meal_is_ordered: task.linked_meal_id ? orderedMeals.has(task.linked_meal_id) : null,
+      linked_meal_id: linkedMeals[0]?.id || null,
+      linked_meal_ids: linkedMeals.map((meal) => meal.id),
+      linked_meal_name: shownMeals.map((meal) => meal.name).filter(Boolean).join(', ') || null,
+      meal_is_ordered: linkedMeals.length ? orderedLinked.length > 0 : null,
       // המתנדב האחראי בשבת זו (חי)
       lead: lead ? {
         volunteer_id: lead.id,
@@ -548,21 +573,19 @@ export async function buildVolunteerReport(shabbatId) {
   // המשובצים לבשל אותו (volunteer_meal_links). מאכל בלי מבשל מסומן כפער.
   // נגזר ישירות מההזמנות ולא מהמשימות - כך שום מאכל שהוזמן לא נופל בין הכיסאות.
   // דריסת מבשל פר-שבת (overrideByMeal): מחליפה את המבשלים הקבועים לשבת זו בלבד.
+  // מחליפים קבועים (backup_cooks) אינם משובצים - הם הצעה מהירה לדריסה ושורת גיבוי.
+  const cookRow = (v) => ({
+    volunteer_id: v.id,
+    volunteer_name: v.full_name,
+    phone: v.phone || null,
+    has_vehicle: v.has_vehicle || false,
+  });
   const cookingMeals = Object.keys(portionsByMeal)
     .map((mealId) => {
-      const permanentCooks = (mealVolunteersByMeal[mealId] || []).map((v) => ({
-        volunteer_id: v.id,
-        volunteer_name: v.full_name,
-        phone: v.phone || null,
-        has_vehicle: v.has_vehicle || false,
-      }));
+      const permanentCooks = (mealVolunteersByMeal[mealId] || []).map(cookRow);
+      const backupCooks = (mealBackupsByMeal[mealId] || []).map(cookRow);
       const override = overrideByMeal[mealId];
-      const overrideCook = override?.volunteers ? {
-        volunteer_id: override.volunteers.id,
-        volunteer_name: override.volunteers.full_name,
-        phone: override.volunteers.phone || null,
-        has_vehicle: override.volunteers.has_vehicle || false,
-      } : null;
+      const overrideCook = override?.volunteers ? cookRow(override.volunteers) : null;
       // כשיש מחליף לשבת זו - הוא המבשל בפועל במקום הקבועים.
       const cooks = overrideCook ? [overrideCook] : permanentCooks;
       return {
@@ -571,6 +594,7 @@ export async function buildVolunteerReport(shabbatId) {
         portions: portionsByMeal[mealId],
         cooks,
         permanent_cooks: permanentCooks,
+        backup_cooks: backupCooks,
         override_cook: overrideCook,
         is_override: !!overrideCook,
         is_unassigned: cooks.length === 0,

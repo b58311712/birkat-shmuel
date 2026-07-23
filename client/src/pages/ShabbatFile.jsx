@@ -667,7 +667,7 @@ const pickerSelectCls =
 function NewVolunteerForm({ areas, customers, busy, defaultAreaId = '', onCreate, onCancel }) {
   const areaList = areas || [];
   const customerList = customers || [];
-  const [form, setForm] = useState({ customer_id: '', full_name: '', phone: '', has_vehicle: false, area_id: defaultAreaId });
+  const [form, setForm] = useState({ customer_id: '', first_name: '', last_name: '', phone: '', has_vehicle: false, area_id: defaultAreaId });
   const [customerSearch, setCustomerSearch] = useState('');
 
   const normalizedSearch = customerSearch.trim().toLocaleLowerCase('he-IL');
@@ -680,7 +680,13 @@ function NewVolunteerForm({ areas, customers, busy, defaultAreaId = '', onCreate
   // בחירת לקוח קיים משלימה שם/טלפון מכרטיס הלקוח (בדומה לטופס המתנדב המלא)
   function setCustomer(cid) {
     const c = customerList.find((x) => x.id === cid);
-    setForm((prev) => ({ ...prev, customer_id: cid, full_name: c?.full_name || prev.full_name, phone: c?.phone || prev.phone }));
+    setForm((prev) => ({
+      ...prev,
+      customer_id: cid,
+      first_name: c?.first_name || prev.first_name,
+      last_name: c?.last_name ?? prev.last_name,
+      phone: c?.phone || prev.phone,
+    }));
   }
 
   return (
@@ -702,8 +708,10 @@ function NewVolunteerForm({ areas, customers, busy, defaultAreaId = '', onCreate
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <input value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-          placeholder="שם מלא *" className={pickerSelectCls} readOnly={!!linkedCustomer} />
+        <input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
+          placeholder="שם פרטי *" className={pickerSelectCls} readOnly={!!linkedCustomer} />
+        <input value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
+          placeholder="שם משפחה" className={pickerSelectCls} readOnly={!!linkedCustomer} />
         <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
           placeholder="טלפון" dir="ltr" className={pickerSelectCls} readOnly={!!linkedCustomer} />
         <select value={form.area_id} onChange={(e) => setForm((f) => ({ ...f, area_id: e.target.value }))} className={pickerSelectCls}>
@@ -719,10 +727,11 @@ function NewVolunteerForm({ areas, customers, busy, defaultAreaId = '', onCreate
         </label>
       </div>
       <div className="flex items-center gap-2">
-        <button type="button" disabled={busy || !form.area_id || (!form.customer_id && !form.full_name.trim())}
+        <button type="button" disabled={busy || !form.area_id || (!form.customer_id && !form.first_name.trim())}
           onClick={() => onCreate({
             customer_id: form.customer_id || undefined,
-            full_name: form.full_name.trim() || undefined,
+            first_name: form.first_name.trim() || undefined,
+            last_name: form.last_name.trim() || undefined,
             phone: form.phone.trim() || undefined,
             has_vehicle: form.has_vehicle,
             area_ids: form.area_id ? [form.area_id] : [],
@@ -753,22 +762,35 @@ function MealCookPicker({ meal, volunteers, areas, customers, busy, onAssign, on
       </div>
 
       {!adding ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <select value={sel} onChange={(e) => setSel(e.target.value)} className={pickerSelectCls}>
-            <option value="">בחירת מתנדב...</option>
-            {list.map((v) => (
-              <option key={v.id} value={v.id}>{v.full_name}{v.has_vehicle ? ' 🚗' : ''}</option>
-            ))}
-          </select>
-          <button type="button" disabled={!sel || busy} onClick={() => onAssign(meal, sel)}
-            className="btn-secondary text-sm disabled:opacity-50">שיבוץ מחליף</button>
-          <button type="button" disabled={busy} onClick={() => setAdding(true)}
-            className="text-xs text-brand-burgundy/70 hover:text-brand-burgundy underline">+ מתנדב חדש</button>
-          {meal.is_override && (
-            <button type="button" disabled={busy} onClick={() => onReset(meal)}
-              className="text-xs text-brand-gold-dark underline">החזרה למבשלים הקבועים</button>
+        <>
+          {/* הצעות מהירות: המחליפים הקבועים של המאכל (סעיף 24.2) */}
+          {meal.backup_cooks?.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {meal.backup_cooks.map((c) => (
+                <button key={c.volunteer_id} type="button" onClick={() => onAssign(meal, c.volunteer_id)} disabled={busy}
+                  className="text-sm bg-brand-burgundy/5 hover:bg-brand-gold/20 border border-brand-cream-dark rounded-full px-3 py-1">
+                  {c.volunteer_name} · מחליף קבוע{c.has_vehicle ? ' 🚗' : ''}
+                </button>
+              ))}
+            </div>
           )}
-        </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={sel} onChange={(e) => setSel(e.target.value)} className={pickerSelectCls}>
+              <option value="">בחירת מתנדב...</option>
+              {list.map((v) => (
+                <option key={v.id} value={v.id}>{v.full_name}{v.has_vehicle ? ' 🚗' : ''}</option>
+              ))}
+            </select>
+            <button type="button" disabled={!sel || busy} onClick={() => onAssign(meal, sel)}
+              className="btn-secondary text-sm disabled:opacity-50">שיבוץ מחליף</button>
+            <button type="button" disabled={busy} onClick={() => setAdding(true)}
+              className="text-xs text-brand-burgundy/70 hover:text-brand-burgundy underline">+ מתנדב חדש</button>
+            {meal.is_override && (
+              <button type="button" disabled={busy} onClick={() => onReset(meal)}
+                className="text-xs text-brand-gold-dark underline">החזרה למבשלים הקבועים</button>
+            )}
+          </div>
+        </>
       ) : (
         <NewVolunteerForm areas={areas} customers={customers} busy={busy} defaultAreaId={defaultArea}
           onCreate={(payload) => onCreateAndAssign(meal, payload)} onCancel={() => setAdding(false)} />
@@ -777,6 +799,11 @@ function MealCookPicker({ meal, volunteers, areas, customers, busy, onAssign, on
       {meal.permanent_cooks?.length > 0 && (
         <div className="text-xs text-brand-burgundy/50">
           מבשלים קבועים: {meal.permanent_cooks.map((c) => c.volunteer_name).join(', ')}
+        </div>
+      )}
+      {meal.backup_cooks?.length > 0 && (
+        <div className="text-xs text-brand-burgundy/50">
+          מחליפים קבועים: {meal.backup_cooks.map((c) => c.volunteer_name).join(', ')}
         </div>
       )}
       {list.length === 0 && !adding && (
@@ -954,6 +981,10 @@ function VolunteersTab({ id, onAuthError }) {
           </div>
         )
       ) },
+    { key: 'backup_cooks', label: 'מחליפים', filterable: false, sortable: false,
+      render: (m) => (m.backup_cooks?.length
+        ? <span className="text-xs text-brand-burgundy/60">{m.backup_cooks.map((c) => c.volunteer_name).join(', ')}</span>
+        : <span className="text-brand-burgundy/30">-</span>) },
     { key: 'assigned', label: 'משובץ', type: 'boolean',
       trueLabel: 'יש מבשל', falseLabel: 'אין מבשל',
       value: (m) => !m.is_unassigned,
@@ -1345,7 +1376,7 @@ function PrintTab({ id, onAuthError }) {
         {vol?.cooking_meals?.length > 0 && (
           <ReportBlock title="פירוט בישול - מי מכין כל מאכל"
             subtitle={`${vol.cooking_unassigned_count || 0} מאכלים ללא מבשל`}>
-            <PrintTable head={['מאכל', 'מנות', 'מבשל/ים']}>
+            <PrintTable head={['מאכל', 'מנות', 'מבשל/ים', 'מחליפים']}>
               {vol.cooking_meals.map((meal) => (
                 <tr key={meal.meal_id}>
                   <td className="border border-brand-cream-dark p-2 font-medium">{meal.meal_name}</td>
@@ -1363,6 +1394,15 @@ function PrintTab({ id, onAuthError }) {
                           {meal.is_override && <span className="text-xs text-brand-gold-dark">(מחליף לשבת זו)</span>}
                         </>
                       )}
+                  </td>
+                  <td className="border border-brand-cream-dark p-2 text-brand-burgundy/60">
+                    {meal.backup_cooks?.length
+                      ? meal.backup_cooks.map((c) => (
+                        <span key={c.volunteer_id} className="inline-block ml-3">
+                          {c.volunteer_name}{c.phone && <span className="text-brand-burgundy/50 text-xs mr-1" dir="ltr">{c.phone}</span>}
+                        </span>
+                      ))
+                      : '-'}
                   </td>
                 </tr>
               ))}

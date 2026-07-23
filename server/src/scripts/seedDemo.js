@@ -245,9 +245,11 @@ async function seedVolunteers(mealIdByName) {
 
   // --- מתנדבים ---
   // meals = מערך מאכלים לבישול קבוע (many-to-many). מתנדב אחד יכול לבשל כמה מאכלים.
+  // meals = מאכלים שהמתנדב מבשל קבוע, backup_meals = מאכלים שהוא מחליף קבוע בהם
+  // (הצעה מהירה בתיק השבת, בלי להיות משובץ - סעיף 24.2)
   const demoVolunteers = [
     { name: 'אברהם כהן', phone: '050-111-1111', area: 'cooking', meals: ['מרק עוף', 'עוף בגריל'], regular: true },
-    { name: 'יצחק לוי', phone: '050-222-2222', area: 'cooking', meals: ['סלט חצילים'], regular: true },
+    { name: 'יצחק לוי', phone: '050-222-2222', area: 'cooking', meals: ['סלט חצילים'], backup_meals: ['מרק עוף'], regular: true },
     { name: 'יעקב מזרחי', phone: '050-333-3333', area: 'cooking', meals: ['עוף בגריל'], regular: true },
     { name: 'שרה פרידמן', phone: '050-444-4444', area: 'packing', regular: true },
     { name: 'רבקה גולן', phone: '050-555-5555', area: 'packing', regular: false },
@@ -293,16 +295,22 @@ async function seedVolunteers(mealIdByName) {
     if (!volId) continue;
     for (const name of volMealNames(v)) {
       const mealId = mealIdByName[name];
-      if (mealId) mealLinkRows.push({ volunteer_id: volId, meal_id: mealId });
+      if (mealId) mealLinkRows.push({ volunteer_id: volId, meal_id: mealId, role: 'primary' });
+    }
+    for (const name of v.backup_meals || []) {
+      const mealId = mealIdByName[name];
+      if (mealId) mealLinkRows.push({ volunteer_id: volId, meal_id: mealId, role: 'backup' });
     }
   }
   if (mealLinkRows.length) await supabase.from('volunteer_meal_links').insert(mealLinkRows);
 
   // --- משימות קבועות (סעיף 24.3) - לא נוצרות מחדש בכל שבת ---
+  // meals = כל המאכלים המקושרים למשימה (סמנטיקת "או"): המשימה תופיע בשבת שבה
+  // הוזמן לפחות אחד מהם. "הכנת סלטים" מדגימה קישור לכמה מאכלים.
   const demoTasks = [
-    { name: 'הכנת מרק', area: 'cooking', meal: 'מרק עוף', order: 1 },
-    { name: 'הכנת סלטים', area: 'cooking', meal: 'סלט חצילים', order: 2 },
-    { name: 'הכנת מנה עיקרית', area: 'cooking', meal: 'עוף בגריל', order: 3 },
+    { name: 'הכנת מרק', area: 'cooking', meals: ['מרק עוף'], order: 1 },
+    { name: 'הכנת סלטים', area: 'cooking', meals: ['סלט חצילים', 'סלט טורקי', 'חומוס'], order: 2 },
+    { name: 'הכנת מנה עיקרית', area: 'cooking', meals: ['עוף בגריל'], order: 3 },
     { name: 'אריזה', area: 'packing', order: 4 },
     { name: 'סידור לפי הזמנות', area: 'packing', order: 5 },
     { name: 'שינוע', area: 'transport', order: 6 },
@@ -315,14 +323,20 @@ async function seedVolunteers(mealIdByName) {
     await supabase.from('volunteer_assignments').delete().in('task_id', ids);
     await supabase.from('volunteer_tasks').delete().in('id', ids);
   }
+  const taskMealIds = (t) => (t.meals || []).map((name) => mealIdByName[name]).filter(Boolean);
   const taskRows = demoTasks.map((t) => ({
     name: t.name,
     area_id: areaId(t.area),
-    linked_meal_id: t.meal ? mealIdByName[t.meal] || null : null,
+    linked_meal_id: taskMealIds(t)[0] || null, // מאכל ראשי - תאימות לאחור
     display_order: t.order,
     is_active: true,
   }));
-  await supabase.from('volunteer_tasks').insert(taskRows);
+  const { data: insertedTasks } = await supabase.from('volunteer_tasks').insert(taskRows).select('id, name');
+  const taskIdByName = Object.fromEntries((insertedTasks || []).map((t) => [t.name, t.id]));
+  const taskMealRows = demoTasks.flatMap((t) => (
+    taskIdByName[t.name] ? taskMealIds(t).map((meal_id) => ({ task_id: taskIdByName[t.name], meal_id })) : []
+  ));
+  if (taskMealRows.length) await supabase.from('volunteer_task_meal_links').insert(taskMealRows);
   console.log(`✓ ${demoVolunteers.length} מתנדבים + ${demoTasks.length} משימות קבועות`);
 }
 

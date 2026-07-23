@@ -97,8 +97,9 @@ function VolunteersManager({ meals, areas, onErr, canDelete }) {
   const nav = useRecordNav(setEditing, editing?.id ?? null);
 
   const areaText = (v) => (v.area_ids || []).map((id) => areaName[id]).filter(Boolean).join(', ');
+  // מאכל שהמתנדב רק מחליף בו מסומן, כדי להבדיל מהמאכלים שהוא מבשל קבוע שלהם
   const mealsText = (v) => (v.linked_meals?.length
-    ? v.linked_meals.map((m) => m.name)
+    ? v.linked_meals.map((m) => (m.role === 'backup' ? `${m.name} (מחליף)` : m.name))
     : (v.meals?.name ? [v.meals.name] : [])
   ).join(', ');
 
@@ -216,8 +217,16 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, emb
   const [mealIds, setMealIds] = useState(
     initial.meal_ids || (initial.linked_meal_id ? [initial.linked_meal_id] : []),
   );
+  // תפקיד המתנדב בכל מאכל שסומן: קבוע (ברירת מחדל) או מחליף (סעיף 24.2)
+  const [backupMealIds, setBackupMealIds] = useState(initial.backup_meal_ids || []);
   const [mealSearch, setMealSearch] = useState('');
-  const toggleMeal = (id) => setMealIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const toggleMeal = (id) => {
+    setMealIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+    setBackupMealIds((s) => s.filter((x) => x !== id));
+  };
+  const setMealRole = (id, role) => setBackupMealIds((s) => (
+    role === 'backup' ? [...new Set([...s, id])] : s.filter((x) => x !== id)
+  ));
   const normalizedMealSearch = mealSearch.trim().toLocaleLowerCase('he-IL');
   const visibleMeals = normalizedMealSearch
     ? meals.filter((meal) => meal.name.toLocaleLowerCase('he-IL').includes(normalizedMealSearch))
@@ -254,6 +263,7 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, emb
       area_id: areaIds[0],
       area_ids: areaIds,
       meal_ids,
+      backup_meal_ids: meal_ids.filter((id) => backupMealIds.includes(id)),
     });
   }
 
@@ -343,6 +353,9 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, emb
           <span className="text-sm text-brand-burgundy/70 block mb-1">
             מאכלים לבישול (לשיבוץ בישול אוטומטי - ניתן לסמן כמה)
           </span>
+          <p className="text-xs text-brand-burgundy/40 mb-1">
+            לכל מאכל שסומן: "קבוע" = המבשל המשובץ בפועל, "מחליף" = מוצע כגיבוי בתיק השבת בלי להיות משובץ.
+          </p>
           {meals.length === 0 ? (
             <p className="text-xs text-brand-burgundy/40">אין מאכלים מוגדרים בקטלוג.</p>
           ) : (
@@ -358,12 +371,32 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, emb
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 border border-brand-cream-dark rounded-lg p-3 max-h-52 overflow-y-auto">
                 {visibleMeals.length === 0 ? (
                   <p className="text-xs text-brand-burgundy/40 sm:col-span-2">לא נמצאו מאכלים מתאימים לחיפוש.</p>
-                ) : visibleMeals.map((m) => (
-                  <label key={m.id} className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={mealIds.includes(m.id)} onChange={() => toggleMeal(m.id)} />
-                    <span>{m.name}</span>
-                  </label>
-                ))}
+                ) : visibleMeals.map((m) => {
+                  const checked = mealIds.includes(m.id);
+                  const isBackup = backupMealIds.includes(m.id);
+                  return (
+                    <div key={m.id} className="flex items-center justify-between gap-2 text-sm">
+                      <label className="flex items-center gap-2 min-w-0">
+                        <input type="checkbox" checked={checked} onChange={() => toggleMeal(m.id)} />
+                        <span className="truncate">{m.name}</span>
+                      </label>
+                      {checked && (
+                        <span className="flex items-center gap-2 text-xs text-brand-burgundy/70 shrink-0">
+                          <label className="flex items-center gap-1">
+                            <input type="radio" name={`meal-role-${m.id}`} checked={!isBackup}
+                              onChange={() => setMealRole(m.id, 'primary')} />
+                            קבוע
+                          </label>
+                          <label className="flex items-center gap-1">
+                            <input type="radio" name={`meal-role-${m.id}`} checked={isBackup}
+                              onChange={() => setMealRole(m.id, 'backup')} />
+                            מחליף
+                          </label>
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -454,6 +487,11 @@ function TasksManager({ meals, areas, volunteers, onErr, canDelete }) {
   if (!list) return <p>טוען...</p>;
 
   const areaText = (t) => t.area?.name || areaName[t.area_id] || '';
+  // כל המאכלים המקושרים למשימה, עם נפילה לקישור הבודד הישן
+  const mealsText = (t) => (t.linked_meals?.length
+    ? t.linked_meals.map((m) => m.name)
+    : (t.meals?.name ? [t.meals.name] : [])
+  ).join(', ');
   const columns = [
     { key: 'name', label: 'משימה', type: 'text', className: 'font-medium' },
     {
@@ -472,11 +510,11 @@ function TasksManager({ meals, areas, volunteers, onErr, canDelete }) {
     },
     {
       key: 'meal',
-      label: 'מאכל',
+      label: 'מאכלים',
       type: 'text',
       className: 'text-brand-burgundy/60',
-      value: (t) => t.meals?.name || '',
-      render: (t) => t.meals?.name || '-',
+      value: mealsText,
+      render: (t) => mealsText(t) || '-',
     },
     {
       key: 'is_active',
@@ -621,7 +659,6 @@ function TaskForm({ meals, areas, volunteers, initial, onSave, onCancel, embedde
     id: initial.id,
     name: initial.name || '',
     area_id: initial.area_id || activeAreas[0]?.id || '',
-    linked_meal_id: initial.linked_meal_id || '',
     execution_day: initial.execution_day || 'general',
     shift: initial.shift || '',
     timing_note: initial.timing_note || '',
@@ -631,6 +668,16 @@ function TaskForm({ meals, areas, volunteers, initial, onSave, onCancel, embedde
   });
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const isCookingArea = activeAreas.find((a) => a.id === f.area_id)?.is_cooking;
+  // מאכלים מקושרים למשימה (סמנטיקת "או"): המשימה תופיע בשבת אם הוזמן אחד מהם
+  const [mealIds, setMealIds] = useState(
+    initial.meal_ids?.length ? initial.meal_ids : (initial.linked_meal_id ? [initial.linked_meal_id] : []),
+  );
+  const [mealSearch, setMealSearch] = useState('');
+  const toggleMeal = (id) => setMealIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const normalizedMealSearch = mealSearch.trim().toLocaleLowerCase('he-IL');
+  const visibleMeals = normalizedMealSearch
+    ? meals.filter((meal) => meal.name.toLocaleLowerCase('he-IL').includes(normalizedMealSearch))
+    : meals;
   const moveBackup = (from, to) => setF((state) => {
     if (to < 0 || to >= state.backup_volunteer_ids.length) return state;
     const next = [...state.backup_volunteer_ids];
@@ -645,9 +692,10 @@ function TaskForm({ meals, areas, volunteers, initial, onSave, onCancel, embedde
     if (!f.area_id) return alert('חובה לבחור תחום.');
     const staffing = [f.primary_volunteer_id, ...f.backup_volunteer_ids].filter(Boolean);
     if (new Set(staffing).size !== staffing.length) return alert('אותו מתנדב לא יכול להופיע ביותר מתפקיד אחד.');
+    // מאכלים נשמרים רק לתחום בישול; לתחומים אחרים אין התניית מאכל.
     onSave({
       ...f,
-      linked_meal_id: isCookingArea ? (f.linked_meal_id || null) : null,
+      meal_ids: isCookingArea ? mealIds : [],
       shift: f.shift || null,
       primary_volunteer_id: f.primary_volunteer_id || null,
       display_order: Number(f.display_order) || 0,
@@ -680,15 +728,41 @@ function TaskForm({ meals, areas, volunteers, initial, onSave, onCancel, embedde
         <Field label="הערת זמן">
           <input value={f.timing_note} onChange={(e) => set('timing_note', e.target.value)} className={inputCls} placeholder="למשל: אחרי מעריב" />
         </Field>
-        {isCookingArea && (
-          <Field label="קישור למאכל (לשיבוץ בישול אוטומטי)">
-            <select value={f.linked_meal_id} onChange={(e) => set('linked_meal_id', e.target.value)} className={inputCls}>
-              <option value="">- ללא -</option>
-              {meals.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </Field>
-        )}
       </div>
+      {isCookingArea && (
+        <div>
+          <span className="text-sm text-brand-burgundy/70 block mb-1">
+            מאכלים מקושרים (ניתן לסמן כמה - המשימה תופיע אם הוזמן לפחות אחד מהם)
+          </span>
+          {meals.length === 0 ? (
+            <p className="text-xs text-brand-burgundy/40">אין מאכלים מוגדרים בקטלוג.</p>
+          ) : (
+            <div className="space-y-2">
+              <input
+                type="search"
+                value={mealSearch}
+                onChange={(e) => setMealSearch(e.target.value)}
+                className={inputCls}
+                placeholder="חיפוש מאכל..."
+                aria-label="חיפוש מאכל לקישור למשימה"
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 border border-brand-cream-dark rounded-lg p-3 max-h-52 overflow-y-auto">
+                {visibleMeals.length === 0 ? (
+                  <p className="text-xs text-brand-burgundy/40 sm:col-span-2">לא נמצאו מאכלים מתאימים לחיפוש.</p>
+                ) : visibleMeals.map((m) => (
+                  <label key={m.id} className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={mealIds.includes(m.id)} onChange={() => toggleMeal(m.id)} />
+                    <span>{m.name}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-brand-burgundy/40">
+                בלי סימון מאכל המשימה מוצגת בכל שבת.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Field label="אחראי קבוע">
           <select value={f.primary_volunteer_id} onChange={(e) => {
@@ -717,9 +791,15 @@ function TaskForm({ meals, areas, volunteers, initial, onSave, onCancel, embedde
 
 function VolunteerMultiPicker({ label, volunteers, selected, onChange, excluded, ordered = false, onMove }) {
   const [draggedIndex, setDraggedIndex] = useState(null);
+  const [search, setSearch] = useState('');
   const available = volunteers.filter((volunteer) => !excluded.filter(Boolean).includes(volunteer.id));
   const toggle = (id) => onChange(selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id]);
   const nameById = Object.fromEntries(volunteers.map((volunteer) => [volunteer.id, volunteer.full_name]));
+  const normalizedSearch = search.trim().toLocaleLowerCase('he-IL');
+  const visible = normalizedSearch
+    ? available.filter((volunteer) => `${volunteer.full_name || ''} ${volunteer.phone || ''}`
+      .toLocaleLowerCase('he-IL').includes(normalizedSearch))
+    : available;
   return (
     <div>
       <span className="text-sm text-brand-burgundy/70 block mb-1">{label}</span>
@@ -740,8 +820,20 @@ function VolunteerMultiPicker({ label, volunteers, selected, onChange, excluded,
           ))}
         </div>
       )}
+      <input
+        type="search"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className={`${inputCls} mb-2`}
+        placeholder="חיפוש מתנדב..."
+        aria-label={`חיפוש מתנדב - ${label}`}
+      />
       <div className="max-h-40 overflow-y-auto rounded-lg border border-brand-cream-dark p-2 space-y-1">
-        {available.map((volunteer) => (
+        {visible.length === 0 ? (
+          <p className="text-xs text-brand-burgundy/40">
+            {available.length === 0 ? 'אין מתנדבים זמינים.' : 'לא נמצאו מתנדבים מתאימים לחיפוש.'}
+          </p>
+        ) : visible.map((volunteer) => (
           <label key={volunteer.id} className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={selected.includes(volunteer.id)} onChange={() => toggle(volunteer.id)} />
             <span>{volunteer.full_name}</span>

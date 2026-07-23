@@ -7,7 +7,8 @@ import { requireRole } from '../lib/auth.js';
 
 const router = Router();
 
-const VOLUNTEER_SELECT = '*, meals:linked_meal_id (id, name), customers:customer_id (id, first_name, last_name, full_name, phone, email), area:area_id (id, name, is_cooking), volunteer_meal_links (meal_id, meals:meal_id (id, name)), volunteer_area_links (area_id)';
+const VOLUNTEER_SELECT = '*, meals:linked_meal_id (id, name), customers:customer_id (id, first_name, last_name, full_name, phone, email), area:area_id (id, name, is_cooking), volunteer_meal_links (meal_id, role, meals:meal_id (id, name)), volunteer_area_links (area_id)';
+const TASK_SELECT = '*, meals:linked_meal_id (id, name), area:area_id (id, name, is_cooking, display_order), volunteer_task_meal_links (meal_id, meals:meal_id (id, name)), volunteer_task_links (volunteer_id, role, priority, volunteers:volunteer_id (id, full_name, phone, area_id, is_active))';
 const DAYS = ['general', 'tuesday', 'wednesday', 'thursday', 'friday', 'shabbat', 'motzei_shabbat'];
 const SHIFTS = [null, 'morning', 'noon', 'evening', 'night'];
 
@@ -38,9 +39,21 @@ async function syncVolunteerAreas(volunteerId, areaIds) {
   if (insErr) throw insErr;
 }
 
+// המאכלים שהמתנדב משמש בהם מחליף קבוע (backup) - תת-קבוצה של meal_ids.
+function backupMealSet(body = {}) {
+  return new Set((body.backup_meal_ids || []).filter(Boolean));
+}
+
+// המאכל הראשי לתאימות לאחור (volunteers.linked_meal_id): המאכל הקבוע הראשון,
+// כלומר מדלגים על מאכלים שהמתנדב רק מחליף בהם.
+function primaryMealOf(mealIds, backups) {
+  return (mealIds || []).filter(Boolean).find((id) => !backups.has(id)) || null;
+}
+
 // שיוך מחדש של המאכלים הקבועים לבישול למתנדב (סעיף 24.2): מוחקים הכל ומכניסים
 // את הבחירה. meal_ids = מערך מזהי מאכלים (או undefined כדי לא לגעת בשיוך הקיים).
-async function syncVolunteerMeals(volunteerId, mealIds) {
+// backups = קבוצת המאכלים שבהם התפקיד הוא מחליף קבוע; השאר מבשל קבוע.
+async function syncVolunteerMeals(volunteerId, mealIds, backups = new Set()) {
   if (!Array.isArray(mealIds)) return;
   const unique = [...new Set(mealIds.filter(Boolean))];
   const { error: delErr } = await supabase
@@ -49,7 +62,11 @@ async function syncVolunteerMeals(volunteerId, mealIds) {
   if (!unique.length) return;
   const { error: insErr } = await supabase
     .from('volunteer_meal_links')
-    .insert(unique.map((meal_id) => ({ volunteer_id: volunteerId, meal_id })));
+    .insert(unique.map((meal_id) => ({
+      volunteer_id: volunteerId,
+      meal_id,
+      role: backups.has(meal_id) ? 'backup' : 'primary',
+    })));
   if (insErr) throw insErr;
 }
 
@@ -64,7 +81,11 @@ function withLinks(volunteer) {
     // area_ids: התחום הראשי (area_id) קודם, ואז שאר התחומים המקושרים
     area_ids: [rest.area_id, ...linkedAreaIds.filter((id) => id !== rest.area_id)].filter(Boolean),
     meal_ids: (volunteer_meal_links || []).map((l) => l.meal_id),
-    linked_meals: (volunteer_meal_links || []).map((l) => l.meals).filter(Boolean),
+    // המאכלים שבהם המתנדב מחליף קבוע בלבד (תת-קבוצה של meal_ids)
+    backup_meal_ids: (volunteer_meal_links || []).filter((l) => l.role === 'backup').map((l) => l.meal_id),
+    linked_meals: (volunteer_meal_links || [])
+      .filter((l) => l.meals)
+      .map((l) => ({ ...l.meals, role: l.role || 'primary' })),
   };
 }
 
@@ -102,14 +123,34 @@ function withStaffing(task) {
   const links = task?.volunteer_task_links || [];
   const primary = links.find((link) => link.role === 'primary');
   const backups = links.filter((link) => link.role === 'backup').sort((a, b) => a.priority - b.priority);
+  const mealLinks = task?.volunteer_task_meal_links || [];
   return {
     ...task,
     volunteer_task_links: undefined,
+    volunteer_task_meal_links: undefined,
+    // מאכלים מקושרים (סמנטיקת "או") - המשימה רלוונטית אם הוזמן אחד מהם
+    meal_ids: mealLinks.map((link) => link.meal_id),
+    linked_meals: mealLinks.map((link) => link.meals).filter(Boolean),
     primary_volunteer_id: primary?.volunteer_id || null,
     primary_volunteer: primary?.volunteers || null,
     backup_volunteer_ids: backups.map((link) => link.volunteer_id),
     backup_volunteers: backups.map((link) => ({ ...link.volunteers, priority: link.priority })),
   };
+}
+
+// שיוך מחדש של המאכלים המקושרים למשימה: מוחקים הכל ומכניסים את הבחירה.
+// meal_ids = מערך מזהי מאכלים (או undefined כדי לא לגעת בקישור הקיים).
+async function syncTaskMeals(taskId, mealIds) {
+  if (!Array.isArray(mealIds)) return;
+  const unique = [...new Set(mealIds.filter(Boolean))];
+  const { error: delErr } = await supabase
+    .from('volunteer_task_meal_links').delete().eq('task_id', taskId);
+  if (delErr) throw delErr;
+  if (!unique.length) return;
+  const { error: insErr } = await supabase
+    .from('volunteer_task_meal_links')
+    .insert(unique.map((meal_id) => ({ task_id: taskId, meal_id })));
+  if (insErr) throw insErr;
 }
 
 // ===========================================================================
@@ -147,9 +188,10 @@ router.post('/', asyncHandler(async (req, res) => {
   if (areaError) return fail(res, 400, areaError);
 
   // שדה linked_meal_id הבודד נשמר לתאימות לאחור: אם נשלח מערך meal_ids נגזור ממנו
-  // את המאכל הראשי, אחרת נשתמש בערך הבודד שנשלח.
+  // את המאכל הראשי (הקבוע הראשון), אחרת נשתמש בערך הבודד שנשלח.
+  const backups = backupMealSet(req.body);
   const primaryMealId = Array.isArray(meal_ids)
-    ? (meal_ids.filter(Boolean)[0] || null)
+    ? primaryMealOf(meal_ids, backups)
     : (linked_meal_id || null);
 
   const { data, error } = await supabase.from('volunteers').insert({
@@ -169,9 +211,9 @@ router.post('/', asyncHandler(async (req, res) => {
     throw error;
   }
   await syncVolunteerAreas(data.id, volunteerAreaIds);
-  await syncVolunteerMeals(data.id, meal_ids);
+  await syncVolunteerMeals(data.id, meal_ids, backups);
   const mealLinks = Array.isArray(meal_ids)
-    ? meal_ids.map((meal_id) => ({ meal_id }))
+    ? meal_ids.map((meal_id) => ({ meal_id, role: backups.has(meal_id) ? 'backup' : 'primary' }))
     : data.volunteer_meal_links;
   res.json({ ok: true, volunteer: withLinks({
     ...data,
@@ -270,10 +312,11 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   if ('notes' in patch) patch.notes = patch.notes ? String(patch.notes).trim() : null;
   const syncMeals = Array.isArray(req.body?.meal_ids);
   const syncAreas = Array.isArray(volunteerAreaIds);
+  const backups = backupMealSet(req.body);
   // כשמסנכרנים מאכלים, משאירים את linked_meal_id הבודד מסונכרן עם המאכל הראשי
   // (תאימות לאחור + התצוגה בטבלה). דריסה ידנית של linked_meal_id ב-body מכובדת.
   if (syncMeals && !('linked_meal_id' in patch)) {
-    patch.linked_meal_id = req.body.meal_ids.filter(Boolean)[0] || null;
+    patch.linked_meal_id = primaryMealOf(req.body.meal_ids, backups);
   }
   if (Object.keys(patch).length === 0 && !syncMeals && !syncAreas) return fail(res, 400, 'אין שדות לעדכון.');
 
@@ -288,8 +331,10 @@ router.patch('/:id', asyncHandler(async (req, res) => {
   }
   if (!data) return fail(res, 404, 'מתנדב לא נמצא.');
   if (syncAreas) await syncVolunteerAreas(data.id, volunteerAreaIds);
-  if (syncMeals) await syncVolunteerMeals(data.id, req.body.meal_ids);
-  const mealLinks = syncMeals ? req.body.meal_ids.map((meal_id) => ({ meal_id })) : data.volunteer_meal_links;
+  if (syncMeals) await syncVolunteerMeals(data.id, req.body.meal_ids, backups);
+  const mealLinks = syncMeals
+    ? req.body.meal_ids.map((meal_id) => ({ meal_id, role: backups.has(meal_id) ? 'backup' : 'primary' }))
+    : data.volunteer_meal_links;
   res.json({ ok: true, volunteer: withLinks({
     ...data,
     volunteer_area_links: syncAreas
@@ -331,7 +376,7 @@ router.delete('/:id', requireRole('developer'), asyncHandler(async (req, res) =>
 router.get('/tasks', asyncHandler(async (req, res) => {
   let q = supabase
     .from('volunteer_tasks')
-    .select('*, meals:linked_meal_id (id, name), area:area_id (id, name, is_cooking, display_order), volunteer_task_links (volunteer_id, role, priority, volunteers:volunteer_id (id, full_name, phone, area_id, is_active))')
+    .select(TASK_SELECT)
     .order('display_order').order('name');
   if (req.query.active === 'true') q = q.eq('is_active', true);
 
@@ -342,7 +387,7 @@ router.get('/tasks', asyncHandler(async (req, res) => {
 
 // POST /api/admin/volunteers/tasks - יצירת משימה קבועה
 router.post('/tasks', asyncHandler(async (req, res) => {
-  const { name, area_id, linked_meal_id, execution_day = 'general', shift = null, timing_note, display_order } = req.body || {};
+  const { name, area_id, linked_meal_id, meal_ids, execution_day = 'general', shift = null, timing_note, display_order } = req.body || {};
   if (!name?.trim()) return fail(res, 400, 'חובה להזין שם משימה.');
   if (!area_id) return fail(res, 400, 'חובה לבחור תחום.');
   const areaError = await validateAreaIds([area_id]);
@@ -352,10 +397,15 @@ router.post('/tasks', asyncHandler(async (req, res) => {
   const staffing = staffingPayload(req.body);
   if (staffing.error) return fail(res, 400, staffing.error);
 
+  // linked_meal_id הבודד נשמר לתאימות לאחור ומסונכרן עם המאכל הראשון במערך.
+  const primaryMealId = Array.isArray(meal_ids)
+    ? (meal_ids.filter(Boolean)[0] || null)
+    : (linked_meal_id || null);
+
   const { data, error } = await supabase.from('volunteer_tasks').insert({
     name: name.trim(),
     area_id,
-    linked_meal_id: linked_meal_id || null,
+    linked_meal_id: primaryMealId,
     execution_day,
     shift: shift || null,
     timing_note: String(timing_note || '').trim() || null,
@@ -363,7 +413,13 @@ router.post('/tasks', asyncHandler(async (req, res) => {
   }).select('*').single();
   if (error) throw error;
   await syncTaskStaffing(data.id, req.body);
-  res.json({ ok: true, task: withStaffing({ ...data, volunteer_task_links: [] }) });
+  await syncTaskMeals(data.id, meal_ids);
+  res.json({ ok: true, task: withStaffing({
+    ...data,
+    volunteer_task_links: [],
+    volunteer_task_meal_links: (Array.isArray(meal_ids) ? meal_ids : [primaryMealId])
+      .filter(Boolean).map((meal_id) => ({ meal_id })),
+  }) });
 }));
 
 // PATCH /api/admin/volunteers/tasks/:id - עדכון משימה קבועה
@@ -388,7 +444,13 @@ router.patch('/tasks/:id', asyncHandler(async (req, res) => {
     const staffing = staffingPayload(req.body);
     if (staffing.error) return fail(res, 400, staffing.error);
   }
-  if (Object.keys(patch).length === 0 && !hasStaffing) return fail(res, 400, 'אין שדות לעדכון.');
+  const syncMeals = Array.isArray(req.body?.meal_ids);
+  // כשמסנכרנים מאכלים, linked_meal_id הבודד נשאר מסונכרן עם המאכל הראשון
+  // (תאימות לאחור). דריסה ידנית של linked_meal_id ב-body מכובדת.
+  if (syncMeals && !('linked_meal_id' in patch)) {
+    patch.linked_meal_id = req.body.meal_ids.filter(Boolean)[0] || null;
+  }
+  if (Object.keys(patch).length === 0 && !hasStaffing && !syncMeals) return fail(res, 400, 'אין שדות לעדכון.');
 
   const query = Object.keys(patch).length
     ? supabase.from('volunteer_tasks').update(patch).eq('id', req.params.id).select('*').maybeSingle()
@@ -397,6 +459,7 @@ router.patch('/tasks/:id', asyncHandler(async (req, res) => {
   if (error) throw error;
   if (!data) return fail(res, 404, 'משימה לא נמצאה.');
   if (hasStaffing) await syncTaskStaffing(data.id, req.body);
+  if (syncMeals) await syncTaskMeals(data.id, req.body.meal_ids);
   res.json({ ok: true, task: data });
 }));
 
