@@ -32,12 +32,18 @@ export const adminMenuGroups = [
     ],
   },
   {
-    id: 'system',
-    label: 'מערכת',
+    id: 'finance',
+    label: 'כספים',
     items: [
       { to: '/admin/finance', label: 'מודול כספי' },
       { to: '/admin/petty-cash', label: 'קופה קטנה' },
       { to: '/admin/recurring-expenses', label: 'הוצאות קבועות' },
+    ],
+  },
+  {
+    id: 'system',
+    label: 'מערכת',
+    items: [
       { to: '/admin/email', label: 'מיילים' },
       { to: '/admin/users', label: 'משתמשים' },
     ],
