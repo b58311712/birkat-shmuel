@@ -12,6 +12,7 @@ import {
   indexConversions,
 } from './inventoryUnitConversion.js';
 import { orderedMealIds } from './volunteerScheduling.js';
+import { fetchExtraRecipeLines } from './extraInventoryLines.js';
 import {
   directProcurementMetrics,
   isDirectEventProcurement,
@@ -44,7 +45,8 @@ async function loadShabbatOrders(shabbatId) {
       final_amount, base_amount,
       customers ( full_name, phone ),
       order_meal_slots ( meal_slot_id, portions ),
-      order_meals ( meal_slot_id, meal_id, meal_name_snapshot, portions )
+      order_meals ( meal_slot_id, meal_id, meal_name_snapshot, portions ),
+      order_extras ( extra_id, actual_quantity )
     `)
     .eq('shabbat_id', shabbatId)
     .order('order_number');
@@ -118,6 +120,23 @@ function computePortionsByMeal(orders) {
     }
   }
   return { portionsByMeal, nameByMeal };
+}
+
+// עוזר משותף: צובר את הכמות שהוזמנה לכל תוספת בתשלום (ביחידות החיוב שלה) על פני
+// כל ההזמנות התפעוליות. תוספת שמקושרת למלאי (סעיף 14.6) צורכת מלאי בדיוק כמו
+// מאכל, אלא שהמכפיל הוא יחידות חיוב (בקבוקים, יחידות) ולא מנות.
+// מחזיר מפה: extra_id -> סך יחידות חיוב.
+function computeQuantitiesByExtra(orders) {
+  const quantityByExtra = {};
+  for (const o of orders) {
+    if (!isOperational(o)) continue;
+    for (const oe of o.order_extras || []) {
+      const quantity = Number(oe.actual_quantity || 0);
+      if (!(quantity > 0)) continue;
+      quantityByExtra[oe.extra_id] = (quantityByExtra[oe.extra_id] || 0) + quantity;
+    }
+  }
+  return quantityByExtra;
 }
 
 // לשונית כמויות ומטבח (סעיף 9.4, 21):
@@ -302,13 +321,32 @@ export async function buildInventoryReport(shabbatId) {
   if (!shabbat) return null;
 
   const { portionsByMeal } = computePortionsByMeal(orders);
+  const quantityByExtra = computeQuantitiesByExtra(orders);
   const mealIds = Object.keys(portionsByMeal);
+  const extraIds = Object.keys(quantityByExtra);
 
   // requiredByItem: inventory_item_id -> כמות מדויקת נדרשת (מצטבר)
   // unlinked: שורות מתכון בלי קישור למלאי - אי אפשר לחשב חוסר, מציגים בנפרד
   const requiredByItem = {};
   const requirementsByItemAndUnit = {};
   const unlinkedByName = {}; // "שם::יחידה" -> { name, unit, quantity }
+
+  // צובר שורת מרכיבים אחת (של מאכל או של תוספת) כפול המכפיל שלה: מנות למאכל,
+  // יחידות חיוב לתוספת. שורה בלי קישור למלאי נאספת בנפרד להצגה כאזהרה.
+  const addRequirement = (line, multiplier) => {
+    if (!(multiplier > 0)) return;
+    const need = Number(line.quantity_per_portion) * multiplier;
+    if (!(need > 0)) return;
+    if (line.inventory_item_id) {
+      const perUnit = (requirementsByItemAndUnit[line.inventory_item_id] ||= {});
+      const key = line.unit_id || `text:${String(line.unit || '').trim().toLowerCase()}`;
+      (perUnit[key] ||= { unit_id: line.unit_id || null, unit_name: line.unit, qty: 0 }).qty += need;
+    } else {
+      const key = `${line.ingredient_name}::${line.unit || ''}`;
+      const e = (unlinkedByName[key] ||= { name: line.ingredient_name, unit: line.unit, quantity: 0 });
+      e.quantity += need;
+    }
+  };
 
   if (mealIds.length > 0) {
     const [{ data: recipes, error: rErr }, { data: rules, error: pErr }] = await Promise.all([
@@ -324,18 +362,7 @@ export async function buildInventoryReport(shabbatId) {
 
     // חומרי גלם ממתכונים
     for (const rl of recipes || []) {
-      const portions = portionsByMeal[rl.meal_id] || 0;
-      if (!portions) continue;
-      const need = Number(rl.quantity_per_portion) * portions;
-      if (rl.inventory_item_id) {
-        const perUnit = (requirementsByItemAndUnit[rl.inventory_item_id] ||= {});
-        const key = rl.unit_id || `text:${String(rl.unit || '').trim().toLowerCase()}`;
-        (perUnit[key] ||= { unit_id: rl.unit_id || null, unit_name: rl.unit, qty: 0 }).qty += need;
-      } else {
-        const key = `${rl.ingredient_name}::${rl.unit || ''}`;
-        const e = (unlinkedByName[key] ||= { name: rl.ingredient_name, unit: rl.unit, quantity: 0 });
-        e.quantity += need;
-      }
+      addRequirement(rl, portionsByMeal[rl.meal_id] || 0);
     }
 
     // אריזות מכללי אריזה (סעיף 22.4) - כל אריזה שמקושרת לפריט מלאי
@@ -346,6 +373,12 @@ export async function buildInventoryReport(shabbatId) {
       const need = roundUp(portions / Number(r.portions_per_package)); // אריזות שלמות
       requiredByItem[r.packaging_item_id] = (requiredByItem[r.packaging_item_id] || 0) + need;
     }
+  }
+
+  // מרכיבי המלאי של התוספות בתשלום (סעיף 14.6): הכמות בשורה היא ליחידת חיוב
+  // אחת, ולכן המכפיל הוא סך יחידות החיוב שהוזמנו בשבת.
+  for (const rl of await fetchExtraRecipeLines(extraIds)) {
+    addRequirement(rl, quantityByExtra[rl.extra_id] || 0);
   }
 
   const itemIds = [...new Set([

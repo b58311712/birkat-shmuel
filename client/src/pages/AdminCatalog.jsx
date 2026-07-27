@@ -1413,6 +1413,8 @@ function ExtrasManager({ categories, onErr, canDelete }) {
   const [editing, setEditing] = useState(null);
   const [savingOrder, setSavingOrder] = useState(false);
   const [meals, setMeals] = useState([]);
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [units, setUnits] = useState([]);
 
   // טוענים את כל התוספות; הסינון (חיפוש/סטטוס) נעשה בזיכרון ב-DataTable.
   const load = useCallback(() => {
@@ -1426,6 +1428,16 @@ function ExtrasManager({ categories, onErr, canDelete }) {
     api.catalogMeals('?active=true').then((rows) => setMeals(rows || [])).catch(onErr);
   }, [onErr]);
 
+  // פריטי מלאי ויחידות מידה - לקישור התוספת למלאי שהיא צורכת (סעיף 14.6).
+  useEffect(() => {
+    api.invItems('?active=true').then((items) => setInventoryItems(items || [])).catch(onErr);
+    api.invUnits('?active=true').then((u) => setUnits(u || [])).catch(() => {});
+  }, [onErr]);
+
+  const onInventoryItemCreated = (item) =>
+    setInventoryItems((items) =>
+      [...items, item].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'he')));
+
   const mealNameById = useMemo(
     () => Object.fromEntries(meals.map((m) => [m.id, m.name])),
     [meals]
@@ -1434,11 +1446,15 @@ function ExtrasManager({ categories, onErr, canDelete }) {
 
   async function save(form) {
     try {
-      if (form.id) await api.updateCatalogExtra(form.id, form);
+      const { inventory_lines, ...extraPayload } = form;
+      let extraId = form.id;
+      if (extraId) await api.updateCatalogExtra(extraId, extraPayload);
       else {
         const lastOrder = Math.max(0, ...(list || []).map((extra) => Number(extra.display_order) || 0));
-        await api.createCatalogExtra({ ...form, display_order: lastOrder + 1 });
+        const result = await api.createCatalogExtra({ ...extraPayload, display_order: lastOrder + 1 });
+        extraId = result?.extra?.id;
       }
+      if (extraId) await api.setCatalogExtraRecipe(extraId, { lines: inventory_lines || [] });
       setEditing(null);
       load();
     } catch (e) { onErr(e); }
@@ -1510,7 +1526,7 @@ function ExtrasManager({ categories, onErr, canDelete }) {
         entity="תוספת"
         article="חדשה"
         title={editing?.name}
-        width="lg"
+        width="4xl"
         onPrev={nav.onPrev}
         onNext={nav.onNext}
         position={nav.position}
@@ -1523,7 +1539,19 @@ function ExtrasManager({ categories, onErr, canDelete }) {
           </div>
         ) : undefined}
       >
-        {editing && <ExtraForm initial={editing} meals={meals} categories={categories} onSave={save} onCancel={() => setEditing(null)} embedded />}
+        {editing && (
+          <ExtraForm
+            initial={editing}
+            meals={meals}
+            categories={categories}
+            inventoryItems={inventoryItems}
+            units={units}
+            onInventoryItemCreated={onInventoryItemCreated}
+            onSave={save}
+            onCancel={() => setEditing(null)}
+            embedded
+          />
+        )}
       </FormDrawer>
     </div>
   );
@@ -1573,6 +1601,17 @@ const extraColumns = (mealNameById = {}) => [
     },
   },
   {
+    key: 'inventory_link',
+    label: 'קישור למלאי',
+    type: 'boolean',
+    trueLabel: 'מקושרת',
+    falseLabel: 'לא מקושרת',
+    value: (extra) => Number(extra.inventory_lines_count || 0) > 0,
+    render: (extra) => (Number(extra.inventory_lines_count || 0) > 0
+      ? <span className="text-xs">{extra.inventory_lines_count} רכיבי מלאי</span>
+      : <span className="text-xs text-red-600">לא מקושרת</span>),
+  },
+  {
     key: 'is_active',
     label: 'סטטוס',
     type: 'boolean',
@@ -1587,7 +1626,7 @@ function requiredMealsLabel(ids = [], mealNameById = {}) {
   return ids.map((id) => mealNameById[id] || 'מאכל שהוסר').join(', ');
 }
 
-function ExtraForm({ initial, meals = [], categories = [], onSave, onCancel, embedded = false }) {
+function ExtraForm({ initial, meals = [], categories = [], inventoryItems = [], units = [], onInventoryItemCreated, onSave, onCancel, embedded = false }) {
   const [f, setF] = useState({
     id: initial.id,
     name: initial.name || '',
@@ -1599,8 +1638,36 @@ function ExtraForm({ initial, meals = [], categories = [], onSave, onCancel, emb
     display_order: initial.display_order ?? 0,
     required_meal_ids: initial.required_meal_ids || [],
   });
+  const [inventoryLines, setInventoryLines] = useState([]);
+  const [linesLoading, setLinesLoading] = useState(!!initial.id);
 
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+
+  // מרכיבי המלאי שהתוספת צורכת (סעיף 14.6) - נשמרים בנפרד מכרטיס התוספת עצמו.
+  useEffect(() => {
+    let alive = true;
+    if (!initial.id) {
+      setLinesLoading(false);
+      return () => { alive = false; };
+    }
+    setLinesLoading(true);
+    api.catalogExtraRecipe(initial.id)
+      .then((data) => {
+        if (!alive) return;
+        setInventoryLines((data?.lines || []).map((line) => ({
+          id: line.id,
+          inventory_item_id: line.inventory_item_id || '',
+          ingredient_name: line.ingredient_name || '',
+          quantity_per_unit: line.quantity_per_unit ?? line.quantity_per_portion ?? '',
+          unit_id: line.unit_id || '',
+          unit: line.unit_ref?.name || line.unit || '',
+          notes: line.notes || '',
+        })));
+      })
+      .catch((e) => alert(e.message))
+      .finally(() => { if (alive) setLinesLoading(false); });
+    return () => { alive = false; };
+  }, [initial.id]);
 
   function toggleRequiredMeal(mealId) {
     setF((s) => ({
@@ -1630,6 +1697,13 @@ function ExtraForm({ initial, meals = [], categories = [], onSave, onCancel, emb
     if (f.suggestion_basis && (f.suggestion_ratio === '' || Number(f.suggestion_ratio) <= 0)) {
       return alert('כשנבחר בסיס לכמות מוצעת יש להזין יחס גדול מאפס.');
     }
+    for (const line of inventoryLines) {
+      if (!String(line.ingredient_name || '').trim()) return alert('יש להזין שם רכיב לכל שורת מלאי.');
+      if (line.quantity_per_unit === '' || Number(line.quantity_per_unit) <= 0) {
+        return alert(`הכמות עבור ${line.ingredient_name} חייבת להיות גדולה מאפס.`);
+      }
+      if (!line.unit_id) return alert(`יש לבחור יחידת מידה עבור ${line.ingredient_name}.`);
+    }
     onSave({
       ...f,
       name: f.name.trim(),
@@ -1640,6 +1714,7 @@ function ExtraForm({ initial, meals = [], categories = [], onSave, onCancel, emb
       customer_note: f.customer_note.trim() || null,
       display_order: Number(f.display_order) || 0,
       required_meal_ids: f.required_meal_ids,
+      inventory_lines: inventoryLines,
     });
   }
 
@@ -1714,11 +1789,208 @@ function ExtraForm({ initial, meals = [], categories = [], onSave, onCancel, emb
         )}
       </div>
 
+      <ExtraInventoryEditor
+        loading={linesLoading}
+        billingUnit={f.billing_unit}
+        lines={inventoryLines}
+        onLinesChange={setInventoryLines}
+        inventoryItems={inventoryItems}
+        units={units}
+        onInventoryItemCreated={onInventoryItemCreated}
+      />
+
       <div className="flex gap-2">
         <button type="submit" className="btn-primary">שמירה</button>
         <button type="button" onClick={onCancel} className="btn-ghost">ביטול</button>
       </div>
     </form>
+  );
+}
+
+// עורך מרכיבי המלאי של תוספת בתשלום (סעיף 14.6): מה צורכת יחידת חיוב אחת של
+// התוספת (בקבוק, יחידה, ק״ג). תיק השבת מכפיל את הכמויות במספר יחידות החיוב
+// שהוזמנו, מוסיף אותן לדוח החוסרים ולהמלצות הרכש, וניכוי המלאי מוריד אותן.
+// תוספת בלי שורות כאן נמכרת בלי שהמערכת יודעת מה היא צורכת.
+function ExtraInventoryEditor({ loading, billingUnit, lines, onLinesChange, inventoryItems = [], units = [], onInventoryItemCreated }) {
+  const [creatingIdx, setCreatingIdx] = useState(null);
+  const unitLabel = String(billingUnit || '').trim() || 'יחידת חיוב';
+
+  const updateLine = (idx, patch) => {
+    onLinesChange(lines.map((line, i) => (i === idx ? { ...line, ...patch } : line)));
+  };
+
+  const addLine = () => {
+    onLinesChange([
+      ...lines,
+      { inventory_item_id: '', ingredient_name: '', quantity_per_unit: '', unit_id: '', unit: '', notes: '' },
+    ]);
+  };
+
+  const removeLine = (idx) => onLinesChange(lines.filter((_, i) => i !== idx));
+
+  const chooseItem = (idx, itemId) => {
+    const item = inventoryItems.find((it) => it.id === itemId);
+    // בקישור לפריט מלאי - יורשים את יחידת הבסיס שלו כברירת מחדל
+    updateLine(idx, {
+      inventory_item_id: itemId,
+      ingredient_name: item?.name || lines[idx].ingredient_name,
+      unit_id: item?.unit_id || lines[idx].unit_id,
+      unit: item?.unit_ref?.name || item?.unit || lines[idx].unit,
+    });
+  };
+
+  // יצירה מהירה של פריט מלאי חדש מהשורה (שם + יחידה), וקישור השורה אליו.
+  const createInventoryItem = async (idx) => {
+    const line = lines[idx];
+    const name = String(line.ingredient_name || '').trim();
+    const unitId = line.unit_id || '';
+    if (!name) return alert('יש להזין שם רכיב לפני יצירת פריט מלאי.');
+    if (!unitId) return alert('יש לבחור יחידת מידה לפני יצירת פריט מלאי.');
+
+    const existing = inventoryItems.find((it) => (it.name || '').trim() === name);
+    if (existing) {
+      updateLine(idx, {
+        inventory_item_id: existing.id,
+        unit_id: existing.unit_id || unitId,
+        unit: existing.unit_ref?.name || existing.unit,
+      });
+      return alert(`הפריט "${name}" כבר קיים במלאי - השורה קושרה אליו.`);
+    }
+
+    setCreatingIdx(idx);
+    try {
+      const res = await api.createInvItem({ name, unit_id: unitId });
+      const item = res?.item;
+      if (item) {
+        onInventoryItemCreated?.(item);
+        updateLine(idx, {
+          inventory_item_id: item.id,
+          ingredient_name: item.name,
+          unit_id: item.unit_id,
+          unit: item.unit_ref?.name || item.unit,
+        });
+      }
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setCreatingIdx(null);
+    }
+  };
+
+  return (
+    <section className="border border-brand-cream-dark rounded-lg p-3 space-y-3">
+      <div>
+        <h4 className="font-bold text-brand-burgundy">מלאי שהתוספת צורכת</h4>
+        <p className="text-xs text-brand-burgundy/50 mt-1">
+          הזיני מה צורכת <span className="font-medium">{unitLabel}</span> אחת של התוספת. הכמויות ייכנסו
+          אוטומטית לחישוב הכמות הנדרשת בתיק השבת, להמלצות הרכש ולניכוי המלאי. תוספת בלי שורות כאן
+          נמכרת בלי שהמערכת עוקבת אחרי המלאי שלה.
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-brand-burgundy/50">טוען מרכיבי מלאי...</p>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-brand-burgundy/70">
+                <tr className="border-b border-brand-cream-dark">
+                  <th className="p-2 text-right min-w-44">פריט מלאי</th>
+                  <th className="p-2 text-right min-w-40">שם רכיב *</th>
+                  <th className="p-2 text-right min-w-28">{`כמות ל${unitLabel} *`}</th>
+                  <th className="p-2 text-right min-w-24">יחידה *</th>
+                  <th className="p-2 text-right min-w-36">הערה</th>
+                  <th className="p-2 text-right w-16"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((line, idx) => (
+                  <tr key={line.id || idx} className="border-b border-brand-cream-dark/70 align-top">
+                    <td className="p-2">
+                      <select
+                        value={line.inventory_item_id}
+                        onChange={(e) => chooseItem(idx, e.target.value)}
+                        className={inputCls}
+                      >
+                        <option value="">ללא קישור</option>
+                        {inventoryItems.map((item) => (
+                          <option key={item.id} value={item.id}>{item.name}</option>
+                        ))}
+                      </select>
+                      {!line.inventory_item_id && (
+                        <>
+                          <div className="text-xs text-red-600 mt-1">שורה בלי קישור לא תנוכה מהמלאי</div>
+                          {line.ingredient_name?.trim() && (
+                            <button
+                              type="button"
+                              onClick={() => createInventoryItem(idx)}
+                              disabled={creatingIdx === idx}
+                              className="text-xs text-brand-burgundy hover:underline mt-1 disabled:opacity-50"
+                            >
+                              {creatingIdx === idx ? 'יוצר...' : '➕ צור פריט מלאי חדש'}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </td>
+                    <td className="p-2">
+                      <input
+                        value={line.ingredient_name}
+                        onChange={(e) => updateLine(idx, { ingredient_name: e.target.value })}
+                        className={inputCls}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.0001"
+                        value={line.quantity_per_unit}
+                        onChange={(e) => updateLine(idx, { quantity_per_unit: e.target.value })}
+                        className={inputCls}
+                        dir="ltr"
+                      />
+                    </td>
+                    <td className="p-2">
+                      <select
+                        value={line.unit_id || ''}
+                        onChange={(e) => {
+                          const u = units.find((x) => x.id === e.target.value);
+                          updateLine(idx, { unit_id: e.target.value, unit: u?.name || '' });
+                        }}
+                        className={inputCls}
+                      >
+                        <option value="">- יחידה -</option>
+                        {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </td>
+                    <td className="p-2">
+                      <input
+                        value={line.notes}
+                        onChange={(e) => updateLine(idx, { notes: e.target.value })}
+                        className={inputCls}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <ActionIconButton icon="delete" label="מחיקה" tone="danger" onClick={() => removeLine(idx)} />
+                    </td>
+                  </tr>
+                ))}
+                {lines.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-3 text-center text-brand-burgundy/50">
+                      התוספת אינה מקושרת למלאי.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <button type="button" onClick={addLine} className="btn-ghost">+ רכיב מלאי</button>
+        </>
+      )}
+    </section>
   );
 }
 

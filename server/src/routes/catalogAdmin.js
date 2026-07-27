@@ -4,6 +4,11 @@ import { supabase } from '../lib/supabase.js';
 import { asyncHandler, fail } from '../lib/helpers.js';
 import { requireRole } from '../lib/auth.js';
 import { fetchSlotSplitsByCategory, replaceSlotSplits } from '../services/categorySplits.js';
+import {
+  fetchExtraRecipeLines,
+  isMissingExtraLinkColumn,
+  MISSING_EXTRA_LINK_MESSAGE,
+} from '../services/extraInventoryLines.js';
 
 const router = Router();
 
@@ -369,20 +374,32 @@ async function replaceMealSlots(mealId, slotIds) {
   if (error) throw error;
 }
 
-// התניית תוספת במאכלים (סעיף 14): רשימה ריקה = ללא התניה, מוצגת תמיד.
-async function extrasWithRequiredMeals(data) {
+// מעשיר תוספות בשני הקישורים שלהן:
+//   required_meal_ids   - התניית תוספת במאכלים (סעיף 14): רשימה ריקה = מוצגת תמיד.
+//   inventory_lines_count - כמה מרכיבי מלאי מוגדרים לה (סעיף 14.6). 0 = התוספת
+//                           נמכרת בלי לצרוך מלאי, ולכן לא תיכנס לחישובי תיק השבת.
+async function decorateExtras(data) {
   const ids = (data || []).map((e) => e.id);
   if (ids.length === 0) return data || [];
 
-  const { data: links, error } = await supabase
-    .from('extra_meal_requirements')
-    .select('extra_id, meal_id')
-    .in('extra_id', ids);
+  const [{ data: links, error }, lines] = await Promise.all([
+    supabase
+      .from('extra_meal_requirements')
+      .select('extra_id, meal_id')
+      .in('extra_id', ids),
+    fetchExtraRecipeLines(ids, 'extra_id'),
+  ]);
   if (error) throw error;
 
   const byExtra = {};
   for (const row of links || []) (byExtra[row.extra_id] ||= []).push(row.meal_id);
-  return data.map((e) => ({ ...e, required_meal_ids: byExtra[e.id] || [] }));
+  const lineCount = {};
+  for (const row of lines) lineCount[row.extra_id] = (lineCount[row.extra_id] || 0) + 1;
+  return data.map((e) => ({
+    ...e,
+    required_meal_ids: byExtra[e.id] || [],
+    inventory_lines_count: lineCount[e.id] || 0,
+  }));
 }
 
 async function replaceExtraMeals(extraId, mealIds) {
@@ -836,7 +853,7 @@ router.get('/extras', asyncHandler(async (req, res) => {
 
   const { data, error } = await q;
   if (error) throw error;
-  res.json(await extrasWithRequiredMeals(data));
+  res.json(await decorateExtras(data));
 }));
 
 router.post('/extras', asyncHandler(async (req, res) => {
@@ -850,7 +867,7 @@ router.post('/extras', asyncHandler(async (req, res) => {
     .single();
   if (error) throw error;
   await replaceExtraMeals(data.id, req.body.required_meal_ids);
-  const [extra] = await extrasWithRequiredMeals([data]);
+  const [extra] = await decorateExtras([data]);
   res.json({ ok: true, extra });
 }));
 
@@ -863,7 +880,7 @@ router.patch('/extras/:id', asyncHandler(async (req, res) => {
     if (error) throw error;
     if (!data) return fail(res, 404, 'תוספת לא נמצאה.');
     if (req.body.required_meal_ids !== undefined) await replaceExtraMeals(req.params.id, req.body.required_meal_ids);
-    const [extra] = await extrasWithRequiredMeals([data]);
+    const [extra] = await decorateExtras([data]);
     return res.json({ ok: true, extra });
   }
 
@@ -876,7 +893,7 @@ router.patch('/extras/:id', asyncHandler(async (req, res) => {
   if (error) throw error;
   if (!data) return fail(res, 404, 'תוספת לא נמצאה.');
   if (req.body.required_meal_ids !== undefined) await replaceExtraMeals(req.params.id, req.body.required_meal_ids);
-  const [extra] = await extrasWithRequiredMeals([data]);
+  const [extra] = await decorateExtras([data]);
   res.json({ ok: true, extra });
 }));
 
@@ -902,6 +919,79 @@ router.delete('/extras/:id', requireRole('developer'), asyncHandler(async (req, 
   if (!data) return fail(res, 404, 'תוספת לא נמצאה.');
   await auditDelete(req, 'extra', req.params.id);
   res.json({ ok: true });
+}));
+
+// ---------------------------------------------------------------------------
+// מרכיבי מלאי לתוספת (סעיף 14.6)
+// אותה טבלה של מתכוני המאכלים (recipe_lines) עם extra_id במקום meal_id, ולכן כל
+// חישובי הכמויות, המרת היחידות והניכוי האוטומטי חלים גם על תוספות. ההבדל היחיד:
+// הכמות היא ליחידת חיוב אחת של התוספת (בקבוק/יחידה) ולא למנה.
+// ---------------------------------------------------------------------------
+router.get('/extras/:id/recipe', asyncHandler(async (req, res) => {
+  const { data: extra, error: extraErr } = await supabase
+    .from('extras')
+    .select('id')
+    .eq('id', req.params.id)
+    .maybeSingle();
+  if (extraErr) throw extraErr;
+  if (!extra) return fail(res, 404, 'תוספת לא נמצאה.');
+
+  const { data, error } = await supabase
+    .from('recipe_lines')
+    .select('id, extra_id, inventory_item_id, ingredient_name, quantity_per_portion, unit, unit_id, notes, unit_ref:unit_id (id, name), inventory_item:inventory_item_id (id, name, unit, unit_id)')
+    .eq('extra_id', req.params.id)
+    .order('ingredient_name');
+  // מיגרציה 51 טרם הורצה - אין עדיין מרכיבים, והטופס נפתח ריק במקום להיכשל.
+  if (error && isMissingExtraLinkColumn(error)) return res.json({ lines: [] });
+  if (error) throw error;
+
+  const lines = (data || []).map((line) => ({
+    ...line,
+    quantity_per_unit: Number(line.quantity_per_portion),
+  }));
+  res.json({ lines });
+}));
+
+router.put('/extras/:id/recipe', asyncHandler(async (req, res) => {
+  const { data: extra, error: extraErr } = await supabase
+    .from('extras')
+    .select('id')
+    .eq('id', req.params.id)
+    .maybeSingle();
+  if (extraErr) throw extraErr;
+  if (!extra) return fail(res, 404, 'תוספת לא נמצאה.');
+
+  if (!Array.isArray(req.body?.lines)) return fail(res, 400, 'יש לשלוח רשימת מרכיבי מלאי.');
+
+  // מנרמלים באותה פונקציה של המאכלים, עם "מנה אחת" = יחידת חיוב אחת.
+  const cleaned = await normalizeRecipeLines({
+    recipe_portions: 1,
+    lines: req.body.lines.map((line) => ({
+      ...line,
+      quantity_for_recipe: line.quantity_per_unit ?? line.quantity_for_recipe ?? line.quantity,
+    })),
+  });
+  if (cleaned.error) return fail(res, 400, cleaned.error);
+
+  const del = await supabase.from('recipe_lines').delete().eq('extra_id', req.params.id);
+  if (del.error) {
+    // מיגרציה 51 טרם הורצה: אין מרכיבים במסד וגם אין לאן לכתוב. שמירת תוספת בלי
+    // מרכיבים עוברת כרגיל; ניסיון לשמור מרכיבים מקבל הסבר במקום שגיאה סתומה.
+    if (isMissingExtraLinkColumn(del.error)) {
+      if (cleaned.rows.length === 0) return res.json({ ok: true, lines_count: 0 });
+      return fail(res, 409, MISSING_EXTRA_LINK_MESSAGE);
+    }
+    throw del.error;
+  }
+
+  if (cleaned.rows.length) {
+    const { error } = await supabase
+      .from('recipe_lines')
+      .insert(cleaned.rows.map((row) => ({ ...row, extra_id: req.params.id })));
+    if (error) throw error;
+  }
+
+  res.json({ ok: true, lines_count: cleaned.rows.length });
 }));
 
 // ---------------------------------------------------------------------------

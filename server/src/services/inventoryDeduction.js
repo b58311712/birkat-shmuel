@@ -17,6 +17,7 @@ import {
   convertRequirementsToBase,
   indexConversions,
 } from './inventoryUnitConversion.js';
+import { fetchExtraRecipeLines } from './extraInventoryLines.js';
 
 // שגיאת דומיין עם הודעה ידידותית למשתמש (נתפסת ב-error middleware של הראוט).
 class DeductionError extends Error {
@@ -33,6 +34,8 @@ const normUnit = (u) => String(u || '').trim().toLowerCase();
 
 // צובר את הצריכה המדויקת (ביחידת המתכון) לכל פריט מלאי מקושר, על פני כל
 // ההזמנות התפעוליות של השבת. מחזיר מפה: item_id -> { unit -> qty }.
+// נכללות גם התוספות בתשלום שמקושרות למלאי (סעיף 14.6) - הן צורכות מלאי כמו
+// מאכל, אלא שהמכפיל הוא יחידות החיוב שהוזמנו ולא מנות.
 // שורות מתכון בלי inventory_item_id אינן ניתנות לניכוי - נאספות בנפרד להתראה.
 async function collectConsumption(shabbatId) {
   const { data: orders, error: oErr } = await supabase
@@ -40,13 +43,16 @@ async function collectConsumption(shabbatId) {
     .select(`
       id, order_status, payment_status,
       order_meal_slots ( meal_slot_id, portions ),
-      order_meals ( meal_slot_id, meal_id, portions )
+      order_meals ( meal_slot_id, meal_id, portions ),
+      order_extras ( extra_id, actual_quantity )
     `)
     .eq('shabbat_id', shabbatId);
   if (oErr) throw oErr;
 
-  // מנות מצטברות לכל מאכל (מאכל בקטגוריה מחלקת → הכמות שלו; אחרת מנות הסעודה).
+  // מנות מצטברות לכל מאכל (מאכל בקטגוריה מחלקת → הכמות שלו; אחרת מנות הסעודה),
+  // ויחידות חיוב מצטברות לכל תוספת בתשלום.
   const portionsByMeal = {};
+  const quantityByExtra = {};
   for (const o of orders || []) {
     if (!isOperational(o)) continue;
     const slotPortions = Object.fromEntries(
@@ -56,33 +62,46 @@ async function collectConsumption(shabbatId) {
       const p = om.portions != null ? Number(om.portions) : (slotPortions[om.meal_slot_id] || 0);
       if (p > 0) portionsByMeal[om.meal_id] = (portionsByMeal[om.meal_id] || 0) + p;
     }
+    for (const oe of o.order_extras || []) {
+      const q = Number(oe.actual_quantity || 0);
+      if (q > 0) quantityByExtra[oe.extra_id] = (quantityByExtra[oe.extra_id] || 0) + q;
+    }
   }
 
   const mealIds = Object.keys(portionsByMeal);
-  if (mealIds.length === 0) return { byItem: {}, unlinked: [] };
+  const extraIds = Object.keys(quantityByExtra);
+  if (mealIds.length === 0 && extraIds.length === 0) return { byItem: {}, unlinked: [] };
 
-  const { data: recipes, error: rErr } = await supabase
-    .from('recipe_lines')
-    .select('meal_id, inventory_item_id, ingredient_name, quantity_per_portion, unit, unit_id')
-    .in('meal_id', mealIds);
+  // שורות המרכיבים של המאכלים ושל התוספות - אותה טבלה, בעלים שונה.
+  const [{ data: recipes, error: rErr }, extraLines] = await Promise.all([
+    mealIds.length
+      ? supabase.from('recipe_lines')
+        .select('meal_id, inventory_item_id, ingredient_name, quantity_per_portion, unit, unit_id')
+        .in('meal_id', mealIds)
+      : Promise.resolve({ data: [], error: null }),
+    fetchExtraRecipeLines(extraIds),
+  ]);
   if (rErr) throw rErr;
 
   // צוברים לפי (פריט, יחידת-המתכון). המפתח הוא unit_id (מזהה יציב); שם היחידה
   // הטקסטואלי נשמר רק לצורך הודעות שגיאה קריאות.
   const byItem = {};   // item_id -> { unit_id -> { unit_id, unit_name, qty } }
   const unlinked = []; // שורות בלי קישור למלאי - לא ניתנות לניכוי
-  for (const rl of recipes || []) {
-    const portions = portionsByMeal[rl.meal_id] || 0;
-    const need = Number(rl.quantity_per_portion) * portions;
-    if (!(need > 0)) continue;
+  const addLine = (rl, multiplier) => {
+    const need = Number(rl.quantity_per_portion) * multiplier;
+    if (!(need > 0)) return;
     if (!rl.inventory_item_id) {
       unlinked.push({ name: rl.ingredient_name, unit: rl.unit });
-      continue;
+      return;
     }
     const perUnit = (byItem[rl.inventory_item_id] ||= {});
     const key = rl.unit_id || `text:${normUnit(rl.unit)}`; // נפילה לטקסט אם שורה ישנה בלי unit_id
     (perUnit[key] ||= { unit_id: rl.unit_id || null, unit_name: rl.unit, qty: 0 }).qty += need;
-  }
+  };
+
+  for (const rl of recipes || []) addLine(rl, portionsByMeal[rl.meal_id] || 0);
+  for (const rl of extraLines) addLine(rl, quantityByExtra[rl.extra_id] || 0);
+
   return { byItem, unlinked };
 }
 

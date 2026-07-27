@@ -188,6 +188,9 @@ export const api = {
   createCatalogExtra: (payload) => request('/admin/catalog/extras', { method: 'POST', body: JSON.stringify(payload) }),
   updateCatalogExtra: (id, payload) => request(`/admin/catalog/extras/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteCatalogExtra: (id) => request(`/admin/catalog/extras/${id}`, { method: 'DELETE' }),
+  // מרכיבי המלאי של התוספת - כמות ליחידת חיוב אחת (סעיף 14.6)
+  catalogExtraRecipe: (id) => request(`/admin/catalog/extras/${id}/recipe`),
+  setCatalogExtraRecipe: (id, payload) => request(`/admin/catalog/extras/${id}/recipe`, { method: 'PUT', body: JSON.stringify(payload) }),
 
   // מסלולי מחיר / מחיר בסיס לפי מספר סעודות (סעיף 15)
   catalogPriceTracks: (q = '') => request(`/admin/catalog/price-tracks${q}`),
