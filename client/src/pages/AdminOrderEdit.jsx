@@ -342,7 +342,12 @@ export default function AdminOrderEdit({ onAuthError }) {
             const isException = Number.isInteger(num) && num > 0 && (num < MIN_PORTIONS || num > MAX_PORTIONS);
             return (
               <div key={slot.id} className="flex items-center justify-between gap-3 p-2 rounded-lg hover:bg-brand-cream/40">
-                <span className="font-medium">{slot.name}{slot.requires_companion && <span className="text-xs text-brand-gold-dark mr-1"> (דורש עוד סעודה)</span>}</span>
+                <span className="font-medium">
+                  {slot.name}
+                  {slot.requires_companion && <span className="text-xs text-brand-gold-dark mr-1"> (דורש עוד סעודה)</span>}
+                  {/* סעודה שאינה מוצגת ללקוח (סעיף 12.3) - המשרד עדיין יכול לשבץ אותה */}
+                  {slot.show_in_order_form === false && <span className="text-xs text-brand-burgundy/50 mr-1"> (מוסתרת מהלקוח)</span>}
+                </span>
                 <div className="flex items-center gap-2">
                   {isException && <span className="text-xs font-medium text-amber-700">חריג</span>}
                   <span className="text-sm text-brand-burgundy/60">מנות:</span>

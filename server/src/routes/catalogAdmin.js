@@ -433,6 +433,45 @@ async function deleteMeal(mealId) {
   return supabase.from('meals').delete().eq('id', mealId).select('id').maybeSingle();
 }
 
+// סוגי הסעודות מנוהלים מהקטלוג (סעיף 12.3): שם, סדר תצוגה, האם ניתן לבחור את
+// הסעודה לבד, והאם היא מוצגת ללקוח בממשק ההזמנות.
+function normalizeMealSlot(body, { partial = false } = {}) {
+  const patch = {};
+
+  if (!partial || body.name !== undefined) {
+    const name = String(body.name || '').trim();
+    if (!name) return { error: 'נא להזין שם סעודה.' };
+    patch.name = name;
+  }
+  if (!partial || body.display_order !== undefined) patch.display_order = intOrNull(body.display_order) ?? 0;
+  if (!partial || body.requires_companion !== undefined) patch.requires_companion = Boolean(body.requires_companion);
+  // ברירת המחדל: סעודה חדשה מוצגת ללקוח, אלא אם המנהל סימן אחרת.
+  if (!partial || body.show_in_order_form !== undefined) patch.show_in_order_form = body.show_in_order_form !== false;
+  if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
+
+  return { patch };
+}
+
+// שם הסעודה מזהה אותה בהזמנה, בתיק השבת ובהדפסות - שני שמות זהים רק יבלבלו.
+// הטבלה קטנה (שלוש סעודות), ולכן ההשוואה נעשית בזיכרון ולא ב-ilike (בטוח מ-% ו-_).
+async function findDuplicateSlotName(name, excludeId = null) {
+  const { data, error } = await supabase.from('meal_slots').select('id, name');
+  if (error) throw error;
+  const key = String(name).trim().toLowerCase();
+  return (data || []).find(
+    (slot) => slot.id !== excludeId && String(slot.name || '').trim().toLowerCase() === key
+  ) || null;
+}
+
+// עמידות למיגרציה 46 שטרם הורצה: PostgREST מחזיר PGRST204 (ו-Postgres 42703) על
+// עמודה חסרה. במקום שגיאה גנרית מחזירים למנהל הנחיה ברורה מה חסר.
+const MISSING_COLUMN_CODES = ['PGRST204', '42703'];
+function slotVisibilityMigrationMessage(error) {
+  if (!error || !MISSING_COLUMN_CODES.includes(error.code)) return null;
+  if (!String(error.message || '').includes('show_in_order_form')) return null;
+  return 'שדה "תצוגה בממשק ההזמנות" טרם נוצר במסד הנתונים. יש להריץ את מיגרציה 46 ואז לנסות שוב.';
+}
+
 router.get('/meal-slots', asyncHandler(async (req, res) => {
   let q = supabase.from('meal_slots').select('*').order('display_order').order('name');
   if (req.query.active === 'true') q = q.eq('is_active', true);
@@ -440,6 +479,47 @@ router.get('/meal-slots', asyncHandler(async (req, res) => {
   const { data, error } = await q;
   if (error) throw error;
   res.json(data || []);
+}));
+
+router.post('/meal-slots', asyncHandler(async (req, res) => {
+  const cleaned = normalizeMealSlot(req.body || {});
+  if (cleaned.error) return fail(res, 400, cleaned.error);
+  if (await findDuplicateSlotName(cleaned.patch.name)) return fail(res, 400, 'כבר קיימת סעודה בשם הזה.');
+
+  const { data, error } = await supabase
+    .from('meal_slots')
+    .insert(cleaned.patch)
+    .select('*')
+    .single();
+  if (error) {
+    const message = slotVisibilityMigrationMessage(error);
+    if (message) return fail(res, 400, message);
+    throw error;
+  }
+  res.json({ ok: true, meal_slot: data });
+}));
+
+router.patch('/meal-slots/:id', asyncHandler(async (req, res) => {
+  const cleaned = normalizeMealSlot(req.body || {}, { partial: true });
+  if (cleaned.error) return fail(res, 400, cleaned.error);
+  if (Object.keys(cleaned.patch).length === 0) return fail(res, 400, 'לא נשלחו שדות לעדכון.');
+  if (cleaned.patch.name && await findDuplicateSlotName(cleaned.patch.name, req.params.id)) {
+    return fail(res, 400, 'כבר קיימת סעודה בשם הזה.');
+  }
+
+  const { data, error } = await supabase
+    .from('meal_slots')
+    .update(cleaned.patch)
+    .eq('id', req.params.id)
+    .select('*')
+    .maybeSingle();
+  if (error) {
+    const message = slotVisibilityMigrationMessage(error);
+    if (message) return fail(res, 400, message);
+    throw error;
+  }
+  if (!data) return fail(res, 404, 'סעודה לא נמצאה.');
+  res.json({ ok: true, meal_slot: data });
 }));
 
 router.delete('/meal-slots/:id', requireRole('developer'), asyncHandler(async (req, res) => {

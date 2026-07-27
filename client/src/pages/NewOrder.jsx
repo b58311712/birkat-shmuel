@@ -65,6 +65,13 @@ export default function NewOrder({ customer }) {
     [shabbatId, shabbatot]
   );
 
+  // רק סעודות שסומנו "תצוגה בממשק ההזמנות" מוצעות ללקוח (סעיף 12.3). סעודה מוסתרת
+  // נשארת פעילה במערכת ולשיבוץ ידני במשרד, אך אינה ניתנת להזמנה מכאן.
+  const visibleSlots = useMemo(
+    () => (catalog?.meal_slots || []).filter((slot) => slot.show_in_order_form !== false),
+    [catalog]
+  );
+
   // מזהי המאכלים שנבחרו בכל הסעודות (מפתח הבחירה הוא `slotId:mealId`).
   const selectedMealIds = useMemo(
     () => new Set(Object.keys(meals).map((key) => key.split(':')[1])),
@@ -417,8 +424,11 @@ export default function NewOrder({ customer }) {
 
       <section className="card mb-5 p-4">
         <h2 className="font-bold text-brand-burgundy mb-3">2. סעודות ומספר מנות</h2>
+        {visibleSlots.length === 0 && (
+          <p className="text-sm text-brand-burgundy/60">אין כרגע סעודות פתוחות להזמנה. יש לפנות למשרד.</p>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          {catalog.meal_slots.map((slot) => {
+          {visibleSlots.map((slot) => {
             const raw = slots[slot.id];
             const num = Number(raw);
             const isSelected = Number.isInteger(num) && num > 0;

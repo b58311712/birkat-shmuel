@@ -166,6 +166,8 @@ export const api = {
 
   // ניהול מאכלים וקטגוריות (סעיף 13)
   catalogMealSlots: (q = '') => request(`/admin/catalog/meal-slots${q}`),
+  createCatalogMealSlot: (payload) => request('/admin/catalog/meal-slots', { method: 'POST', body: JSON.stringify(payload) }),
+  updateCatalogMealSlot: (id, payload) => request(`/admin/catalog/meal-slots/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   catalogCategories: (q = '') => request(`/admin/catalog/categories${q}`),
   createCatalogCategory: (payload) => request('/admin/catalog/categories', { method: 'POST', body: JSON.stringify(payload) }),
   updateCatalogCategory: (id, payload) => request(`/admin/catalog/categories/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),

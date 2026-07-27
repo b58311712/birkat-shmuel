@@ -57,6 +57,7 @@ export default function AdminCatalog({ onAuthError, currentAdmin }) {
         {[
           ['meals', 'מאכלים'],
           ['categories', 'קטגוריות'],
+          ['meal-slots', 'סוגי סעודות'],
           ['extras', 'תוספות בתשלום'],
           ['price-tracks', 'מחיר בסיס'],
         ].map(([key, label]) => (
@@ -88,6 +89,9 @@ export default function AdminCatalog({ onAuthError, currentAdmin }) {
           onChanged={loadRefs}
           canDelete={canDelete}
         />
+      )}
+      {view === 'meal-slots' && (
+        <MealSlotsManager onErr={handleErr} onChanged={loadRefs} canDelete={canDelete} />
       )}
       {view === 'extras' && (
         <ExtrasManager categories={categories} onErr={handleErr} canDelete={canDelete} />
@@ -1709,6 +1713,232 @@ function ExtraForm({ initial, meals = [], categories = [], onSave, onCancel, emb
           </div>
         )}
       </div>
+
+      <div className="flex gap-2">
+        <button type="submit" className="btn-primary">שמירה</button>
+        <button type="button" onClick={onCancel} className="btn-ghost">ביטול</button>
+      </div>
+    </form>
+  );
+}
+
+// סוגי הסעודות (סעיף 12): ליל שבת, שבת בבוקר, סעודה שלישית - ניתנים לניהול מלא.
+// עמידות למיגרציה 46 שטרם הורצה: סעודה בלי השדה נחשבת מוצגת (ברירת המחדל).
+const showsInOrderForm = (slot) => slot?.show_in_order_form !== false;
+
+const ORDER_FORM_VISIBILITY = {
+  shown: { label: 'מוצגת', cls: 'bg-green-100 text-green-800' },
+  hidden: { label: 'מוסתרת', cls: 'bg-gray-200 text-gray-600' },
+};
+
+function MealSlotsManager({ onErr, onChanged, canDelete }) {
+  const [list, setList] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+
+  // טוענים את כל הסעודות; הסינון (חיפוש/סטטוס) נעשה בזיכרון ב-DataTable.
+  const load = useCallback(() => {
+    api.catalogMealSlots('').then(setList).catch(onErr);
+  }, [onErr]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function save(form) {
+    try {
+      if (form.id) await api.updateCatalogMealSlot(form.id, form);
+      else await api.createCatalogMealSlot(form);
+      setEditing(null);
+      load();
+      onChanged?.();
+    } catch (e) { onErr(e); }
+  }
+
+  async function toggleActive(slot) {
+    try {
+      await api.updateCatalogMealSlot(slot.id, { is_active: !slot.is_active });
+      setEditing((e) => (e && e.id === slot.id ? { ...e, is_active: !slot.is_active } : e));
+      load();
+      onChanged?.();
+    } catch (e) { onErr(e); }
+  }
+
+  async function deleteSlot(slot) {
+    if (!confirm(`למחוק לצמיתות את הסעודה ${slot.name}? הסעודה תוסר גם מהזמנות קיימות.`)) return;
+    try {
+      await api.deleteCatalogMealSlot(slot.id);
+      setEditing(null);
+      load();
+      onChanged?.();
+    } catch (e) { onErr(e); }
+  }
+
+  async function handleReorder(reordered) {
+    const previous = list;
+    const normalized = reordered.map((slot, index) => ({ ...slot, display_order: index + 1 }));
+    setList(normalized);
+    setSavingOrder(true);
+    try {
+      await Promise.all(normalized.map((slot) =>
+        api.updateCatalogMealSlot(slot.id, { display_order: slot.display_order })));
+      onChanged?.();
+    } catch (e) {
+      setList(previous);
+      onErr(e);
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
+  const nav = useRecordNav(setEditing, editing?.id ?? null);
+
+  if (!list) return <p>טוען...</p>;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-brand-burgundy/60">
+        סוגי הסעודות שהמערכת עובדת לפיהם. <b>תצוגה בממשק ההזמנות</b> קובעת אם הלקוח רואה את הסעודה
+        בטופס ההזמנה - סעודה מוסתרת נשארת פעילה לכל דבר במשרד (שיבוץ ידני בהזמנה, קטגוריות, מסלולי
+        מחיר ותיק שבת), רק הלקוח אינו יכול להזמין אותה. השבתה מלאה נעשית דרך הסטטוס.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={() => setEditing({})} className="btn-primary">+ סעודה חדשה</button>
+        {savingOrder && <span className="text-xs text-brand-burgundy/55">שומר את סדר הסעודות...</span>}
+      </div>
+
+      <DataTable
+        columns={[
+          { key: 'name', label: 'סעודה', type: 'text', className: 'font-medium' },
+          {
+            key: 'show_in_order_form',
+            label: 'תצוגה בממשק ההזמנות',
+            type: 'boolean',
+            trueLabel: 'מוצגת',
+            falseLabel: 'מוסתרת',
+            value: showsInOrderForm,
+            render: (slot) => (
+              <Badge map={ORDER_FORM_VISIBILITY} value={showsInOrderForm(slot) ? 'shown' : 'hidden'} />
+            ),
+          },
+          {
+            key: 'requires_companion',
+            label: 'בחירה עצמאית',
+            type: 'boolean',
+            trueLabel: 'דורשת עוד סעודה',
+            falseLabel: 'ניתן לבחור לבד',
+            value: (slot) => !!slot.requires_companion,
+            render: (slot) => (slot.requires_companion ? 'דורשת עוד סעודה' : 'ניתן לבחור לבד'),
+          },
+          {
+            key: 'is_active',
+            label: 'סטטוס',
+            type: 'boolean',
+            trueLabel: 'פעילה',
+            falseLabel: 'לא פעילה',
+            render: (slot) => <Badge map={ACTIVE_STATUS} value={slot.is_active ? 'active_female' : 'inactive_female'} />,
+          },
+        ]}
+        rows={list}
+        empty="אין סעודות להצגה."
+        reorderable
+        onReorder={handleReorder}
+        reorderHint="אפשר לגרור שורות כדי לקבוע את סדר הסעודות בממשק ההזמנות"
+        reorderDisabledHint="כדי לשנות סדר יש לנקות את הסינון"
+        rowClassName={(slot) => `${!slot.is_active ? 'opacity-50' : ''} ${editing?.id === slot.id ? 'bg-brand-cream/40' : ''}`}
+        onRowClick={setEditing}
+        onVisibleRowsChange={nav.setVisibleRows}
+      />
+
+      <FormDrawer
+        editing={editing}
+        onClose={() => setEditing(null)}
+        entity="סעודה"
+        title={editing?.name}
+        width="lg"
+        onPrev={nav.onPrev}
+        onNext={nav.onNext}
+        position={nav.position}
+        footer={editing?.id ? (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => toggleActive(editing)} className="btn-ghost">{editing.is_active ? 'השבתה' : 'הפעלה'}</button>
+            {canDelete && (
+              <button onClick={() => deleteSlot(editing)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+            )}
+          </div>
+        ) : undefined}
+      >
+        {editing && <MealSlotForm initial={editing} onSave={save} onCancel={() => setEditing(null)} embedded />}
+      </FormDrawer>
+    </div>
+  );
+}
+
+function MealSlotForm({ initial, onSave, onCancel, embedded = false }) {
+  const [f, setF] = useState({
+    id: initial.id,
+    name: initial.name || '',
+    display_order: initial.display_order ?? '',
+    requires_companion: !!initial.requires_companion,
+    show_in_order_form: initial.id ? showsInOrderForm(initial) : true,
+  });
+
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+
+  function submit(e) {
+    e.preventDefault();
+    if (!f.name.trim()) return alert('חובה להזין שם סעודה.');
+    onSave({
+      ...f,
+      name: f.name.trim(),
+      display_order: f.display_order === '' ? 0 : Number(f.display_order),
+    });
+  }
+
+  return (
+    <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-gold'}>
+      {!embedded && <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת סעודה' : 'סעודה חדשה'}</h3>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="שם הסעודה *">
+          <input value={f.name} onChange={(e) => set('name', e.target.value)} className={inputCls} placeholder="ליל שבת, שבת בבוקר, סעודה שלישית..." />
+        </Field>
+        <Field label="סדר תצוגה">
+          <input type="number" min="0" value={f.display_order} onChange={(e) => set('display_order', e.target.value)} className={inputCls} dir="ltr" placeholder="0" />
+        </Field>
+      </div>
+
+      <Field label="תצוגה בממשק ההזמנות">
+        <label className="flex items-start gap-2 text-sm p-2 border border-brand-cream-dark rounded-lg">
+          <input
+            type="checkbox"
+            checked={f.show_in_order_form}
+            onChange={(e) => set('show_in_order_form', e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="font-medium text-brand-burgundy">מוצגת ללקוח בטופס ההזמנה</span>
+            <span className="block text-xs text-brand-burgundy/60">
+              לא מסומן = הסעודה נעלמת מממשק ההזמנות של הלקוח, אך נשארת זמינה לשיבוץ ידני במשרד
+              ולכל שאר חלקי המערכת.
+            </span>
+          </span>
+        </label>
+      </Field>
+
+      <Field label="כללי בחירה">
+        <label className="flex items-start gap-2 text-sm p-2 border border-brand-cream-dark rounded-lg">
+          <input
+            type="checkbox"
+            checked={f.requires_companion}
+            onChange={(e) => set('requires_companion', e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="font-medium text-brand-burgundy">לא ניתן לבחור אותה לבד</span>
+            <span className="block text-xs text-brand-burgundy/60">
+              מסומן = הסעודה זמינה רק בהזמנה שכוללת לפחות עוד סעודה אחת (סעיף 12.2, סעודה שלישית).
+            </span>
+          </span>
+        </label>
+      </Field>
 
       <div className="flex gap-2">
         <button type="submit" className="btn-primary">שמירה</button>
