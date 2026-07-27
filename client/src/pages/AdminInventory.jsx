@@ -8,7 +8,7 @@ import { Drawer, FormDrawer, useRecordNav } from '../components/Drawer.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 import PriceInput from '../components/PriceInput.jsx';
 import { formatWithVat } from '../lib/vat.js';
-import { formatInventoryQuantity, splitPackageQuantity } from '../lib/inventoryPackages.js';
+import { formatInventoryQuantity, splitPackageQuantity, isBelowMinimum } from '../lib/inventoryPackages.js';
 
 // ניהול מלאי CRUD (סעיף 25). מסך ניהול גלובלי: פריטי מלאי, קטגוריות, שינוי ידני.
 // דוח החוסרים והפחתה לאחר הכנות נמצאים בתיק שבת (לשונית מלאי).
@@ -131,18 +131,9 @@ function ItemsManager({ onErr, canDelete }) {
     } catch (e) { onErr(e); }
   }
 
-  const minimumQuantity = (it) => (
-    Number(it.package_size) > 0 && it.min_alert_packages != null
-      ? Number(it.package_size) * Number(it.min_alert_packages)
-      : (it.min_alert_quantity == null ? null : Number(it.min_alert_quantity))
-  );
-  const isLow = (it) => it.procurement_type !== 'direct_event'
-    && minimumQuantity(it) != null
-    && Number(it.quantity_on_hand) < minimumQuantity(it);
-
   // מסנן-על "מתחת למינימום" הוא חוצה-שדות (כמות מול מינימום), לכן קדם-סינון לפני DataTable.
   const rows = useMemo(
-    () => (list && lowStockOnly ? list.filter(isLow) : list),
+    () => (list && lowStockOnly ? list.filter(isBelowMinimum) : list),
     [list, lowStockOnly],
   );
 
@@ -216,7 +207,7 @@ function ItemsManager({ onErr, canDelete }) {
         if (it.procurement_type === 'direct_event') {
           return <td className="p-3 text-sm text-brand-burgundy/50">לא מנוהל במלאי</td>;
         }
-        const low = isLow(it);
+        const low = isBelowMinimum(it);
         return (
           <td className={`p-0 text-sm font-medium ${low ? 'text-red-600' : ''}`}>
             <button type="button" onClick={() => setAdjusting(it)} className="w-full p-3 text-right hover:bg-brand-gold/10" title="לחיצה לשינוי כמות">

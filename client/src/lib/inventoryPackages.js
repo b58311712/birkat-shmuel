@@ -39,6 +39,23 @@ export function formatInventoryQuantity(quantity, item = {}, options = {}) {
   return `${prefix}${parts.join(' + ')}`;
 }
 
+// מלאי המינימום האפקטיבי של פריט (סעיף 30.3): פריט עם אריזה מגדיר מינימום
+// במארזים שלמים, פריט ללא אריזה ביחידות. null = לא הוגדר מינימום.
+export function inventoryMinimumQuantity(item = {}) {
+  if (Number(item.package_size) > 0 && item.min_alert_packages != null)
+    return roundInventoryQuantity(Number(item.package_size) * Number(item.min_alert_packages));
+  return item.min_alert_quantity == null ? null : Number(item.min_alert_quantity);
+}
+
+// אזהרת חוסר: הכמות במלאי ירדה מתחת למינימום. פריטי רכש ישיר אינם מנוהלים
+// במלאי ולכן לעולם אינם בחוסר.
+export function isBelowMinimum(item = {}) {
+  const minimum = inventoryMinimumQuantity(item);
+  return item.procurement_type !== 'direct_event'
+    && minimum != null
+    && Number(item.quantity_on_hand) < minimum;
+}
+
 export function formatNumber(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return String(value ?? '');

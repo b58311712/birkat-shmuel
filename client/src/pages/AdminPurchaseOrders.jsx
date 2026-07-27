@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
@@ -7,7 +7,12 @@ import { DataTable } from '../components/DataTable.jsx';
 import { Badge, PO_STATUS } from '../lib/status.jsx';
 import PriceInput from '../components/PriceInput.jsx';
 import { withVat } from '../lib/vat.js';
-import { packageQuantityTotal } from '../lib/inventoryPackages.js';
+import {
+  packageQuantityTotal,
+  formatInventoryQuantity,
+  inventoryMinimumQuantity,
+  isBelowMinimum,
+} from '../lib/inventoryPackages.js';
 
 // הזמנות רכש (סעיף 27.2-27.3): רשימה, סינון ויצירת הזמנה חדשה (טיוטה).
 // פירוט/קבלת סחורה/תשלום נמצאים במסך הפירוט (/admin/purchase-orders/:id).
@@ -123,19 +128,38 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
   useEffect(() => { api.invItems('?active=true').then(setAllItems).catch(onErr); }, [onErr]);
   useEffect(() => { api.allShabbatot().then(setShabbatot).catch(() => {}); }, []);
 
-  // כשבוחרים ספק - טוענים מחיר קנייה אחרון פר מוצר לספק (לברירת מחדל של מחיר משוער)
-  // וגם את ברירת המחדל של המתג "לפני/כולל מע"מ" של הספק.
+  // כשבוחרים ספק - טוענים את המוצרים שהוא מספק (לצמצום רשימת הבחירה), מחיר קנייה
+  // אחרון פר מוצר (לברירת מחדל של מחיר משוער) וברירת המחדל של המתג "לפני/כולל מע"מ".
   const [supplierPrices, setSupplierPrices] = useState({}); // item_id -> price (בסיס)
   const [supplierIncludesVat, setSupplierIncludesVat] = useState(false);
+  const [supplierItemIds, setSupplierItemIds] = useState(null); // Set של מזהי מוצרים; null = טרם נטען
+  const [shortageOnly, setShortageOnly] = useState(false); // הצגת מוצרי הספק שבחוסר בלבד
   useEffect(() => {
-    if (!supplierId) { setSupplierPrices({}); setSupplierIncludesVat(false); return; }
+    if (!supplierId) { setSupplierPrices({}); setSupplierIncludesVat(false); setSupplierItemIds(null); return; }
+    let cancelled = false; // מונע דריסה בתשובה מאוחרת של ספק קודם
+    setSupplierItemIds(null);
     api.supplier(supplierId).then((d) => {
+      if (cancelled) return;
       const map = {};
-      for (const it of d.items || []) if (it.last_purchase_price != null) map[it.item_id] = it.last_purchase_price;
+      const ids = new Set();
+      for (const it of d.items || []) {
+        ids.add(it.item_id);
+        if (it.last_purchase_price != null) map[it.item_id] = it.last_purchase_price;
+      }
       setSupplierPrices(map);
+      setSupplierItemIds(ids);
       setSupplierIncludesVat(d.supplier?.default_price_includes_vat || false);
-    }).catch(() => {});
+    }).catch(() => { if (!cancelled) setSupplierItemIds(new Set()); });
+    return () => { cancelled = true; };
   }, [supplierId]);
+
+  // מוצרי הספק (סעיף 25.3, 27.1): שיוך מפורש בכרטיס הספק, או ספק ברירת מחדל בכרטיס המוצר.
+  const supplierItems = useMemo(() => {
+    if (!allItems || !supplierId || !supplierItemIds) return [];
+    return allItems.filter((i) => supplierItemIds.has(i.id) || i.default_supplier_id === supplierId);
+  }, [allItems, supplierId, supplierItemIds]);
+  const shortageItems = useMemo(() => supplierItems.filter(isBelowMinimum), [supplierItems]);
+  const visibleItems = shortageOnly ? shortageItems : supplierItems;
 
   function setLine(idx, patch) { setLines((r) => r.map((x, i) => (i === idx ? { ...x, ...patch } : x))); }
   function addLine() { setLines((r) => [...r, emptyLine()]); }
@@ -212,6 +236,21 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
 
   const chosen = new Set(lines.map((l) => l.inventory_item_id));
 
+  // אפשרויות הבחירה לשורה: מוצרי הספק שטרם נבחרו, ותמיד גם המוצר שכבר נבחר בשורה
+  // (גם אם הוא מוסתר בגלל סינון חוסרים או החלפת ספק) כדי שלא ייעלם מהתצוגה.
+  function itemOptions(line) {
+    const options = visibleItems.filter((i) => i.id === line.inventory_item_id || !chosen.has(i.id));
+    const selected = allItems?.find((i) => i.id === line.inventory_item_id);
+    if (selected && !options.some((i) => i.id === selected.id)) return [selected, ...options];
+    return options;
+  }
+
+  function itemLabel(item) {
+    const direct = item.procurement_type === 'direct_event' ? ' · רכש ישיר' : '';
+    const shortage = isBelowMinimum(item) ? ' · ⚠ מתחת למינימום' : '';
+    return `${item.name} (${item.unit})${direct}${shortage}`;
+  }
+
   return (
     <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold mb-4">
       <h3 className="font-bold text-brand-burgundy">הזמנת רכש חדשה</h3>
@@ -238,7 +277,31 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
       </div>
 
       <div>
-        <div className="text-sm text-brand-burgundy/70 mb-1">פריטים</div>
+        <div className="flex flex-wrap items-center gap-3 mb-1">
+          <div className="text-sm text-brand-burgundy/70">פריטים</div>
+          {supplierId && !supplierItemIds && <span className="text-xs text-brand-burgundy/50">טוען את מוצרי הספק...</span>}
+          {supplierId && supplierItemIds && (
+            <div className="flex rounded-lg border border-brand-cream-dark overflow-hidden text-xs">
+              {[[false, `כל מוצרי הספק (${supplierItems.length})`], [true, `בחוסר בלבד (${shortageItems.length})`]].map(([value, label]) => (
+                <button key={String(value)} type="button" onClick={() => setShortageOnly(value)}
+                  className={`px-3 py-1.5 transition-colors ${
+                    shortageOnly === value ? 'bg-brand-gold/25 text-brand-burgundy font-medium' : 'text-brand-burgundy/55 hover:bg-brand-cream'
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {!supplierId && <p className="text-sm text-brand-burgundy/55">בחרו ספק כדי להציג את המוצרים שהוא מספק.</p>}
+        {supplierId && supplierItemIds && supplierItems.length === 0 && (
+          <p className="text-sm text-brand-burgundy/55">
+            לא שויכו מוצרים לספק זה. אפשר לשייך אותם ב<Link to="/admin/suppliers" className="text-brand-burgundy underline">כרטיס הספק</Link>.
+          </p>
+        )}
+        {supplierId && shortageOnly && supplierItems.length > 0 && shortageItems.length === 0 && (
+          <p className="text-sm text-brand-burgundy/55">אין מוצרים של הספק מתחת לכמות המינימום.</p>
+        )}
         {!allItems ? <p className="text-sm">טוען מוצרים...</p> : (
           <div className="space-y-2">
             <div className="hidden sm:grid grid-cols-12 gap-2 text-xs text-brand-burgundy/50 px-1">
@@ -249,15 +312,12 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
               const item = allItems.find((i) => i.id === l.inventory_item_id);
               return (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                  <select value={l.inventory_item_id} onChange={(e) => onPickItem(idx, e.target.value)} className={`${inputCls} col-span-12 sm:col-span-5`}>
-                    <option value="">- בחר מוצר -</option>
-                    {allItems
-                      .filter((i) => i.id === l.inventory_item_id || !chosen.has(i.id))
-                      .map((i) => (
-                        <option key={i.id} value={i.id}>
-                          {i.name} ({i.unit}){i.procurement_type === 'direct_event' ? ' · רכש ישיר' : ''}
-                        </option>
-                      ))}
+                  <select value={l.inventory_item_id} onChange={(e) => onPickItem(idx, e.target.value)}
+                    disabled={!supplierId} className={`${inputCls} col-span-12 sm:col-span-5 disabled:bg-brand-cream disabled:text-brand-burgundy/40`}>
+                    <option value="">{supplierId ? '- בחר מוצר -' : '- בחרו ספק תחילה -'}</option>
+                    {itemOptions(l).map((i) => (
+                      <option key={i.id} value={i.id}>{itemLabel(i)}</option>
+                    ))}
                   </select>
                   {item?.package_size ? (
                     <div className="col-span-12 sm:col-span-3 grid grid-cols-2 gap-1">
@@ -285,6 +345,15 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
                     {item.package_size
                       ? `1 ${item.package_label} = ${item.package_size} ${item.unit} · המחיר הוא ל${item.package_label}`
                       : `יחידה: ${item.unit}`}
+                    {isBelowMinimum(item) && (
+                      <span className="text-red-600">
+                        {' · ⚠ במלאי '}{formatInventoryQuantity(item.quantity_on_hand, item)}
+                        {' מתוך מינימום '}{formatInventoryQuantity(inventoryMinimumQuantity(item), item)}
+                      </span>
+                    )}
+                    {supplierId && supplierItemIds && !supplierItems.some((i) => i.id === item.id) && (
+                      <span className="text-red-600">{' · המוצר אינו משויך לספק שנבחר'}</span>
+                    )}
                   </div>}
                 </div>
               );
