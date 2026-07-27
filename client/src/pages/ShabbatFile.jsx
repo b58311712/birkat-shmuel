@@ -318,6 +318,7 @@ function KitchenTab({ id, onAuthError }) {
 function InventoryTab({ id, onAuthError }) {
   const [data, setData] = useState(null);
   const [deducting, setDeducting] = useState(false);
+  const [creatingDrafts, setCreatingDrafts] = useState(false);
 
   const load = useCallback(() => {
     api.shabbatInventory(id).then(setData).catch(onAuthError);
@@ -326,8 +327,10 @@ function InventoryTab({ id, onAuthError }) {
 
   if (!data) return <p>טוען...</p>;
 
-  const hasSuppliers = data.suppliers.length > 0;
-  if (!hasSuppliers && data.unlinked.length === 0) {
+  const directSuppliers = data.direct_suppliers || [];
+  const canSyncDirectDrafts = directSuppliers.length > 0 || data.has_direct_purchase_drafts;
+  const hasSuppliers = data.suppliers.length > 0 || directSuppliers.length > 0;
+  if (!hasSuppliers && !data.has_direct_purchase_drafts && data.unlinked.length === 0) {
     return <div className="card text-center py-8 text-brand-burgundy/60">
       אין צורך מחושב עדיין. הצורך מבוסס על מתכוני המאכלים בהזמנות שנכנסות להכנות (מאושרות ושולמו),
       והמאכלים צריכים להיות מקושרים לפריטי מלאי.
@@ -336,6 +339,22 @@ function InventoryTab({ id, onAuthError }) {
 
   // סיכום עליון: כמה פריטים חסרים בסך הכל
   const totalMissing = data.suppliers.reduce((s, g) => s + g.total_missing_items, 0);
+  const totalDirectMissing = directSuppliers.reduce((s, g) => s + g.total_missing_items, 0);
+
+  async function createDirectDrafts() {
+    setCreatingDrafts(true);
+    try {
+      const result = await api.createDirectPurchaseDrafts(id);
+      const changed = result.orders?.length || 0;
+      const unresolved = result.unresolved_items?.length || 0;
+      alert(`טיוטות הרכש עודכנו: ${changed}.${unresolved ? ` ${unresolved} פריטים נשארו ללא ספק.` : ''}`);
+      load();
+    } catch (e) {
+      onAuthError(e);
+    } finally {
+      setCreatingDrafts(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -343,12 +362,26 @@ function InventoryTab({ id, onAuthError }) {
         <span className="text-brand-burgundy/70">
           פריטים בחוסר: <span className="font-bold text-brand-burgundy">{totalMissing}</span>
         </span>
+        {canSyncDirectDrafts && (
+          <span className="text-brand-burgundy/70">
+            רכש ישיר שנותר להזמנה: <span className="font-bold text-brand-burgundy">{totalDirectMissing}</span>
+          </span>
+        )}
         <span className="text-brand-burgundy/50 text-xs">
           הצורך מחושב מהזמנות שנכנסות להכנות בלבד · המלצת הקנייה מעוגלת למארזים שלמים
         </span>
-        {hasSuppliers && (
+        {data.suppliers.length > 0 && (
           <button onClick={() => setDeducting(true)} className="btn-primary text-sm mr-auto">
             הפחתה בפועל מהמלאי
+          </button>
+        )}
+        {directSuppliers.length > 0 && (
+          <button
+            onClick={createDirectDrafts}
+            disabled={creatingDrafts}
+            className="btn-primary text-sm disabled:opacity-50"
+          >
+            {creatingDrafts ? 'מעדכן טיוטות...' : 'יצירת טיוטות לרכש ישיר'}
           </button>
         )}
       </div>
@@ -356,6 +389,63 @@ function InventoryTab({ id, onAuthError }) {
       {deducting && (
         <DeductionPanel id={id} onClose={() => setDeducting(false)}
           onDone={() => { setDeducting(false); load(); }} onErr={onAuthError} />
+      )}
+
+      {directSuppliers.length > 0 && (
+        <div className="space-y-3">
+          <div>
+            <h3 className="font-bold text-brand-burgundy text-lg">רכש ישיר לאירוע</h3>
+            <p className="text-xs text-brand-burgundy/55">
+              הכמות הנדרשת אינה מתקזזת מהמלאי. הזמנות מבוטלות אינן נספרות.
+            </p>
+          </div>
+          {directSuppliers.map((group) => (
+            <div key={`direct-${group.supplier_id || '_none'}`} className="card border-r-4 border-brand-gold">
+              <h4 className="font-bold text-brand-burgundy mb-2">
+                {group.supplier_name || 'ללא ספק מוגדר'}
+              </h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-brand-burgundy/60 text-xs">
+                    <tr>
+                      <th className="p-2 text-right">מוצר</th>
+                      <th className="p-2 text-right">נדרש</th>
+                      <th className="p-2 text-right">הוזמן</th>
+                      <th className="p-2 text-right">התקבל</th>
+                      <th className="p-2 text-right">נותר להזמנה</th>
+                      <th className="p-2 text-right">חריגה</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.items.map((item) => (
+                      <tr key={item.item_id} className="border-t border-brand-cream-dark/50">
+                        <td className="p-2 font-medium">{item.name}</td>
+                        <td className="p-2">{formatInventoryQuantity(item.required, item)}</td>
+                        <td className="p-2">{formatInventoryQuantity(item.ordered, item)}</td>
+                        <td className="p-2">{formatInventoryQuantity(item.received, item)}</td>
+                        <td className={`p-2 font-bold ${item.remaining_to_order > 0 ? 'text-red-700' : 'text-green-700'}`}>
+                          {item.remaining_to_order > 0
+                            ? formatInventoryQuantity(item.remaining_to_order, item)
+                            : '✓'}
+                        </td>
+                        <td className="p-2 text-amber-700">
+                          {item.over_ordered > 0
+                            ? formatInventoryQuantity(item.over_ordered, item)
+                            : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!group.supplier_id && (
+                <p className="mt-2 text-xs text-red-700">
+                  יש להגדיר ספק ברירת מחדל למוצרים אלה לפני יצירת טיוטות.
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
       )}
 
       {data.suppliers.map((group) => (
@@ -1309,10 +1399,34 @@ function PrintTab({ id, onAuthError }) {
 
         {/* 5. דוח חוסרים וקניות (סעיף 33.2, 26) */}
         <ReportBlock title="דוח חומרי גלם וחוסרים">
-          {!inv?.suppliers?.length && !inv?.unlinked?.length ? (
+          {!inv?.suppliers?.length && !inv?.direct_suppliers?.length && !inv?.unlinked?.length ? (
             <p className="text-brand-burgundy/50 text-sm">אין צורך מחושב.</p>
           ) : (
             <>
+              {(inv.direct_suppliers || []).map((g) => (
+                <div key={`direct-${g.supplier_id || '_none'}`} className="mb-4 print-avoid">
+                  <h3 className="font-bold text-brand-burgundy flex justify-between px-1">
+                    <span>רכש ישיר · {g.supplier_name || 'ללא ספק מוגדר'}</span>
+                    {g.supplier_phone && <span className="text-sm font-normal" dir="ltr">{g.supplier_phone}</span>}
+                  </h3>
+                  <PrintTable head={['פריט', 'נדרש', 'הוזמן', 'התקבל', 'נותר להזמנה', 'הזמנת יתר']}>
+                    {g.items.map((it) => (
+                      <tr key={it.item_id}>
+                        <td className="border border-brand-cream-dark p-2">{it.name}</td>
+                        <td className="border border-brand-cream-dark p-2 font-bold">{formatInventoryQuantity(it.required, it)}</td>
+                        <td className="border border-brand-cream-dark p-2">{formatInventoryQuantity(it.ordered, it)}</td>
+                        <td className="border border-brand-cream-dark p-2">{formatInventoryQuantity(it.received, it)}</td>
+                        <td className="border border-brand-cream-dark p-2 font-bold">
+                          {it.remaining_to_order > 0 ? formatInventoryQuantity(it.remaining_to_order, it) : '✓'}
+                        </td>
+                        <td className="border border-brand-cream-dark p-2">
+                          {it.over_ordered > 0 ? formatInventoryQuantity(it.over_ordered, it) : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </PrintTable>
+                </div>
+              ))}
               {inv.suppliers.map((g) => (
                 <div key={g.supplier_id || '_none'} className="mb-4 print-avoid">
                   <h3 className="font-bold text-brand-burgundy flex justify-between px-1">

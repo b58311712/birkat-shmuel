@@ -12,6 +12,10 @@ import {
   indexConversions,
 } from './inventoryUnitConversion.js';
 import { orderedMealIds } from './volunteerScheduling.js';
+import {
+  directProcurementMetrics,
+  isDirectEventProcurement,
+} from './directProcurement.js';
 
 // סטטוסי תשלום שמזכים הזמנה להיכנס לחישובים (סעיף 8.7)
 const OPERATIONAL_PAYMENT_STATUSES = ['paid', 'partially_paid', 'payment_override'];
@@ -349,9 +353,18 @@ export async function buildInventoryReport(shabbatId) {
     ...Object.keys(requirementsByItemAndUnit),
   ])];
   if (itemIds.length === 0) {
+    const { count: directDraftCount, error: directDraftError } = await supabase
+      .from('purchase_orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('shabbat_id', shabbatId)
+      .eq('is_direct_event_generated', true)
+      .eq('status', 'draft');
+    if (directDraftError) throw directDraftError;
     return {
       shabbat_id: shabbatId,
       suppliers: [],
+      direct_suppliers: [],
+      has_direct_purchase_drafts: Number(directDraftCount || 0) > 0,
       unlinked: Object.values(unlinkedByName).map((u) => ({ ...u, quantity: round4(u.quantity) })),
       has_requirements: Object.keys(unlinkedByName).length > 0,
     };
@@ -360,7 +373,7 @@ export async function buildInventoryReport(shabbatId) {
   // שולפים את פריטי המלאי הנדרשים + הספקים שלהם
   const { data: items, error: iErr } = await supabase
     .from('inventory_items')
-    .select('id, name, unit, unit_id, quantity_on_hand, min_alert_quantity, min_alert_packages, package_label, package_size, last_purchase_price, default_supplier_id, is_packaging')
+    .select('id, name, unit, unit_id, quantity_on_hand, min_alert_quantity, min_alert_packages, package_label, package_size, last_purchase_price, default_supplier_id, is_packaging, procurement_type')
     .in('id', itemIds);
   if (iErr) throw iErr;
 
@@ -394,9 +407,34 @@ export async function buildInventoryReport(shabbatId) {
   if (sErr) throw sErr;
   const supplierById = Object.fromEntries((suppliers || []).map((s) => [s.id, s]));
 
+  const directItemIds = new Set(
+    (items || []).filter((item) => isDirectEventProcurement(item.procurement_type)).map((item) => item.id),
+  );
+  const orderedByItem = {};
+  const receivedByItem = {};
+  if (directItemIds.size > 0) {
+    const { data: eventOrders, error: eventOrdersError } = await supabase
+      .from('purchase_orders')
+      .select('id, status, purchase_order_lines(inventory_item_id, quantity, quantity_received, procurement_type_snapshot)')
+      .eq('shabbat_id', shabbatId)
+      .neq('status', 'cancelled');
+    if (eventOrdersError) throw eventOrdersError;
+    for (const order of eventOrders || []) {
+      for (const line of order.purchase_order_lines || []) {
+        if (!directItemIds.has(line.inventory_item_id)
+          || !isDirectEventProcurement(line.procurement_type_snapshot)) continue;
+        orderedByItem[line.inventory_item_id] =
+          (orderedByItem[line.inventory_item_id] || 0) + Number(line.quantity || 0);
+        receivedByItem[line.inventory_item_id] =
+          (receivedByItem[line.inventory_item_id] || 0) + Number(line.quantity_received || 0);
+      }
+    }
+  }
+
   // בונים שורת פריט: נדרש מדויק, קיים, חסר, והמלצה המעוגלת למארזים שלמים.
   const NO_SUPPLIER = '_none';
   const buckets = {}; // supplier_key -> { supplier, items: [] }
+  const directBuckets = {};
 
   for (const item of items || []) {
     const exactRequired = requiredByItem[item.id] || 0;
@@ -418,24 +456,38 @@ export async function buildInventoryReport(shabbatId) {
       : round4(exactSuggested);
 
     const supKey = item.default_supplier_id || NO_SUPPLIER;
-    const bucket = (buckets[supKey] ||= {
+    const isDirect = isDirectEventProcurement(item.procurement_type);
+    const targetBuckets = isDirect ? directBuckets : buckets;
+    const bucket = (targetBuckets[supKey] ||= {
       supplier: supplierById[item.default_supplier_id] || null,
       items: [],
     });
+    const directMetrics = isDirect
+      ? directProcurementMetrics({
+        required,
+        ordered: orderedByItem[item.id] || 0,
+        received: receivedByItem[item.id] || 0,
+        packageSize: item.package_size,
+      })
+      : null;
     bucket.items.push({
       item_id: item.id,
       name: item.name,
       unit: item.unit,
+      procurement_type: item.procurement_type,
       is_packaging: item.is_packaging,
       package_label: item.package_label,
       package_size: item.package_size == null ? null : Number(item.package_size),
       required,
       exact_required: round4(exactRequired),
-      on_hand: onHand,
-      missing: round4(missing),
-      suggested_purchase: suggested,
-      suggested_purchase_packages: suggestedPackages,
+      on_hand: isDirect ? null : onHand,
+      missing: isDirect ? directMetrics.remaining_to_order : round4(missing),
+      suggested_purchase: isDirect ? directMetrics.remaining_to_order : suggested,
+      suggested_purchase_packages: isDirect && hasPackage && directMetrics.remaining_to_order > 0
+        ? Math.ceil((directMetrics.remaining_to_order - 1e-9) / Number(item.package_size))
+        : suggestedPackages,
       last_purchase_price: item.last_purchase_price != null ? Number(item.last_purchase_price) : null,
+      ...(directMetrics || {}),
     });
   }
 
@@ -454,9 +506,26 @@ export async function buildInventoryReport(shabbatId) {
       return (a.supplier_name || '').localeCompare(b.supplier_name || '', 'he');
     });
 
+  const directSupplierGroups = Object.entries(directBuckets)
+    .map(([key, b]) => ({
+      supplier_id: key === NO_SUPPLIER ? null : key,
+      supplier_name: b.supplier?.name || null,
+      supplier_phone: b.supplier?.phone || null,
+      items: b.items.sort((a, c) =>
+        c.remaining_to_order - a.remaining_to_order || a.name.localeCompare(c.name, 'he')),
+      total_missing_items: b.items.filter((it) => it.remaining_to_order > 0).length,
+    }))
+    .sort((a, b) => {
+      if (!a.supplier_id) return 1;
+      if (!b.supplier_id) return -1;
+      return (a.supplier_name || '').localeCompare(b.supplier_name || '', 'he');
+    });
+
   return {
     shabbat_id: shabbatId,
     suppliers: supplierGroups,
+    direct_suppliers: directSupplierGroups,
+    has_direct_purchase_drafts: directSupplierGroups.length > 0,
     unlinked: Object.values(unlinkedByName).map((u) => ({ ...u, quantity: round4(u.quantity) })),
     has_requirements: true,
   };

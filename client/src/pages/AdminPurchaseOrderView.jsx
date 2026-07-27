@@ -82,6 +82,10 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
               <Info label="טלפון ספק" value={po.supplier?.phone} ltr />
               <Info label="תאריך יצירה" value={new Date(po.created_at).toLocaleDateString('he-IL')} ltr />
               <Info label="אספקה צפויה" value={po.expected_delivery_date} ltr />
+              <Info
+                label="אירוע"
+                value={po.shabbat ? `${po.shabbat.parasha} · ${po.shabbat.gregorian_date}` : null}
+              />
               <Info label="נוצר ע״י" value={po.creator?.full_name} />
               <Info label='מחיר משוער (לפני מע"מ)' value={po.estimated_amount != null ? `₪${po.estimated_amount}` : null} ltr />
               <Info label='מחיר בפועל (לפני מע"מ)' value={po.actual_amount != null ? `₪${po.actual_amount}` : null} ltr />
@@ -109,7 +113,12 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
                     const partial = Number(l.quantity_received) > 0 && !full;
                     return (
                       <tr key={l.id} className="border-b border-brand-cream-dark/50">
-                        <td className="p-2 font-medium">{l.item?.name || '-'} <span className="text-brand-burgundy/40">({l.item?.unit})</span></td>
+                        <td className="p-2 font-medium">
+                          {l.item?.name || '-'} <span className="text-brand-burgundy/40">({l.item?.unit})</span>
+                          {l.procurement_type_snapshot === 'direct_event' && (
+                            <span className="block text-xs text-brand-gold-dark">רכש ישיר לאירוע</span>
+                          )}
+                        </td>
                         <td className="p-2">{formatInventoryQuantity(l.quantity, {
                           unit: l.item?.unit,
                           package_label: l.package_label_snapshot,
@@ -154,7 +163,7 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
               <button onClick={() => changeStatus('sent')} disabled={busy} className="btn-primary w-full disabled:opacity-50">סימון כנשלחה לספק</button>
             )}
             {canReceive && (
-              <button onClick={() => setMode(mode === 'receive' ? null : 'receive')} className="btn-primary w-full">קבלת סחורה למלאי</button>
+              <button onClick={() => setMode(mode === 'receive' ? null : 'receive')} className="btn-primary w-full">אישור קבלת סחורה</button>
             )}
             {!isCancelled && !isReceived && (
               <button onClick={() => changeStatus('cancelled', 'לבטל את הזמנת הרכש?')} disabled={busy} className="btn-ghost w-full text-red-600">ביטול הזמנה</button>
@@ -162,7 +171,7 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
             {canDelete && (
               <button onClick={deletePurchaseOrder} disabled={busy} className="btn-ghost w-full text-red-700">מחיקה</button>
             )}
-            {isReceived && <p className="text-sm text-green-700">✓ ההזמנה התקבלה במלואה והמלאי עודכן.</p>}
+            {isReceived && <p className="text-sm text-green-700">✓ ההזמנה התקבלה במלואה; המלאי עודכן רק עבור מוצרי מלאי.</p>}
             {isCancelled && <p className="text-sm text-brand-burgundy/50">ההזמנה בוטלה.</p>}
           </div>
 
@@ -212,6 +221,7 @@ function ReceivePanel({ lines, supplierIncludesVat, poId, onCancel, onDone, onEr
       unit: l.item?.unit,
       package_label: l.package_label_snapshot,
       package_size: l.package_size_snapshot,
+      procurement_type: l.procurement_type_snapshot,
       vat_exempt: l.item?.vat_exempt || false,
       ordered: Number(l.quantity),
       alreadyReceived: Number(l.quantity_received),
@@ -257,8 +267,10 @@ function ReceivePanel({ lines, supplierIncludesVat, poId, onCancel, onDone, onEr
 
   return (
     <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
-      <h3 className="font-bold text-brand-burgundy">קבלת סחורה → הוספה למלאי</h3>
-      <p className="text-sm text-brand-burgundy/60">הזן את הכמות הכוללת שהתקבלה בכל שורה. ההפרש מהכמות שכבר נקלטה יתווסף למלאי ויתועד כתנועת "קבלת סחורה".</p>
+      <h3 className="font-bold text-brand-burgundy">אישור קבלת סחורה</h3>
+      <p className="text-sm text-brand-burgundy/60">
+        הזן את הכמות הכוללת שהתקבלה בכל שורה. מוצרי מלאי יתווספו למלאי; רכש ישיר יתועד עבור האירוע ללא שינוי יתרה.
+      </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-brand-burgundy/60 border-b border-brand-cream-dark">
@@ -273,7 +285,12 @@ function ReceivePanel({ lines, supplierIncludesVat, poId, onCancel, onDone, onEr
           <tbody>
             {rows.map((r, idx) => (
               <tr key={r.line_id} className="border-b border-brand-cream-dark/50">
-                <td className="p-2 font-medium">{r.name} <span className="text-brand-burgundy/40">({r.unit})</span></td>
+                <td className="p-2 font-medium">
+                  {r.name} <span className="text-brand-burgundy/40">({r.unit})</span>
+                  {r.procurement_type === 'direct_event' && (
+                    <span className="block text-xs text-brand-gold-dark">ללא קליטה למלאי</span>
+                  )}
+                </td>
                 <td className="p-2">{formatInventoryQuantity(r.ordered, r)}</td>
                 <td className="p-2 text-brand-burgundy/50">{formatInventoryQuantity(r.alreadyReceived, r)}</td>
                 <td className="p-2">
@@ -312,7 +329,7 @@ function ReceivePanel({ lines, supplierIncludesVat, poId, onCancel, onDone, onEr
         </table>
       </div>
       <div className="flex gap-2">
-        <button type="submit" disabled={busy} className="btn-primary disabled:opacity-50">{busy ? 'קולט...' : 'אישור קבלה והוספה למלאי'}</button>
+        <button type="submit" disabled={busy} className="btn-primary disabled:opacity-50">{busy ? 'קולט...' : 'אישור קבלה'}</button>
         <button type="button" onClick={onCancel} className="btn-ghost">ביטול</button>
       </div>
     </form>

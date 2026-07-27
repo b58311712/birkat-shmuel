@@ -69,6 +69,14 @@ export default function AdminPurchaseOrders({ onAuthError, currentAdmin }) {
       map: PO_STATUS,
       render: (po) => <Badge map={PO_STATUS} value={po.status} />,
     },
+    {
+      key: 'shabbat',
+      label: 'אירוע',
+      type: 'text',
+      render: (po) => po.shabbat
+        ? `${po.shabbat.parasha} · ${po.shabbat.gregorian_date}`
+        : '-',
+    },
     { key: 'expected_delivery_date', label: 'אספקה צפויה', type: 'date', dir: 'ltr', render: (po) => po.expected_delivery_date || '-' },
     { key: 'estimated_amount', label: 'משוער (לפני מע"מ)', type: 'number', dir: 'ltr', render: (po) => (po.estimated_amount != null ? `₪${po.estimated_amount}` : '-') },
     { key: 'actual_amount', label: 'בפועל (לפני מע"מ)', type: 'number', dir: 'ltr', render: (po) => (po.actual_amount != null ? `₪${po.actual_amount}` : '-') },
@@ -105,12 +113,15 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
   const [supplierId, setSupplierId] = useState('');
   const [expected, setExpected] = useState('');
   const [notes, setNotes] = useState('');
+  const [shabbatId, setShabbatId] = useState('');
+  const [shabbatot, setShabbatot] = useState([]);
   const [allItems, setAllItems] = useState(null);
   const emptyLine = () => ({ inventory_item_id: '', quantity: '', package_quantity: '', loose_quantity: '', estimated_price: '' });
   const [lines, setLines] = useState([emptyLine()]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { api.invItems('?active=true').then(setAllItems).catch(onErr); }, [onErr]);
+  useEffect(() => { api.allShabbatot().then(setShabbatot).catch(() => {}); }, []);
 
   // כשבוחרים ספק - טוענים מחיר קנייה אחרון פר מוצר לספק (לברירת מחדל של מחיר משוער)
   // וגם את ברירת המחדל של המתג "לפני/כולל מע"מ" של הספק.
@@ -169,10 +180,15 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
       return l.inventory_item_id && quantity > 0;
     });
     if (clean.length === 0) return alert('חובה להוסיף לפחות פריט אחד עם כמות.');
+    const hasDirectItem = clean.some((line) =>
+      allItems?.find((item) => item.id === line.inventory_item_id)?.procurement_type === 'direct_event');
+    if (hasDirectItem && !shabbatId)
+      return alert('מוצר ברכש ישיר מחייב בחירת אירוע.');
     setBusy(true);
     try {
       await api.createPurchaseOrder({
         supplier_id: supplierId,
+        shabbat_id: shabbatId || null,
         expected_delivery_date: expected || null,
         notes,
         lines: clean.map((l) => {
@@ -209,6 +225,16 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
         <Field label="תאריך אספקה צפוי">
           <input type="date" value={expected} onChange={(e) => setExpected(e.target.value)} className={inputCls} dir="ltr" />
         </Field>
+        <Field label="אירוע">
+          <select value={shabbatId} onChange={(e) => setShabbatId(e.target.value)} className={inputCls}>
+            <option value="">- ללא שיוך -</option>
+            {shabbatot.map((shabbat) => (
+              <option key={shabbat.id} value={shabbat.id}>
+                {shabbat.parasha} · {shabbat.gregorian_date}
+              </option>
+            ))}
+          </select>
+        </Field>
       </div>
 
       <div>
@@ -227,7 +253,11 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
                     <option value="">- בחר מוצר -</option>
                     {allItems
                       .filter((i) => i.id === l.inventory_item_id || !chosen.has(i.id))
-                      .map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
+                      .map((i) => (
+                        <option key={i.id} value={i.id}>
+                          {i.name} ({i.unit}){i.procurement_type === 'direct_event' ? ' · רכש ישיר' : ''}
+                        </option>
+                      ))}
                   </select>
                   {item?.package_size ? (
                     <div className="col-span-12 sm:col-span-3 grid grid-cols-2 gap-1">

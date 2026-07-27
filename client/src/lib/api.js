@@ -201,6 +201,7 @@ export const api = {
   shabbatSummary: (id) => request(`/admin/shabbat-files/${id}/summary`),
   shabbatKitchen: (id) => request(`/admin/shabbat-files/${id}/kitchen`),
   shabbatInventory: (id) => request(`/admin/shabbat-files/${id}/inventory`),
+  createDirectPurchaseDrafts: (id) => request(`/admin/shabbat-files/${id}/direct-purchase-drafts`, { method: 'POST' }),
   shabbatPacking: (id) => request(`/admin/shabbat-files/${id}/packing`),
   shabbatTransport: (id) => request(`/admin/shabbat-files/${id}/transport`),
   shabbatVolunteers: (id) => request(`/admin/shabbat-files/${id}/volunteers`),

@@ -105,14 +105,19 @@ export async function deductInventoryForShabbat(shabbatId, performedBy = null) {
 
   // שולפים את הפריטים (עם unit_id ליחידת הבסיס) ואת טבלת ההמרה שלהם במקביל.
   const [{ data: items, error: iErr }, { data: convs, error: cErr }] = await Promise.all([
-    supabase.from('inventory_items').select('id, name, unit, unit_id, quantity_on_hand').in('id', itemIds),
+    supabase.from('inventory_items').select('id, name, unit, unit_id, quantity_on_hand, procurement_type').in('id', itemIds),
     supabase.from('inventory_unit_conversions')
       .select('inventory_item_id, from_unit_id, factor_to_base').in('inventory_item_id', itemIds),
   ]);
   if (iErr) throw iErr;
   if (cErr) throw cErr;
 
-  const itemById = Object.fromEntries((items || []).map((i) => [i.id, i]));
+  const stockItems = (items || []).filter((item) => item.procurement_type !== 'direct_event');
+  const stockItemIds = new Set(stockItems.map((item) => item.id));
+  for (const itemId of Object.keys(byItem)) {
+    if (!stockItemIds.has(itemId)) delete byItem[itemId];
+  }
+  const itemById = Object.fromEntries(stockItems.map((i) => [i.id, i]));
   const conversionsByItem = indexConversions(convs || []);
 
   const { lines, missing } = convertRequirementsToBase(byItem, itemById, conversionsByItem);

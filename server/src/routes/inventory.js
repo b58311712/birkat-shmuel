@@ -22,6 +22,7 @@ import {
 const router = Router();
 
 const CHANNELS = ['phone', 'email', 'whatsapp', 'other'];
+const PROCUREMENT_TYPES = ['stock', 'direct_event'];
 // סוגי שינוי ידני מותרים (סעיף 25.5). 'correction' = תיקון ספירה/מלאי כללי.
 const MANUAL_REASONS = ['waste', 'spoiled', 'count_error', 'unusual_use', 'return', 'correction'];
 
@@ -442,9 +443,12 @@ router.post('/items', asyncHandler(async (req, res) => {
   const {
     name, category_id, unit, quantity_on_hand, min_alert_quantity,
     default_supplier_id, last_purchase_price, is_packaging, vat_exempt, notes,
-    min_alert_packages,
+    min_alert_packages, procurement_type,
   } = req.body || {};
   if (!name?.trim()) return fail(res, 400, 'חובה להזין שם מוצר.');
+  const procurementType = procurement_type || 'stock';
+  if (!PROCUREMENT_TYPES.includes(procurementType))
+    return fail(res, 400, 'סוג הרכש אינו תקין.');
 
   const unitId = await resolveUnitId(req.body?.unit_id, unit);
   if (!unitId) return fail(res, 400, 'חובה לבחור יחידת מידה.');
@@ -461,10 +465,14 @@ router.post('/items', asyncHandler(async (req, res) => {
     || 'loose_quantity' in (req.body || {});
   const parsedInitialQuantity =
     quantityFromPackageInput(req.body, packages.package_size, 'quantity_on_hand');
-  const initialQuantity = hasInitialInput ? parsedInitialQuantity : 0;
+  const initialQuantity = procurementType === 'direct_event'
+    ? 0
+    : (hasInitialInput ? parsedInitialQuantity : 0);
   if (initialQuantity == null || initialQuantity < 0)
     return fail(res, 400, 'הכמות ההתחלתית אינה תקינה.');
-  const effectiveMin = minimumPackages != null
+  const effectiveMin = procurementType === 'direct_event'
+    ? null
+    : minimumPackages != null
     ? roundQuantity(minimumPackages * packages.package_size)
     : num(min_alert_quantity);
 
@@ -472,9 +480,10 @@ router.post('/items', asyncHandler(async (req, res) => {
     name: name.trim(),
     category_id: category_id || null,
     unit_id: unitId, // הטריגר ימלא את unit הטקסטואלי משם היחידה
+    procurement_type: procurementType,
     quantity_on_hand: initialQuantity,
     min_alert_quantity: effectiveMin,
-    min_alert_packages: minimumPackages,
+    min_alert_packages: procurementType === 'direct_event' ? null : minimumPackages,
     ...packages,
     default_supplier_id: default_supplier_id || null,
     last_purchase_price: num(last_purchase_price), // נשמר כמחיר בסיס (לפני מע"מ)
@@ -493,10 +502,43 @@ router.patch('/items/:id', asyncHandler(async (req, res) => {
   const allowed = [
     'name', 'category_id', 'min_alert_quantity', 'default_supplier_id',
     'last_purchase_price', 'is_packaging', 'vat_exempt', 'is_active', 'notes',
+    'procurement_type',
   ];
   const patch = {};
   for (const k of allowed) if (k in (req.body || {})) patch[k] = req.body[k];
   if ('name' in patch && !patch.name?.trim()) return fail(res, 400, 'שם מוצר לא יכול להיות ריק.');
+  if ('procurement_type' in patch && !PROCUREMENT_TYPES.includes(patch.procurement_type))
+    return fail(res, 400, 'סוג הרכש אינו תקין.');
+  const { data: currentItem, error: currentItemError } = await supabase
+    .from('inventory_items')
+    .select('id, quantity_on_hand, procurement_type')
+    .eq('id', req.params.id)
+    .maybeSingle();
+  if (currentItemError) throw currentItemError;
+  if (!currentItem) return fail(res, 404, 'פריט מלאי לא נמצא.');
+  if (patch.procurement_type === 'direct_event' && Number(currentItem.quantity_on_hand) !== 0) {
+    return fail(res, 409, 'כדי להעביר מוצר לרכש ישיר יש לאפס תחילה את יתרת המלאי.');
+  }
+  if (patch.procurement_type === 'direct_event' && currentItem.procurement_type !== 'direct_event') {
+    const { data: stockOrderLines, error: stockOrderLinesError } = await supabase
+      .from('purchase_order_lines')
+      .select('purchase_order_id')
+      .eq('inventory_item_id', req.params.id)
+      .eq('procurement_type_snapshot', 'stock');
+    if (stockOrderLinesError) throw stockOrderLinesError;
+    const purchaseOrderIds = [...new Set((stockOrderLines || []).map((line) => line.purchase_order_id))];
+    if (purchaseOrderIds.length > 0) {
+      const { count: openStockOrderCount, error: openStockOrderError } = await supabase
+        .from('purchase_orders')
+        .select('id', { count: 'exact', head: true })
+        .in('id', purchaseOrderIds)
+        .in('status', ['draft', 'sent', 'partially_received']);
+      if (openStockOrderError) throw openStockOrderError;
+      if (Number(openStockOrderCount || 0) > 0) {
+        return fail(res, 409, 'לא ניתן להעביר לרכש ישיר כל עוד קיימת למוצר הזמנת מלאי פתוחה.');
+      }
+    }
+  }
   // יחידה: unit_id מפורש או unit טקסט (תאימות). הטריגר מסנכרן את עמודת הטקסט.
   if ('unit_id' in (req.body || {}) || 'unit' in (req.body || {})) {
     const unitId = await resolveUnitId(req.body.unit_id, req.body.unit);
@@ -546,6 +588,10 @@ router.patch('/items/:id', asyncHandler(async (req, res) => {
   if ('vat_exempt' in patch) patch.vat_exempt = !!patch.vat_exempt;
   if ('category_id' in patch) patch.category_id = patch.category_id || null;
   if ('default_supplier_id' in patch) patch.default_supplier_id = patch.default_supplier_id || null;
+  if ((patch.procurement_type || currentItem.procurement_type) === 'direct_event') {
+    patch.min_alert_quantity = null;
+    patch.min_alert_packages = null;
+  }
   if (Object.keys(patch).length === 0) return fail(res, 400, 'אין שדות לעדכון.');
 
   const { data, error } = await supabase.from('inventory_items')
@@ -575,9 +621,11 @@ router.post('/items/:id/adjust', asyncHandler(async (req, res) => {
   if (!MANUAL_REASONS.includes(reason)) return fail(res, 400, 'סיבת שינוי לא תקינה.');
 
   const { data: item, error: iErr } = await supabase
-    .from('inventory_items').select('id, quantity_on_hand, package_size').eq('id', req.params.id).maybeSingle();
+    .from('inventory_items').select('id, quantity_on_hand, package_size, procurement_type').eq('id', req.params.id).maybeSingle();
   if (iErr) throw iErr;
   if (!item) return fail(res, 404, 'פריט מלאי לא נמצא.');
+  if (item.procurement_type === 'direct_event')
+    return fail(res, 409, 'מוצר ברכש ישיר אינו מנוהל במלאי.');
 
   const before = Number(item.quantity_on_hand);
   let after;
@@ -690,7 +738,7 @@ router.post('/shabbat/:shabbatId/deduct', asyncHandler(async (req, res) => {
   // שולפים כמות נוכחית לכל הפריטים
   const itemIds = clean.map((l) => l.item_id);
   const { data: items, error: iErr } = await supabase
-    .from('inventory_items').select('id, name, quantity_on_hand').in('id', itemIds);
+    .from('inventory_items').select('id, name, quantity_on_hand, procurement_type').in('id', itemIds);
   if (iErr) throw iErr;
   const itemById = Object.fromEntries((items || []).map((i) => [i.id, i]));
 
@@ -698,7 +746,7 @@ router.post('/shabbat/:shabbatId/deduct', asyncHandler(async (req, res) => {
   const movements = [];
   for (const l of clean) {
     const item = itemById[l.item_id];
-    if (!item) continue;
+    if (!item || item.procurement_type === 'direct_event') continue;
     const before = Number(item.quantity_on_hand);
     const after = Number((before - l.quantity).toFixed(4)); // מותר לרדת מתחת ל-0 (חוסר בפועל)
 
@@ -718,6 +766,9 @@ router.post('/shabbat/:shabbatId/deduct', asyncHandler(async (req, res) => {
     });
     results.push({ item_id: item.id, name: item.name, before, after });
   }
+
+  if (results.length === 0)
+    return fail(res, 400, 'אין מוצרי מלאי תקינים להפחתה.');
 
   if (movements.length) {
     const { error: mErr } = await supabase.from('inventory_movements').insert(movements);

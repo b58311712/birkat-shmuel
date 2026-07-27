@@ -20,6 +20,7 @@ import {
 } from '../services/volunteerScheduling.js';
 import { HDate } from '@hebcal/core';
 import { parashaForDate } from '../lib/parasha.js';
+import { synchronizeDirectPurchaseDrafts } from '../services/directPurchaseDrafts.js';
 
 const router = Router();
 const SHABBAT_STATUSES = ['open', 'closed', 'completed', 'cancelled'];
@@ -214,6 +215,14 @@ router.get('/:id/inventory', asyncHandler(async (req, res) => {
   const data = await buildInventoryReport(req.params.id);
   if (!data) return fail(res, 404, 'שבת לא נמצאה.');
   res.json(data);
+}));
+
+// POST /api/admin/shabbat-files/:id/direct-purchase-drafts
+// Synchronizes one generated direct-event draft per supplier without changing sent orders.
+router.post('/:id/direct-purchase-drafts', asyncHandler(async (req, res) => {
+  const data = await synchronizeDirectPurchaseDrafts(req.params.id, req.appUser?.sub || null);
+  if (!data) return fail(res, 404, 'שבת לא נמצאה.');
+  res.json({ ok: true, ...data });
 }));
 
 // GET /api/admin/shabbat-files/:id/transport - לשונית שינוע (סעיף 9.7)

@@ -11,6 +11,10 @@ import {
   quantityFromPackageInput,
   roundQuantity,
 } from '../lib/inventoryPackages.js';
+import {
+  isDirectEventProcurement,
+  purchaseReceiptAffectsStock,
+} from '../services/directProcurement.js';
 
 const router = Router();
 
@@ -41,7 +45,7 @@ async function normalizeOrderLines(lines, purchaseOrderId = null) {
   if (itemIds.length === 0) return [];
   const { data: items, error } = await supabase
     .from('inventory_items')
-    .select('id, package_label, package_size')
+    .select('id, package_label, package_size, procurement_type')
     .in('id', itemIds);
   if (error) throw error;
   const itemById = Object.fromEntries((items || []).map((item) => [item.id, item]));
@@ -61,6 +65,7 @@ async function normalizeOrderLines(lines, purchaseOrderId = null) {
       inventory_item_id: item.id,
       quantity,
       estimated_price: estimatedPrice,
+      procurement_type_snapshot: item.procurement_type || 'stock',
       ...packageSnapshot(item),
     });
   }
@@ -252,7 +257,7 @@ router.put('/:id/items', asyncHandler(async (req, res) => {
 router.get('/purchase-orders/list', asyncHandler(async (req, res) => {
   let q = supabase
     .from('purchase_orders')
-    .select('*, supplier:supplier_id (id, name)')
+    .select('*, supplier:supplier_id (id, name), shabbat:shabbat_id (id, parasha, hebrew_date, gregorian_date)')
     .order('created_at', { ascending: false });
   if (req.query.supplier_id) q = q.eq('supplier_id', req.query.supplier_id);
   if (req.query.status) q = q.eq('status', req.query.status);
@@ -265,14 +270,14 @@ router.get('/purchase-orders/list', asyncHandler(async (req, res) => {
 router.get('/purchase-orders/:id', asyncHandler(async (req, res) => {
   const { data: po, error } = await supabase
     .from('purchase_orders')
-    .select('*, supplier:supplier_id (id, name, phone, email, preferred_channel, default_price_includes_vat), creator:created_by (id, full_name)')
+    .select('*, supplier:supplier_id (id, name, phone, email, preferred_channel, default_price_includes_vat), creator:created_by (id, full_name), shabbat:shabbat_id (id, parasha, hebrew_date, gregorian_date)')
     .eq('id', req.params.id).maybeSingle();
   if (error) throw error;
   if (!po) return fail(res, 404, 'הזמנת רכש לא נמצאה.');
 
   const { data: lines, error: lErr } = await supabase
     .from('purchase_order_lines')
-    .select('*, item:inventory_item_id (id, name, unit, vat_exempt, package_label, package_size)')
+    .select('*, item:inventory_item_id (id, name, unit, vat_exempt, package_label, package_size, procurement_type)')
     .eq('purchase_order_id', req.params.id)
     .order('created_at');
   if (lErr) throw lErr;
@@ -290,7 +295,7 @@ router.get('/purchase-orders/:id', asyncHandler(async (req, res) => {
 // POST /api/admin/suppliers/purchase-orders - יצירת הזמנת רכש (טיוטה)
 // body: { supplier_id, expected_delivery_date, notes, lines: [{ inventory_item_id, quantity, estimated_price }] }
 router.post('/purchase-orders', asyncHandler(async (req, res) => {
-  const { supplier_id, expected_delivery_date, notes, lines } = req.body || {};
+  const { supplier_id, shabbat_id, expected_delivery_date, notes, lines } = req.body || {};
   if (!supplier_id) return fail(res, 400, 'חובה לבחור ספק.');
   if (!Array.isArray(lines) || lines.length === 0)
     return fail(res, 400, 'חובה להוסיף לפחות פריט אחד.');
@@ -302,6 +307,14 @@ router.post('/purchase-orders', asyncHandler(async (req, res) => {
 
   const clean = await normalizeOrderLines(lines);
   if (clean.length === 0) return fail(res, 400, 'אין שורות תקינות בהזמנה.');
+  if (clean.some((line) => isDirectEventProcurement(line.procurement_type_snapshot)) && !shabbat_id)
+    return fail(res, 400, 'מוצר ברכש ישיר מחייב שיוך ההזמנה לאירוע.');
+  if (shabbat_id) {
+    const { data: shabbat, error: shabbatError } = await supabase
+      .from('shabbatot').select('id').eq('id', shabbat_id).maybeSingle();
+    if (shabbatError) throw shabbatError;
+    if (!shabbat) return fail(res, 404, 'האירוע שנבחר לא נמצא.');
+  }
 
   // מחיר משוער כולל
   const estimated_amount = clean.reduce(
@@ -315,6 +328,7 @@ router.post('/purchase-orders', asyncHandler(async (req, res) => {
   const { data: po, error: pErr } = await supabase.from('purchase_orders').insert({
     po_number: poNumber,
     supplier_id,
+    shabbat_id: shabbat_id || null,
     status: 'draft',
     expected_delivery_date: expected_delivery_date || null,
     estimated_amount: estimated_amount || null,
@@ -334,21 +348,44 @@ router.post('/purchase-orders', asyncHandler(async (req, res) => {
 // body: { expected_delivery_date, notes, lines }
 router.patch('/purchase-orders/:id', asyncHandler(async (req, res) => {
   const { data: po, error } = await supabase
-    .from('purchase_orders').select('id, status').eq('id', req.params.id).maybeSingle();
+    .from('purchase_orders').select('id, status, shabbat_id').eq('id', req.params.id).maybeSingle();
   if (error) throw error;
   if (!po) return fail(res, 404, 'הזמנת רכש לא נמצאה.');
   if (po.status !== 'draft')
     return fail(res, 400, 'ניתן לערוך פריטים רק בהזמנה בסטטוס טיוטה.');
 
-  const { expected_delivery_date, notes, lines } = req.body || {};
+  const { shabbat_id, expected_delivery_date, notes, lines } = req.body || {};
   const patch = {};
+  if ('shabbat_id' in (req.body || {})) patch.shabbat_id = shabbat_id || null;
   if ('expected_delivery_date' in (req.body || {})) patch.expected_delivery_date = expected_delivery_date || null;
   if ('notes' in (req.body || {})) patch.notes = notes?.trim() || null;
+  if ('shabbat_id' in patch && !patch.shabbat_id) {
+    const { data: directLines, error: directLinesError } = await supabase
+      .from('purchase_order_lines')
+      .select('id')
+      .eq('purchase_order_id', po.id)
+      .eq('procurement_type_snapshot', 'direct_event')
+      .limit(1);
+    if (directLinesError) throw directLinesError;
+    if ((directLines || []).length > 0)
+      return fail(res, 400, 'לא ניתן להסיר שיוך לאירוע מהזמנה הכוללת רכש ישיר.');
+  }
+  if (patch.shabbat_id) {
+    const { data: shabbat, error: shabbatError } = await supabase
+      .from('shabbatot').select('id').eq('id', patch.shabbat_id).maybeSingle();
+    if (shabbatError) throw shabbatError;
+    if (!shabbat) return fail(res, 404, 'האירוע שנבחר לא נמצא.');
+  }
 
   // אם נשלחו שורות - מחליפים אותן ומחשבים מחדש מחיר משוער
   if (Array.isArray(lines)) {
     const clean = await normalizeOrderLines(lines, po.id);
     if (clean.length === 0) return fail(res, 400, 'אין שורות תקינות בהזמנה.');
+    const effectiveShabbatId = 'shabbat_id' in patch ? patch.shabbat_id : po.shabbat_id;
+    if (clean.some((line) => isDirectEventProcurement(line.procurement_type_snapshot))
+      && !effectiveShabbatId) {
+      return fail(res, 400, 'מוצר ברכש ישיר מחייב שיוך ההזמנה לאירוע.');
+    }
     patch.estimated_amount = clean.reduce(
       (sum, l) => sum + (l.estimated_price != null ? l.estimated_price * l.quantity : 0), 0) || null;
 
@@ -475,7 +512,8 @@ router.post('/purchase-orders/:id/receive', asyncHandler(async (req, res) => {
     if (uErr) throw uErr;
 
     // הוספה למלאי רק אם יש כמות חיובית להוסיף כעת
-    if (u.addQty > 0) {
+    const entersStock = purchaseReceiptAffectsStock(u.line.procurement_type_snapshot);
+    if (u.addQty > 0 && entersStock) {
       const before = runningQty[itemId];
       const after = roundQuantity(before + u.addQty);
       runningQty[itemId] = after;
@@ -495,6 +533,14 @@ router.post('/purchase-orders/:id/receive', asyncHandler(async (req, res) => {
         performed_by: req.appUser?.sub || null,
       });
       receivedItems.push({ item_id: itemId, name: itemById[itemId]?.name, added: u.addQty, on_hand: after });
+    } else if (u.addQty > 0) {
+      receivedItems.push({
+        item_id: itemId,
+        name: itemById[itemId]?.name,
+        added: u.addQty,
+        on_hand: null,
+        stock_updated: false,
+      });
     }
 
     // עדכון מחיר קנייה אחרון בכרטיס המוצר + ב-item_suppliers (אם נמסר מחיר)

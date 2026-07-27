@@ -136,7 +136,9 @@ function ItemsManager({ onErr, canDelete }) {
       ? Number(it.package_size) * Number(it.min_alert_packages)
       : (it.min_alert_quantity == null ? null : Number(it.min_alert_quantity))
   );
-  const isLow = (it) => minimumQuantity(it) != null && Number(it.quantity_on_hand) < minimumQuantity(it);
+  const isLow = (it) => it.procurement_type !== 'direct_event'
+    && minimumQuantity(it) != null
+    && Number(it.quantity_on_hand) < minimumQuantity(it);
 
   // מסנן-על "מתחת למינימום" הוא חוצה-שדות (כמות מול מינימום), לכן קדם-סינון לפני DataTable.
   const rows = useMemo(
@@ -158,6 +160,9 @@ function ItemsManager({ onErr, canDelete }) {
             {it.name}
           </button>
           {it.is_packaging && <span className="text-xs text-brand-burgundy/50 mr-1">(אריזה)</span>}
+          {it.procurement_type === 'direct_event' && (
+            <span className="text-xs text-brand-gold-dark mr-1">(רכש ישיר)</span>
+          )}
         </td>
       ),
     },
@@ -208,6 +213,9 @@ function ItemsManager({ onErr, canDelete }) {
       type: 'number',
       rawCell: true,
       render: (it) => {
+        if (it.procurement_type === 'direct_event') {
+          return <td className="p-3 text-sm text-brand-burgundy/50">לא מנוהל במלאי</td>;
+        }
         const low = isLow(it);
         return (
           <td className={`p-0 text-sm font-medium ${low ? 'text-red-600' : ''}`}>
@@ -228,7 +236,9 @@ function ItemsManager({ onErr, canDelete }) {
       label: 'מינימום',
       type: 'number',
       rawCell: true,
-      render: (it) => (
+      render: (it) => it.procurement_type === 'direct_event' ? (
+        <td className="p-3 text-sm text-brand-burgundy/40">-</td>
+      ) : (
         <QuickEditCell
           value={it.package_size ? (it.min_alert_packages ?? '') : (it.min_alert_quantity ?? '')}
           ariaLabel="כמות מינימום"
@@ -334,7 +344,9 @@ function ItemsManager({ onErr, canDelete }) {
         position={nav.position}
         footer={editing?.id ? (
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => { setEditing(null); setAdjusting(editing); }} className="btn-ghost">שינוי כמות</button>
+            {editing.procurement_type !== 'direct_event' && (
+              <button onClick={() => { setEditing(null); setAdjusting(editing); }} className="btn-ghost">שינוי כמות</button>
+            )}
             <button onClick={() => { setEditing(null); openHistory(editing); }} className="btn-ghost">תנועות</button>
             {canDelete && (
               <button onClick={() => deleteItem(editing)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
@@ -451,6 +463,7 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
   const [f, setF] = useState({
     id: initial.id,
     name: initial.name || '',
+    procurement_type: initial.procurement_type || 'stock',
     category_id: initial.category_id || '',
     unit_id: initial.unit_id || '',
     quantity_on_hand: initial.quantity_on_hand ?? 0,
@@ -471,6 +484,7 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
   const [newSupplier, setNewSupplier] = useState('');
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const isEdit = !!f.id;
+  const isDirect = f.procurement_type === 'direct_event';
   // ברירת המחדל של מתג "לפני/כולל מע"מ" נגזרת מהספק הנבחר (איך הוא נוקב מחירים)
   const selectedSupplierIncludesVat =
     suppliers.find((s) => s.id === f.default_supplier_id)?.default_price_includes_vat || false;
@@ -522,10 +536,12 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
       package_size: hasPackageSize ? Number(f.package_size) : null,
       category_id: f.category_id || null,
       default_supplier_id: f.default_supplier_id || null,
-      min_alert_packages: hasPackageSize
+      min_alert_packages: !isDirect && hasPackageSize
         ? (f.min_alert_packages === '' ? null : Number(f.min_alert_packages))
         : null,
-      min_alert_quantity: hasPackageSize ? null : (f.min_alert_quantity === '' ? null : Number(f.min_alert_quantity)),
+      min_alert_quantity: isDirect || hasPackageSize
+        ? null
+        : (f.min_alert_quantity === '' ? null : Number(f.min_alert_quantity)),
       // last_purchase_price כבר מגיע כמחיר בסיס מנורמל (או null) מרכיב PriceInput
       last_purchase_price: f.last_purchase_price === '' || f.last_purchase_price == null
         ? null
@@ -533,7 +549,11 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
     };
     // בעריכה - הכמות משתנה רק דרך "שינוי כמות" המתועד, לא בטופס הכרטיס
     if (isEdit) delete payload.quantity_on_hand;
-    else if (hasPackageSize) {
+    else if (isDirect) {
+      payload.quantity_on_hand = 0;
+      delete payload.package_quantity;
+      delete payload.loose_quantity;
+    } else if (hasPackageSize) {
       payload.package_quantity = Number(f.package_quantity) || 0;
       payload.loose_quantity = Number(f.loose_quantity) || 0;
       delete payload.quantity_on_hand;
@@ -564,13 +584,24 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Field>
+        <Field label="אופן רכש">
+          <select value={f.procurement_type} onChange={(e) => set('procurement_type', e.target.value)} className={inputCls}>
+            <option value="stock">מוצר מלאי</option>
+            <option value="direct_event">רכש ישיר לאירוע</option>
+          </select>
+          {isDirect && (
+            <span className="block mt-1 text-xs text-brand-burgundy/55">
+              הכמות תוזמן לכל אירוע ולא תיקלט או תופחת מהמלאי.
+            </span>
+          )}
+        </Field>
         <Field label="שם מארז (למשל שק, קרטון)">
           <input value={f.package_label} onChange={(e) => set('package_label', e.target.value)} className={inputCls} placeholder="ללא מארז" />
         </Field>
         <Field label={`כמות ${baseUnitName || 'יחידות בסיס'} במארז`}>
           <input type="number" step="any" min="0" value={f.package_size} onChange={(e) => changePackageSize(e.target.value)} className={inputCls} dir="ltr" placeholder="למשל 5" />
         </Field>
-        {!isEdit ? (
+        {!isDirect && (!isEdit ? (
           <Field label="כמות קיימת התחלתית">
             {Number(f.package_size) > 0 ? (
               <div className="grid grid-cols-2 gap-2">
@@ -588,13 +619,13 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
               {' '}— לשינוי השתמש ב״שינוי כמות״
             </div>
           </Field>
-        )}
-        <Field label={Number(f.package_size) > 0 ? 'מינימום מארזים להתראה' : 'כמות מינימום להתראה'}>
+        ))}
+        {!isDirect && <Field label={Number(f.package_size) > 0 ? 'מינימום מארזים להתראה' : 'כמות מינימום להתראה'}>
           <input type="number" step={Number(f.package_size) > 0 ? '1' : 'any'} min="0"
             value={Number(f.package_size) > 0 ? f.min_alert_packages : f.min_alert_quantity}
             onChange={(e) => set(Number(f.package_size) > 0 ? 'min_alert_packages' : 'min_alert_quantity', e.target.value)}
             className={inputCls} dir="ltr" placeholder="ללא" />
-        </Field>
+        </Field>}
         <Field label={`מחיר קנייה אחרון ל${Number(f.package_size) > 0 ? (f.package_label || 'מארז') : (baseUnitName || 'יחידה')} (₪)`}>
           <PriceInput
             value={f.last_purchase_price}
