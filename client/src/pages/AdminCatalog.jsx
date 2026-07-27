@@ -1811,8 +1811,12 @@ function ExtraForm({ initial, meals = [], categories = [], inventoryItems = [], 
 // התוספת (בקבוק, יחידה, ק״ג). תיק השבת מכפיל את הכמויות במספר יחידות החיוב
 // שהוזמנו, מוסיף אותן לדוח החוסרים ולהמלצות הרכש, וניכוי המלאי מוריד אותן.
 // תוספת בלי שורות כאן נמכרת בלי שהמערכת יודעת מה היא צורכת.
+const NEW_INVENTORY_ITEM = '__new_inventory_item__';
+
 function ExtraInventoryEditor({ loading, billingUnit, lines, onLinesChange, inventoryItems = [], units = [], onInventoryItemCreated }) {
-  const [creatingIdx, setCreatingIdx] = useState(null);
+  // טיוטת פריט מלאי חדש שנפתחת מתוך שורה: { idx, name, unit_id }
+  const [newItem, setNewItem] = useState(null);
+  const [creating, setCreating] = useState(false);
   const unitLabel = String(billingUnit || '').trim() || 'יחידת חיוב';
 
   const updateLine = (idx, patch) => {
@@ -1826,9 +1830,22 @@ function ExtraInventoryEditor({ loading, billingUnit, lines, onLinesChange, inve
     ]);
   };
 
-  const removeLine = (idx) => onLinesChange(lines.filter((_, i) => i !== idx));
+  const removeLine = (idx) => {
+    setNewItem(null);
+    onLinesChange(lines.filter((_, i) => i !== idx));
+  };
 
   const chooseItem = (idx, itemId) => {
+    // בחירת "פריט חדש" פותחת טיוטה מלאה מהשורה במקום לשנות את הקישור
+    if (itemId === NEW_INVENTORY_ITEM) {
+      setNewItem({
+        idx,
+        name: lines[idx].ingredient_name || '',
+        unit_id: lines[idx].unit_id || '',
+      });
+      return;
+    }
+    setNewItem(null);
     const item = inventoryItems.find((it) => it.id === itemId);
     // בקישור לפריט מלאי - יורשים את יחידת הבסיס שלו כברירת מחדל
     updateLine(idx, {
@@ -1839,25 +1856,28 @@ function ExtraInventoryEditor({ loading, billingUnit, lines, onLinesChange, inve
     });
   };
 
-  // יצירה מהירה של פריט מלאי חדש מהשורה (שם + יחידה), וקישור השורה אליו.
-  const createInventoryItem = async (idx) => {
-    const line = lines[idx];
-    const name = String(line.ingredient_name || '').trim();
-    const unitId = line.unit_id || '';
-    if (!name) return alert('יש להזין שם רכיב לפני יצירת פריט מלאי.');
-    if (!unitId) return alert('יש לבחור יחידת מידה לפני יצירת פריט מלאי.');
+  // יצירת פריט מלאי חדש (שם + יחידת בסיס) וקישור השורה אליו. פריט קיים באותו
+  // שם לא משוכפל - השורה פשוט מקושרת אליו.
+  const createInventoryItem = async () => {
+    const { idx } = newItem;
+    const name = String(newItem.name || '').trim();
+    const unitId = newItem.unit_id || '';
+    if (!name) return alert('יש להזין שם לפריט המלאי החדש.');
+    if (!unitId) return alert('יש לבחור יחידת מידה לפריט המלאי החדש.');
 
     const existing = inventoryItems.find((it) => (it.name || '').trim() === name);
     if (existing) {
       updateLine(idx, {
         inventory_item_id: existing.id,
+        ingredient_name: existing.name,
         unit_id: existing.unit_id || unitId,
         unit: existing.unit_ref?.name || existing.unit,
       });
+      setNewItem(null);
       return alert(`הפריט "${name}" כבר קיים במלאי - השורה קושרה אליו.`);
     }
 
-    setCreatingIdx(idx);
+    setCreating(true);
     try {
       const res = await api.createInvItem({ name, unit_id: unitId });
       const item = res?.item;
@@ -1870,10 +1890,11 @@ function ExtraInventoryEditor({ loading, billingUnit, lines, onLinesChange, inve
           unit: item.unit_ref?.name || item.unit,
         });
       }
+      setNewItem(null);
     } catch (e) {
       alert(e.message);
     } finally {
-      setCreatingIdx(null);
+      setCreating(false);
     }
   };
 
@@ -1917,21 +1938,45 @@ function ExtraInventoryEditor({ loading, billingUnit, lines, onLinesChange, inve
                         {inventoryItems.map((item) => (
                           <option key={item.id} value={item.id}>{item.name}</option>
                         ))}
+                        <option value={NEW_INVENTORY_ITEM}>➕ פריט מלאי חדש...</option>
                       </select>
-                      {!line.inventory_item_id && (
-                        <>
-                          <div className="text-xs text-red-600 mt-1">שורה בלי קישור לא תנוכה מהמלאי</div>
-                          {line.ingredient_name?.trim() && (
+                      {!line.inventory_item_id && newItem?.idx !== idx && (
+                        <div className="text-xs text-red-600 mt-1">שורה בלי קישור לא תנוכה מהמלאי</div>
+                      )}
+                      {newItem?.idx === idx && (
+                        <div className="mt-2 space-y-2 rounded-lg border border-brand-gold/40 bg-brand-cream/40 p-2">
+                          <div className="text-xs font-bold text-brand-gold-dark">פריט מלאי חדש</div>
+                          <input
+                            value={newItem.name}
+                            onChange={(e) => setNewItem((s) => ({ ...s, name: e.target.value }))}
+                            className={inputCls}
+                            placeholder="שם הפריט במלאי"
+                          />
+                          <select
+                            value={newItem.unit_id}
+                            onChange={(e) => setNewItem((s) => ({ ...s, unit_id: e.target.value }))}
+                            className={inputCls}
+                          >
+                            <option value="">- יחידת בסיס -</option>
+                            {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          </select>
+                          <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() => createInventoryItem(idx)}
-                              disabled={creatingIdx === idx}
-                              className="text-xs text-brand-burgundy hover:underline mt-1 disabled:opacity-50"
+                              onClick={createInventoryItem}
+                              disabled={creating}
+                              className="btn-primary text-xs disabled:opacity-40"
                             >
-                              {creatingIdx === idx ? 'יוצר...' : '➕ צור פריט מלאי חדש'}
+                              {creating ? 'יוצר...' : 'צור וקשר'}
                             </button>
-                          )}
-                        </>
+                            <button type="button" onClick={() => setNewItem(null)} className="btn-ghost text-xs">
+                              ביטול
+                            </button>
+                          </div>
+                          <p className="text-xs text-brand-burgundy/55">
+                            הפריט ייווצר עם מלאי 0. אפשר להשלים ספק, מחיר ומארז במסך המלאי.
+                          </p>
+                        </div>
                       )}
                     </td>
                     <td className="p-2">
