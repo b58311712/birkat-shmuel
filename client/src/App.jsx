@@ -30,6 +30,8 @@ import AdminFinance from './pages/AdminFinance.jsx';
 import AdminPettyCash from './pages/AdminPettyCash.jsx';
 import AdminRecurringExpenses from './pages/AdminRecurringExpenses.jsx';
 import AdminEmail from './pages/AdminEmail.jsx';
+import Feedback from './pages/Feedback.jsx';
+import AdminFeedback from './pages/AdminFeedback.jsx';
 
 const STORAGE_KEY = 'matbach_customer';
 const ADMIN_USER_KEY = 'matbach_admin_user';
@@ -78,6 +80,7 @@ export default function App() {
     <>
     <Toaster />
     <Routes>
+      <Route path="/feedback/:token" element={<Feedback />} />
       {/* אזור ניהול - מאחורי כניסת מנהל (סעיף 5) */}
       {!admin ? (
         <Route path="/admin/*" element={<AdminLogin onLogin={adminLogin} />} />
@@ -181,6 +184,11 @@ export default function App() {
           <Route path="/admin/email" element={
             <AdminShell admin={admin} onAdminLogout={adminLogout}>
               <AdminEmail onAuthError={adminLogout} />
+            </AdminShell>
+          } />
+          <Route path="/admin/feedback" element={
+            <AdminShell admin={admin} onAdminLogout={adminLogout}>
+              <AdminFeedback onAuthError={adminLogout} />
             </AdminShell>
           } />
           <Route path="/admin/*" element={<Navigate to="/admin" replace />} />

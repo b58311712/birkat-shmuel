@@ -135,6 +135,13 @@ export default function AdminOrderView({ onAuthError, currentAdmin }) {
           </Section>
         </div>
 
+        {order.notes && (
+          <div className="mb-5 rounded-xl border border-brand-gold/40 bg-brand-cream/30 p-4">
+            <div className="font-bold text-brand-gold-dark">הערות להזמנה</div>
+            <div className="mt-1 whitespace-pre-wrap text-sm text-brand-burgundy">{order.notes}</div>
+          </div>
+        )}
+
         {/* סעודות ומאכלים */}
         <div className="space-y-4 mb-4">
           <div className="font-bold text-brand-gold-dark">סעודות ומאכלים</div>
@@ -198,6 +205,41 @@ export default function AdminOrderView({ onAuthError, currentAdmin }) {
       {/* החזרים כספיים (סעיף 19) */}
       <RefundsPanel order={order} onError={handleErr} onChanged={load} />
 
+      {order.feedback && (
+        <div className={`card mt-4 ${Number(order.feedback.overall_rating) <= 2 ? 'border-red-300 bg-red-50/30' : ''}`}>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="font-bold text-brand-gold-dark">משוב הלקוח</div>
+            {order.feedback.completed_at ? (
+              <span className={`badge ${Number(order.feedback.overall_rating) <= 2 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                {Number(order.feedback.overall_rating) <= 2 ? 'דורש טיפול' : 'מולא'}
+              </span>
+            ) : order.feedback.status === 'failed' ? (
+              <span className="badge bg-red-100 text-red-800">שליחת המשוב נכשלה</span>
+            ) : (
+              <span className="badge bg-blue-100 text-blue-800">בקשת המשוב נשלחה</span>
+            )}
+          </div>
+          {order.feedback.completed_at && (
+            <>
+              <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                <FeedbackScore label="כללי" value={order.feedback.overall_rating} />
+                <FeedbackScore label="אוכל" value={order.feedback.food_rating} />
+                <FeedbackScore label="כמויות" value={order.feedback.quantity_rating} />
+                <FeedbackScore label="אריזה ואספקה" value={order.feedback.delivery_rating} />
+              </div>
+              {order.feedback.comment && (
+                <div className="mt-3 whitespace-pre-wrap rounded-lg border border-brand-cream-dark bg-white p-3 text-sm text-brand-burgundy">
+                  {order.feedback.comment}
+                </div>
+              )}
+              <div className="mt-2 text-xs text-brand-burgundy/50">
+                מולא ב־{new Date(order.feedback.completed_at).toLocaleString('he-IL')}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* היסטוריית ההזמנה */}
       {(order.history || []).length > 0 && (
         <div className="card mt-4">
@@ -239,6 +281,15 @@ function Row({ label, value }) {
     <div className="flex justify-between text-brand-burgundy/80">
       <span>{label}</span>
       <span>{Number(value).toFixed(2)} ₪</span>
+    </div>
+  );
+}
+
+function FeedbackScore({ label, value }) {
+  return (
+    <div className="rounded-lg bg-brand-cream/50 p-2">
+      <span className="text-brand-burgundy/60">{label}</span>
+      <strong className="mr-2 text-brand-burgundy">{value}/5</strong>
     </div>
   );
 }

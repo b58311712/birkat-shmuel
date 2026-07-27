@@ -17,6 +17,7 @@ export const adminMenuGroups = [
     label: 'הזמנות ושבת',
     items: [
       { to: '/admin/orders', label: 'הזמנות' },
+      { to: '/admin/feedback', label: 'משובי לקוחות' },
       { to: '/admin/shabbat', label: 'תיקי שבת' },
       { to: '/admin/print-form', label: 'דף הזמנה להדפסה' },
     ],

@@ -91,10 +91,13 @@ export const api = {
   createOrder: (payload) => request('/orders', { method: 'POST', body: JSON.stringify(payload) }),
   customerOrders: (id) => request(`/orders/customer/${id}`),
   order: (id) => request(`/orders/${id}`),
+  feedback: (token) => request(`/feedback/${encodeURIComponent(token)}`),
+  saveFeedback: (token, payload) => request(`/feedback/${encodeURIComponent(token)}`, { method: 'PUT', body: JSON.stringify(payload) }),
 
   // ניהול (דורש טוקן מנהל)
   adminOrders: (q = '') => request(`/admin/orders${q}`),
   adminOrder: (id) => request(`/admin/orders/${id}`),
+  adminFeedback: (q = '') => request(`/admin/feedback${q}`),
   updateOrder: (id, payload) => request(`/admin/orders/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   updateOrderCustomer: (id, payload) => request(`/admin/orders/${id}/customer`, { method: 'PATCH', body: JSON.stringify(payload) }),
   adminDashboard: () => request('/admin/dashboard'),

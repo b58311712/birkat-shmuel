@@ -91,6 +91,13 @@ export default function OrderView() {
           <Detail label="אמצעי תשלום" value={PAYMENT_METHOD[order.preferred_payment_method]} />
         </div>
 
+        {order.notes && (
+          <div className="mb-4 rounded-xl border border-brand-cream-dark bg-brand-cream/30 p-3">
+            <div className="text-xs text-brand-burgundy/50">הערות להזמנה</div>
+            <div className="mt-1 whitespace-pre-wrap text-sm text-brand-burgundy">{order.notes}</div>
+          </div>
+        )}
+
         {/* סיכום מחיר */}
         <div className="bg-brand-cream/50 rounded-xl p-4 space-y-1">
           <Row label="מחיר בסיס" value={order.base_amount} />

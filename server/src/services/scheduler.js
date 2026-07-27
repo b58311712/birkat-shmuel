@@ -4,8 +4,10 @@
 // בכל עליית שרת (startup) שממלאת את הלוח ברגע שהשרת מתעורר.
 import cron from 'node-cron';
 import { ensureUpcomingShabbatot } from './shabbatGenerator.js';
+import { sendDueFeedbackRequests } from './feedback.js';
 
 const TZ = 'Asia/Jerusalem';
+const WEEKLY_FEEDBACK = '0 10 * * 0';
 const WEEKLY_SHABBAT = '0 22 * * 6'; // מוצ״ש (יום 6) בשעה 22:00 שעון ישראל
 const SHABBAT_WINDOW = 8;            // כמה שבתות פעילות לשמור קדימה
 
@@ -26,6 +28,17 @@ async function runEnsureShabbatot(trigger) {
   }
 }
 
+async function runFeedback(trigger) {
+  try {
+    const result = await sendDueFeedbackRequests();
+    console.log(`[${trigger}] משובי לקוחות:`, result);
+    return result;
+  } catch (err) {
+    console.error(`[${trigger}] שליחת בקשות משוב נכשלה: ${err.message}`);
+    return null;
+  }
+}
+
 let started = false;
 
 // מפעיל את המתזמן הפנימי. בטוח לקריאה חוזרת (מריץ פעם אחת בלבד).
@@ -37,10 +50,16 @@ export function startScheduler() {
   //    בכל התעוררות (בקשה ראשונה אחרי שינה) הלוח מתעדכן. fire-and-forget כדי
   //    לא לחסום את עליית השרת.
   runEnsureShabbatot('startup');
+  runFeedback('startup');
 
   // 2) טיימר שבועי פנימי - מוצ״ש 22:00 שעון ישראל. עובד לבד בשרת תמיד-פעיל.
   //    node-cron מטפל ב-DST של Asia/Jerusalem; noOverlap מונע הצטברות ריצות.
   cron.schedule(WEEKLY_SHABBAT, () => runEnsureShabbatot('weekly'), {
+    timezone: TZ,
+    noOverlap: true,
+  });
+
+  cron.schedule(WEEKLY_FEEDBACK, () => runFeedback('weekly-feedback'), {
     timezone: TZ,
     noOverlap: true,
   });

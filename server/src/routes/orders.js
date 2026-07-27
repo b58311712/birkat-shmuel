@@ -25,7 +25,7 @@ async function ensureShabbatFile(shabbatId) {
 // body: { customer_id, shabbat_id, slots:[{meal_slot_id,portions}],
 //         meals:[{meal_slot_id, meal_id}], extras:[{extra_id, actual_quantity?}],
 //         delivery_method?, contact_name?, contact_phone?, venue_name,
-//         venue_address, preferred_payment_method }
+//         venue_address, preferred_payment_method, notes? }
 // כל המחירים מחושבים בשרת ונשמרים "קפואים" (סעיף 15.3).
 // =====================================================================
 router.post('/', asyncHandler(async (req, res) => {
@@ -81,6 +81,7 @@ router.post('/', asyncHandler(async (req, res) => {
     contact_phone: b.contact_phone || null,
     venue_name: venueName,
     venue_address: venueAddress,
+    notes: String(b.notes || '').trim() || null,
     preferred_payment_method: b.preferred_payment_method,
     base_amount: amounts.base_amount,
     extras_amount: amounts.extras_amount,

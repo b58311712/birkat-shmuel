@@ -27,6 +27,8 @@ import recurringExpensesRoutes from './routes/recurringExpenses.js';
 import cronRoutes from './routes/cron.js';
 import emailRoutes from './routes/email.js';
 import settingsRoutes from './routes/settings.js';
+import feedbackRoutes from './routes/feedback.js';
+import feedbackAdminRoutes from './routes/feedbackAdmin.js';
 import { requireAdmin } from './lib/auth.js';
 import { startScheduler } from './services/scheduler.js';
 
@@ -46,6 +48,7 @@ app.use('/api/catalog', catalogRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/shabbatot', shabbatotRoutes);
 app.use('/api/orders', ordersRoutes);
+app.use('/api/feedback', feedbackRoutes);
 // אזור הניהול - כל הקריאות מאחורי אימות מנהל (סעיף 5)
 app.use('/api/admin/shabbat-files', requireAdmin, shabbatFileRoutes);
 app.use('/api/admin/volunteers', requireAdmin, volunteersRoutes);
@@ -57,6 +60,7 @@ app.use('/api/admin/finance', requireAdmin, financeRoutes);
 app.use('/api/admin/petty-cash', requireAdmin, pettyCashRoutes);
 app.use('/api/admin/recurring-expenses', requireAdmin, recurringExpensesRoutes);
 app.use('/api/admin/email', requireAdmin, emailRoutes);
+app.use('/api/admin/feedback', requireAdmin, feedbackAdminRoutes);
 app.use('/api/admin', requireAdmin, adminRoutes);
 
 // טיפול שגיאות אחיד (עברית)

@@ -487,13 +487,14 @@ router.get('/orders/:id', asyncHandler(async (req, res) => {
     .eq('id', req.params.id).single();
   if (error) throw error;
 
-  const [slots, meals, extras, discounts, manualCharges, history] = await Promise.all([
+  const [slots, meals, extras, discounts, manualCharges, history, feedback] = await Promise.all([
     supabase.from('order_meal_slots').select('*, meal_slots(name)').eq('order_id', order.id),
     supabase.from('order_meals').select('*').eq('order_id', order.id),
     supabase.from('order_extras').select('*').eq('order_id', order.id),
     supabase.from('order_discounts').select('*').eq('order_id', order.id).order('created_at', { ascending: true }),
     supabase.from('order_manual_charges').select('*').eq('order_id', order.id).order('created_at', { ascending: true }),
     supabase.from('order_history').select('*').eq('order_id', order.id).order('created_at', { ascending: false }),
+    supabase.from('order_feedback').select('status, sent_at, overall_rating, food_rating, quantity_rating, delivery_rating, comment, completed_at, updated_at').eq('order_id', order.id).maybeSingle(),
   ]);
 
   res.json({
@@ -504,6 +505,7 @@ router.get('/orders/:id', asyncHandler(async (req, res) => {
     discounts: discounts.data || [],
     manual_charges: manualCharges.data || [],
     history: history.data || [],
+    feedback: feedback.data || null,
   });
 }));
 
@@ -570,6 +572,7 @@ router.put('/orders/:id', asyncHandler(async (req, res) => {
     venue_name: venueName,
     venue_address: venueAddress,
     transport_notes: b.transport_notes ?? null,
+    notes: String(b.notes || '').trim() || null,
     preferred_payment_method: b.preferred_payment_method,
     base_amount: amounts.base_amount,
     extras_amount: amounts.extras_amount,

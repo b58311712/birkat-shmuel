@@ -29,6 +29,7 @@ export default function NewOrder({ customer }) {
   const [contactPhone, setContactPhone] = useState(customer?.phone || '');
   const [venueName, setVenueName] = useState('');
   const [venueAddress, setVenueAddress] = useState('');
+  const [notes, setNotes] = useState('');
   const [payMethod, setPayMethod] = useState('');
 
   useEffect(() => {
@@ -383,6 +384,7 @@ export default function NewOrder({ customer }) {
         contact_phone: contactPhone.trim() || null,
         venue_name: venueName.trim(),
         venue_address: venueAddress.trim(),
+        notes: notes.trim() || null,
         preferred_payment_method: payMethod,
       });
       nav(`/order/${res.order.id}?created=1`);
@@ -553,6 +555,15 @@ export default function NewOrder({ customer }) {
                 {Object.entries(PAYMENT_METHOD).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
+            <label className="block mt-3">
+              <span className="text-sm text-brand-burgundy/60">הערות להזמנה</span>
+              <textarea
+                className="input w-full min-h-24 resize-y"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="בקשות או מידע נוסף שחשוב לנו לדעת (לא חובה)"
+              />
+            </label>
           </section>
         </>
       )}
@@ -596,7 +607,7 @@ export default function NewOrder({ customer }) {
           shabbat={selectedShabbat}
           preview={orderPreview}
           priceEstimate={priceEstimate}
-          deliveryDetails={{ contactName, contactPhone, venueName, venueAddress, payMethod }}
+          deliveryDetails={{ contactName, contactPhone, venueName, venueAddress, payMethod, notes }}
           hasException={exceptionSlots.length > 0}
           submitting={submitting}
           onClose={() => setPreviewOpen(false)}
@@ -679,6 +690,12 @@ function OrderPreviewModal({ customer, shabbat, preview, priceEstimate, delivery
               <PreviewField label="טלפון איש קשר" value={deliveryDetails.contactPhone} dir="ltr" />
               <PreviewField label="אמצעי תשלום" value={PAYMENT_METHOD[deliveryDetails.payMethod]} />
             </div>
+            {deliveryDetails.notes.trim() && (
+              <div className="mt-3 rounded-lg bg-brand-cream/50 p-3 text-sm">
+                <div className="text-xs text-brand-burgundy/50">הערות להזמנה</div>
+                <div className="mt-1 whitespace-pre-wrap text-brand-burgundy">{deliveryDetails.notes}</div>
+              </div>
+            )}
           </div>
 
           <div className="rounded-lg bg-brand-cream/50 p-3 space-y-1">

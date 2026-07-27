@@ -31,6 +31,7 @@ export default function AdminOrderEdit({ onAuthError }) {
   const [venueName, setVenueName] = useState('');
   const [venueAddress, setVenueAddress] = useState('');
   const [transportNotes, setTransportNotes] = useState('');
+  const [notes, setNotes] = useState('');
   const [payMethod, setPayMethod] = useState('');
   // פרטי לקוח
   const [custName, setCustName] = useState('');
@@ -63,6 +64,7 @@ export default function AdminOrderEdit({ onAuthError }) {
         setVenueName(ord.venue_name || '');
         setVenueAddress(ord.venue_address || '');
         setTransportNotes(ord.transport_notes || '');
+        setNotes(ord.notes || '');
         setPayMethod(ord.preferred_payment_method || '');
         setCustName(ord.customers?.full_name || '');
         setCustPhone(ord.customers?.phone || '');
@@ -254,6 +256,7 @@ export default function AdminOrderEdit({ onAuthError }) {
         venue_name: venueName.trim(),
         venue_address: venueAddress.trim(),
         transport_notes: transportNotes || null,
+        notes: notes.trim() || null,
         preferred_payment_method: payMethod,
       });
       nav(`/admin/orders/${id}`);
@@ -318,6 +321,15 @@ export default function AdminOrderEdit({ onAuthError }) {
           <LabeledInput label="שם האולם *" value={venueName} onChange={setVenueName} />
           <LabeledInput label="כתובת האולם *" value={venueAddress} onChange={setVenueAddress} />
           <LabeledInput label="הערות שינוע" value={transportNotes} onChange={setTransportNotes} />
+          <label className="block sm:col-span-2">
+            <span className="text-sm text-brand-burgundy/60">הערות להזמנה</span>
+            <textarea
+              className="input w-full min-h-24 resize-y"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="הערות כלליות להזמנה (לא חובה)"
+            />
+          </label>
         </div>
       </section>
 

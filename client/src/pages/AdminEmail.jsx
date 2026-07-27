@@ -21,6 +21,7 @@ const TEMPLATE_LABELS = {
   order_approved: 'אישור הזמנה ללקוח',
   new_order_manager_alert: 'התראת מנהל - הזמנה חדשה',
   payment_reminder: 'תזכורת תשלום ללקוח',
+  feedback_request: 'בקשת משוב לאחר שבת',
 };
 
 // placeholders זמינים לשימוש בנוסחים.
@@ -31,6 +32,7 @@ const PLACEHOLDERS = [
   ['{final_amount}', 'סכום לתשלום'],
   ['{payment_method}', 'אמצעי תשלום'],
   ['{payment_deadline}', 'מועד אחרון לתשלום'],
+  ['{feedback_url}', 'קישור אישי לשאלון המשוב'],
   // נוסחי רישום לקוח חדש (סעיף 7)
   ['{full_name}', 'שם מלא (בקשת רישום)'],
   ['{phone}', 'טלפון (בקשת רישום)'],
