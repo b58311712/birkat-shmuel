@@ -105,7 +105,7 @@ function RatingQuestion({ label, value, onChange }) {
   return (
     <fieldset>
       <legend className="mb-2 font-bold text-brand-burgundy">{label}</legend>
-      <div className="grid grid-cols-5 gap-2" dir="ltr">
+      <div className="grid grid-cols-5 gap-2" dir="rtl">
         {[1, 2, 3, 4, 5].map((rating) => (
           <button
             key={rating}
@@ -123,7 +123,7 @@ function RatingQuestion({ label, value, onChange }) {
           </button>
         ))}
       </div>
-      <div className="mt-1 flex justify-between text-xs text-brand-burgundy/50">
+      <div className="mt-1 flex justify-between text-xs text-brand-burgundy/50" dir="rtl">
         <span>לא מרוצה</span><span>מרוצה מאוד</span>
       </div>
     </fieldset>
