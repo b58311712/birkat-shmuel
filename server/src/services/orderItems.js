@@ -158,12 +158,7 @@ export async function buildOrderItems(input) {
     for (const m of mealsInput) {
       const meal = byId[m.meal_id];
       if (!meal) continue;
-      // The catalog amount is a surcharge per portion. A selected meal is served
-      // for the meal slot, so charge it for every portion ordered in that slot.
-      // This intentionally uses the slot quantity even when production portions
-      // are split between dishes: pricing is based on the ordered meal portions.
       const charge = meal.requires_extra_charge ? Number(meal.extra_charge_amount || 0) : 0;
-      mealExtraCharges += charge * (portionsBySlot[m.meal_slot_id] || 0);
 
       // כמות מנות למאכל: רק בקטגוריות מחלקות; NULL בשאר (כל מנות הסעודה)
       let mealPortions = null;
@@ -182,6 +177,15 @@ export async function buildOrderItems(input) {
           mealPortions = Number(m.portions);               // equal - כבר אומת למעלה
         }
       }
+
+      // תוספת למאכל שמחייב בחירת כמות ידנית מחושבת לפי הכמות שנבחרה לו.
+      // בכל מאכל אחר היא מחושבת לפי מספר המנות הכללי של הסעודה.
+      const group = splitTotals[`${m.meal_slot_id}:${meal.category_id}`];
+      const hasExplicitPortions = mode === 'equal' && group?.count > 1;
+      const billedPortions = hasExplicitPortions
+        ? Number(m.portions)
+        : (portionsBySlot[m.meal_slot_id] || 0);
+      mealExtraCharges += charge * billedPortions;
 
       mealRows.push({
         meal_slot_id: m.meal_slot_id,
