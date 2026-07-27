@@ -24,3 +24,5 @@ services:
       # כתובת הפרונט ב-Vercel (ל-CORS). למלא אחרי שהפרונט עולה.
       - key: CLIENT_ORIGIN
         sync: false
+      - key: ENABLE_SCHEDULER
+        value: "true"

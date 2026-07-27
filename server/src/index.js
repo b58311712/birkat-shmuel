@@ -73,5 +73,14 @@ const PORT = process.env.PORT || 3005;
 app.listen(PORT, () => {
   console.log(`\n🍲 שרת מטבח החסד פועל על http://localhost:${PORT}\n`);
   // מתזמן פנימי - יצירת שבתות אוטומטית (מוצ״ש 22:00 + השלמה בעליית השרת).
-  startScheduler();
+  // Scheduled side effects are opt-in so local development cannot send
+  // production emails merely by starting the API server.
+  const schedulerEnabled = process.env.ENABLE_SCHEDULER == null
+    ? String(process.env.RENDER).toLowerCase() === 'true'
+    : String(process.env.ENABLE_SCHEDULER).toLowerCase() === 'true';
+  if (schedulerEnabled) {
+    startScheduler();
+  } else {
+    console.log('מתזמן השרת מושבת (ENABLE_SCHEDULER אינו true).');
+  }
 });
