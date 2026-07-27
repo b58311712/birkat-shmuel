@@ -7,6 +7,7 @@ import { DataTable } from '../components/DataTable.jsx';
 import { Badge, PO_STATUS } from '../lib/status.jsx';
 import PriceInput from '../components/PriceInput.jsx';
 import { withVat } from '../lib/vat.js';
+import { packageQuantityTotal } from '../lib/inventoryPackages.js';
 
 // הזמנות רכש (סעיף 27.2-27.3): רשימה, סינון ויצירת הזמנה חדשה (טיוטה).
 // פירוט/קבלת סחורה/תשלום נמצאים במסך הפירוט (/admin/purchase-orders/:id).
@@ -105,7 +106,8 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
   const [expected, setExpected] = useState('');
   const [notes, setNotes] = useState('');
   const [allItems, setAllItems] = useState(null);
-  const [lines, setLines] = useState([{ inventory_item_id: '', quantity: '', estimated_price: '' }]);
+  const emptyLine = () => ({ inventory_item_id: '', quantity: '', package_quantity: '', loose_quantity: '', estimated_price: '' });
+  const [lines, setLines] = useState([emptyLine()]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { api.invItems('?active=true').then(setAllItems).catch(onErr); }, [onErr]);
@@ -125,14 +127,17 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
   }, [supplierId]);
 
   function setLine(idx, patch) { setLines((r) => r.map((x, i) => (i === idx ? { ...x, ...patch } : x))); }
-  function addLine() { setLines((r) => [...r, { inventory_item_id: '', quantity: '', estimated_price: '' }]); }
+  function addLine() { setLines((r) => [...r, emptyLine()]); }
   function removeLine(idx) { setLines((r) => r.filter((_, i) => i !== idx)); }
 
   function onPickItem(idx, itemId) {
-    const patch = { inventory_item_id: itemId };
+    const patch = { inventory_item_id: itemId, quantity: '', package_quantity: '', loose_quantity: '' };
     // ברירת מחדל למחיר משוער: מחיר לספק, אחרת מחיר קנייה אחרון בכרטיס
     const item = allItems?.find((i) => i.id === itemId);
-    const price = supplierPrices[itemId] ?? item?.last_purchase_price;
+    const normalizedPrice = supplierPrices[itemId] ?? item?.last_purchase_price;
+    const price = normalizedPrice == null
+      ? null
+      : Number(normalizedPrice) * (Number(item?.package_size) || 1);
     if (price != null && lines[idx].estimated_price === '') patch.estimated_price = price;
     setLine(idx, patch);
   }
@@ -140,18 +145,29 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
   // סה"כ כולל מע"מ: מחשבים פר-שורה כי כל פריט יכול להיות חייב או פטור בנפרד.
   // estimated_price מאוחסן כמחיר בסיס (לפני מע"מ) → מוסיפים מע"מ אלא אם הפריט פטור.
   const total = lines.reduce((sum, l) => {
-    const q = Number(l.quantity);
-    const base = Number(l.estimated_price);
-    if (!Number.isFinite(q) || !Number.isFinite(base) || l.estimated_price === '') return sum;
     const item = allItems?.find((i) => i.id === l.inventory_item_id);
+    const baseQuantity = item?.package_size
+      ? packageQuantityTotal(l.package_quantity, l.loose_quantity, item.package_size)
+      : Number(l.quantity);
+    const pricedQuantity = item?.package_size
+      ? Number(baseQuantity || 0) / Number(item.package_size)
+      : baseQuantity;
+    const base = Number(l.estimated_price);
+    if (!Number.isFinite(pricedQuantity) || !Number.isFinite(base) || l.estimated_price === '') return sum;
     const withVatPrice = withVat(base, { exempt: item?.vat_exempt || false });
-    return sum + q * (withVatPrice ?? base);
+    return sum + pricedQuantity * (withVatPrice ?? base);
   }, 0);
 
   async function submit(e) {
     e.preventDefault();
     if (!supplierId) return alert('חובה לבחור ספק.');
-    const clean = lines.filter((l) => l.inventory_item_id && Number(l.quantity) > 0);
+    const clean = lines.filter((l) => {
+      const item = allItems?.find((i) => i.id === l.inventory_item_id);
+      const quantity = item?.package_size
+        ? packageQuantityTotal(l.package_quantity, l.loose_quantity, item.package_size)
+        : Number(l.quantity);
+      return l.inventory_item_id && quantity > 0;
+    });
     if (clean.length === 0) return alert('חובה להוסיף לפחות פריט אחד עם כמות.');
     setBusy(true);
     try {
@@ -159,11 +175,19 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
         supplier_id: supplierId,
         expected_delivery_date: expected || null,
         notes,
-        lines: clean.map((l) => ({
-          inventory_item_id: l.inventory_item_id,
-          quantity: Number(l.quantity),
-          estimated_price: l.estimated_price === '' ? null : Number(l.estimated_price),
-        })),
+        lines: clean.map((l) => {
+          const item = allItems.find((i) => i.id === l.inventory_item_id);
+          return item?.package_size ? {
+            inventory_item_id: l.inventory_item_id,
+            package_quantity: Number(l.package_quantity || 0),
+            loose_quantity: Number(l.loose_quantity || 0),
+            estimated_package_price: l.estimated_price === '' ? null : Number(l.estimated_price),
+          } : {
+            inventory_item_id: l.inventory_item_id,
+            quantity: Number(l.quantity),
+            estimated_price: l.estimated_price === '' ? null : Number(l.estimated_price),
+          };
+        }),
       });
       onCreated();
     } catch (err) { onErr(err); }
@@ -192,21 +216,30 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
         {!allItems ? <p className="text-sm">טוען מוצרים...</p> : (
           <div className="space-y-2">
             <div className="hidden sm:grid grid-cols-12 gap-2 text-xs text-brand-burgundy/50 px-1">
-              <div className="col-span-6">מוצר</div><div className="col-span-2">כמות</div><div className="col-span-3">מחיר משוער ליח׳</div><div className="col-span-1"></div>
+              <div className="col-span-5">מוצר</div><div className="col-span-3">כמות</div><div className="col-span-3">מחיר משוער</div><div className="col-span-1"></div>
             </div>
             <p className="text-xs text-brand-burgundy/50 px-1">הזינו את המחיר כפי שמופיע בחשבונית הספק; המתג "לפני/כולל מע"מ" קובע את הפרשנות. הערך נשמר תמיד כמחיר לפני מע"מ.</p>
             {lines.map((l, idx) => {
               const item = allItems.find((i) => i.id === l.inventory_item_id);
               return (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                  <select value={l.inventory_item_id} onChange={(e) => onPickItem(idx, e.target.value)} className={`${inputCls} col-span-12 sm:col-span-6`}>
+                  <select value={l.inventory_item_id} onChange={(e) => onPickItem(idx, e.target.value)} className={`${inputCls} col-span-12 sm:col-span-5`}>
                     <option value="">- בחר מוצר -</option>
                     {allItems
                       .filter((i) => i.id === l.inventory_item_id || !chosen.has(i.id))
                       .map((i) => <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>)}
                   </select>
-                  <input type="number" step="any" min="0" placeholder="כמות" value={l.quantity}
-                    onChange={(e) => setLine(idx, { quantity: e.target.value })} className={`${inputCls} col-span-5 sm:col-span-2`} dir="ltr" />
+                  {item?.package_size ? (
+                    <div className="col-span-12 sm:col-span-3 grid grid-cols-2 gap-1">
+                      <input type="number" step="1" min="0" placeholder={item.package_label} value={l.package_quantity}
+                        onChange={(e) => setLine(idx, { package_quantity: e.target.value })} className={inputCls} dir="ltr" />
+                      <input type="number" step="any" min="0" placeholder={item.unit} value={l.loose_quantity}
+                        onChange={(e) => setLine(idx, { loose_quantity: e.target.value })} className={inputCls} dir="ltr" />
+                    </div>
+                  ) : (
+                    <input type="number" step="any" min="0" placeholder="כמות" value={l.quantity}
+                      onChange={(e) => setLine(idx, { quantity: e.target.value })} className={`${inputCls} col-span-5 sm:col-span-3`} dir="ltr" />
+                  )}
                   <div className="col-span-5 sm:col-span-3">
                     <PriceInput
                       value={l.estimated_price}
@@ -214,11 +247,15 @@ function CreatePurchaseOrder({ suppliers, onCreated, onCancel, onErr }) {
                       exempt={item?.vat_exempt || false}
                       defaultIncludesVat={supplierIncludesVat}
                       className={inputCls}
-                      placeholder="מחיר"
+                      placeholder={item?.package_size ? `מחיר ל${item.package_label}` : 'מחיר ליחידה'}
                     />
                   </div>
                   <button type="button" onClick={() => removeLine(idx)} className="col-span-2 sm:col-span-1 text-red-600 hover:underline text-sm">הסר</button>
-                  {item && <div className="col-span-12 sm:hidden text-xs text-brand-burgundy/50">יחידה: {item.unit}</div>}
+                  {item && <div className="col-span-12 text-xs text-brand-burgundy/50">
+                    {item.package_size
+                      ? `1 ${item.package_label} = ${item.package_size} ${item.unit} · המחיר הוא ל${item.package_label}`
+                      : `יחידה: ${item.unit}`}
+                  </div>}
                 </div>
               );
             })}

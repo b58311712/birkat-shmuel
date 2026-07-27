@@ -6,6 +6,11 @@ import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { asyncHandler, fail } from '../lib/helpers.js';
 import { requireRole } from '../lib/auth.js';
+import {
+  packageSnapshot,
+  quantityFromPackageInput,
+  roundQuantity,
+} from '../lib/inventoryPackages.js';
 
 const router = Router();
 
@@ -29,6 +34,37 @@ function num(v) {
   if (v === '' || v === null || v === undefined) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+async function normalizeOrderLines(lines, purchaseOrderId = null) {
+  const itemIds = [...new Set((lines || []).map((line) => line?.inventory_item_id).filter(Boolean))];
+  if (itemIds.length === 0) return [];
+  const { data: items, error } = await supabase
+    .from('inventory_items')
+    .select('id, package_label, package_size')
+    .in('id', itemIds);
+  if (error) throw error;
+  const itemById = Object.fromEntries((items || []).map((item) => [item.id, item]));
+
+  const clean = [];
+  for (const line of lines || []) {
+    const item = itemById[line.inventory_item_id];
+    if (!item) continue;
+    const quantity = quantityFromPackageInput(line, item.package_size, 'quantity');
+    if (!(quantity > 0)) continue;
+    const packagePrice = num(line.estimated_package_price);
+    const estimatedPrice = packagePrice != null && Number(item.package_size) > 0
+      ? packagePrice / Number(item.package_size)
+      : num(line.estimated_price);
+    clean.push({
+      ...(purchaseOrderId ? { purchase_order_id: purchaseOrderId } : {}),
+      inventory_item_id: item.id,
+      quantity,
+      estimated_price: estimatedPrice,
+      ...packageSnapshot(item),
+    });
+  }
+  return clean;
 }
 
 async function deletePurchaseOrder(poId) {
@@ -92,7 +128,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   // מוצרים שהספק מספק (סעיף 25.3, 27.1) - שילוב item_suppliers + פריטים שהספק שלהם ברירת מחדל
   const { data: links, error: lErr } = await supabase
     .from('item_suppliers')
-    .select('inventory_item_id, last_purchase_price, inventory_items:inventory_item_id (id, name, unit, is_active, vat_exempt)')
+    .select('inventory_item_id, last_purchase_price, inventory_items:inventory_item_id (id, name, unit, is_active, vat_exempt, package_label, package_size)')
     .eq('supplier_id', req.params.id);
   if (lErr) throw lErr;
 
@@ -104,6 +140,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
       unit: l.inventory_items.unit,
       is_active: l.inventory_items.is_active,
       vat_exempt: l.inventory_items.vat_exempt,
+      package_label: l.inventory_items.package_label,
+      package_size: l.inventory_items.package_size,
       last_purchase_price: l.last_purchase_price, // מחיר בסיס (לפני מע"מ)
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'he'));
@@ -234,7 +272,7 @@ router.get('/purchase-orders/:id', asyncHandler(async (req, res) => {
 
   const { data: lines, error: lErr } = await supabase
     .from('purchase_order_lines')
-    .select('*, item:inventory_item_id (id, name, unit, vat_exempt)')
+    .select('*, item:inventory_item_id (id, name, unit, vat_exempt, package_label, package_size)')
     .eq('purchase_order_id', req.params.id)
     .order('created_at');
   if (lErr) throw lErr;
@@ -262,17 +300,7 @@ router.post('/purchase-orders', asyncHandler(async (req, res) => {
   if (sErr) throw sErr;
   if (!supplier) return fail(res, 404, 'ספק לא נמצא.');
 
-  // מנרמלים שורות
-  const clean = [];
-  for (const l of lines) {
-    const qty = num(l.quantity);
-    if (!l.inventory_item_id || qty === null || qty <= 0) continue;
-    clean.push({
-      inventory_item_id: l.inventory_item_id,
-      quantity: qty,
-      estimated_price: num(l.estimated_price),
-    });
-  }
+  const clean = await normalizeOrderLines(lines);
   if (clean.length === 0) return fail(res, 400, 'אין שורות תקינות בהזמנה.');
 
   // מחיר משוער כולל
@@ -319,17 +347,7 @@ router.patch('/purchase-orders/:id', asyncHandler(async (req, res) => {
 
   // אם נשלחו שורות - מחליפים אותן ומחשבים מחדש מחיר משוער
   if (Array.isArray(lines)) {
-    const clean = [];
-    for (const l of lines) {
-      const qty = num(l.quantity);
-      if (!l.inventory_item_id || qty === null || qty <= 0) continue;
-      clean.push({
-        purchase_order_id: po.id,
-        inventory_item_id: l.inventory_item_id,
-        quantity: qty,
-        estimated_price: num(l.estimated_price),
-      });
-    }
+    const clean = await normalizeOrderLines(lines, po.id);
     if (clean.length === 0) return fail(res, 400, 'אין שורות תקינות בהזמנה.');
     patch.estimated_amount = clean.reduce(
       (sum, l) => sum + (l.estimated_price != null ? l.estimated_price * l.quantity : 0), 0) || null;
@@ -411,7 +429,12 @@ router.post('/purchase-orders/:id/receive', asyncHandler(async (req, res) => {
   for (const l of lines) {
     const line = lineById[l.line_id];
     if (!line) continue;
-    const wantTotal = num(l.quantity_received);
+    const wantTotal = (
+      Object.prototype.hasOwnProperty.call(l, 'package_quantity')
+      || Object.prototype.hasOwnProperty.call(l, 'loose_quantity')
+    )
+      ? quantityFromPackageInput(l, line.package_size_snapshot, 'quantity_received')
+      : num(l.quantity_received);
     if (wantTotal === null || wantTotal < 0) continue;
     const already = Number(line.quantity_received);
     const addQty = Number((wantTotal - already).toFixed(4)); // כמה להוסיף עכשיו
@@ -422,7 +445,9 @@ router.post('/purchase-orders/:id/receive', asyncHandler(async (req, res) => {
       line,
       newReceivedTotal: wantTotal,
       addQty,
-      actual_price: num(l.actual_price),
+      actual_price: num(l.actual_package_price) != null && Number(line.package_size_snapshot) > 0
+        ? num(l.actual_package_price) / Number(line.package_size_snapshot)
+        : num(l.actual_price),
     });
   }
   if (updates.length === 0) return fail(res, 400, 'אין שינוי בכמויות שהתקבלו.');
@@ -452,7 +477,7 @@ router.post('/purchase-orders/:id/receive', asyncHandler(async (req, res) => {
     // הוספה למלאי רק אם יש כמות חיובית להוסיף כעת
     if (u.addQty > 0) {
       const before = runningQty[itemId];
-      const after = Number((before + u.addQty).toFixed(4));
+      const after = roundQuantity(before + u.addQty);
       runningQty[itemId] = after;
 
       const { error: qErr } = await supabase.from('inventory_items')

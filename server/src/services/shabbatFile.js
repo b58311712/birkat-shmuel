@@ -7,6 +7,10 @@
 // הזמנה שבוטלה או שלא שולמה (ואין חריגה) - לא נכנסת לחישוב.
 import { supabase } from '../lib/supabase.js';
 import { roundUp } from '../lib/helpers.js';
+import {
+  convertRequirementsToBase,
+  indexConversions,
+} from './inventoryUnitConversion.js';
 import { orderedMealIds } from './volunteerScheduling.js';
 
 // סטטוסי תשלום שמזכים הזמנה להיכנס לחישובים (סעיף 8.7)
@@ -299,12 +303,13 @@ export async function buildInventoryReport(shabbatId) {
   // requiredByItem: inventory_item_id -> כמות מדויקת נדרשת (מצטבר)
   // unlinked: שורות מתכון בלי קישור למלאי - אי אפשר לחשב חוסר, מציגים בנפרד
   const requiredByItem = {};
+  const requirementsByItemAndUnit = {};
   const unlinkedByName = {}; // "שם::יחידה" -> { name, unit, quantity }
 
   if (mealIds.length > 0) {
     const [{ data: recipes, error: rErr }, { data: rules, error: pErr }] = await Promise.all([
       supabase.from('recipe_lines')
-        .select('meal_id, inventory_item_id, ingredient_name, quantity_per_portion, unit')
+        .select('meal_id, inventory_item_id, ingredient_name, quantity_per_portion, unit, unit_id')
         .in('meal_id', mealIds),
       supabase.from('packing_rules')
         .select('meal_id, packaging_item_id, packaging_label, portions_per_package')
@@ -319,7 +324,9 @@ export async function buildInventoryReport(shabbatId) {
       if (!portions) continue;
       const need = Number(rl.quantity_per_portion) * portions;
       if (rl.inventory_item_id) {
-        requiredByItem[rl.inventory_item_id] = (requiredByItem[rl.inventory_item_id] || 0) + need;
+        const perUnit = (requirementsByItemAndUnit[rl.inventory_item_id] ||= {});
+        const key = rl.unit_id || `text:${String(rl.unit || '').trim().toLowerCase()}`;
+        (perUnit[key] ||= { unit_id: rl.unit_id || null, unit_name: rl.unit, qty: 0 }).qty += need;
       } else {
         const key = `${rl.ingredient_name}::${rl.unit || ''}`;
         const e = (unlinkedByName[key] ||= { name: rl.ingredient_name, unit: rl.unit, quantity: 0 });
@@ -337,7 +344,10 @@ export async function buildInventoryReport(shabbatId) {
     }
   }
 
-  const itemIds = Object.keys(requiredByItem);
+  const itemIds = [...new Set([
+    ...Object.keys(requiredByItem),
+    ...Object.keys(requirementsByItemAndUnit),
+  ])];
   if (itemIds.length === 0) {
     return {
       shabbat_id: shabbatId,
@@ -350,9 +360,32 @@ export async function buildInventoryReport(shabbatId) {
   // שולפים את פריטי המלאי הנדרשים + הספקים שלהם
   const { data: items, error: iErr } = await supabase
     .from('inventory_items')
-    .select('id, name, unit, quantity_on_hand, min_alert_quantity, last_purchase_price, default_supplier_id, is_packaging')
+    .select('id, name, unit, unit_id, quantity_on_hand, min_alert_quantity, min_alert_packages, package_label, package_size, last_purchase_price, default_supplier_id, is_packaging')
     .in('id', itemIds);
   if (iErr) throw iErr;
+
+  const { data: conversions, error: conversionsError } = await supabase
+    .from('inventory_unit_conversions')
+    .select('inventory_item_id, from_unit_id, factor_to_base')
+    .in('inventory_item_id', itemIds);
+  if (conversionsError) throw conversionsError;
+  const itemById = Object.fromEntries((items || []).map((item) => [item.id, item]));
+  const converted = convertRequirementsToBase(
+    requirementsByItemAndUnit,
+    itemById,
+    indexConversions(conversions || []),
+  );
+  for (const line of converted.lines) {
+    requiredByItem[line.item_id] = (requiredByItem[line.item_id] || 0) + line.qty_base;
+  }
+  for (const issue of converted.missing) {
+    const key = `conversion:${issue.item_id}:${issue.from_unit}`;
+    unlinkedByName[key] = {
+      name: `${issue.item_name} — חסרה המרה ל${issue.base_unit}`,
+      unit: issue.from_unit,
+      quantity: 0,
+    };
+  }
 
   const supplierIds = [...new Set((items || []).map((i) => i.default_supplier_id).filter(Boolean))];
   const { data: suppliers, error: sErr } = supplierIds.length
@@ -361,19 +394,28 @@ export async function buildInventoryReport(shabbatId) {
   if (sErr) throw sErr;
   const supplierById = Object.fromEntries((suppliers || []).map((s) => [s.id, s]));
 
-  // בונים שורת פריט: נדרש (מעוגל), קיים, חסר, מומלץ לקנייה
+  // בונים שורת פריט: נדרש מדויק, קיים, חסר, והמלצה המעוגלת למארזים שלמים.
   const NO_SUPPLIER = '_none';
   const buckets = {}; // supplier_key -> { supplier, items: [] }
 
   for (const item of items || []) {
     const exactRequired = requiredByItem[item.id] || 0;
-    const required = roundUp(exactRequired); // כמות נדרשת מעוגלת (סעיף 21.4)
+    const required = round4(exactRequired);
     const onHand = Number(item.quantity_on_hand || 0);
     const missing = Math.max(0, required - onHand); // כמה חסר לכיסוי צורך השבת
     // מומלץ לקנייה (סעיף 26): לכסות את החוסר, ואם מוגדר מלאי מינימום - לקנות
     // מספיק כדי שלאחר השבת המלאי לא ירד מתחת למינימום ההתראה.
-    const minAlert = item.min_alert_quantity != null ? Number(item.min_alert_quantity) : 0;
-    const suggested = Math.max(missing, required + minAlert - onHand, 0);
+    const hasPackage = Number(item.package_size) > 0 && !!item.package_label;
+    const minAlert = hasPackage && item.min_alert_packages != null
+      ? Number(item.min_alert_packages) * Number(item.package_size)
+      : (item.min_alert_quantity != null ? Number(item.min_alert_quantity) : 0);
+    const exactSuggested = Math.max(missing, required + minAlert - onHand, 0);
+    const suggestedPackages = hasPackage && exactSuggested > 0
+      ? Math.ceil((exactSuggested - 1e-9) / Number(item.package_size))
+      : null;
+    const suggested = hasPackage
+      ? round4((suggestedPackages || 0) * Number(item.package_size))
+      : round4(exactSuggested);
 
     const supKey = item.default_supplier_id || NO_SUPPLIER;
     const bucket = (buckets[supKey] ||= {
@@ -385,11 +427,14 @@ export async function buildInventoryReport(shabbatId) {
       name: item.name,
       unit: item.unit,
       is_packaging: item.is_packaging,
+      package_label: item.package_label,
+      package_size: item.package_size == null ? null : Number(item.package_size),
       required,
       exact_required: round4(exactRequired),
       on_hand: onHand,
       missing: round4(missing),
-      suggested_purchase: round4(suggested),
+      suggested_purchase: suggested,
+      suggested_purchase_packages: suggestedPackages,
       last_purchase_price: item.last_purchase_price != null ? Number(item.last_purchase_price) : null,
     });
   }

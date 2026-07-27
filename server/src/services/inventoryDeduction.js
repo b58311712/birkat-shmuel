@@ -13,6 +13,10 @@
 // is_inventory_deducted בתיק השבת מונע ניכוי כפול - נאכף גם ב-RPC (אטומי).
 import { supabase } from '../lib/supabase.js';
 import { isOperational } from './shabbatFile.js';
+import {
+  convertRequirementsToBase,
+  indexConversions,
+} from './inventoryUnitConversion.js';
 
 // שגיאת דומיין עם הודעה ידידותית למשתמש (נתפסת ב-error middleware של הראוט).
 class DeductionError extends Error {
@@ -88,30 +92,6 @@ async function collectConsumption(shabbatId) {
 //   - קיימת רשומת המרה (from_unit_id)      → כפל בפקטור.
 //   - אחרת                                 → פקטור חסר; נאסף לשגיאה מתארת.
 // מחזיר { lines:[{ item_id, qty_base }], missing:[...] }.
-function convertToBase(byItem, itemById, conversionsByItem) {
-  const lines = [];
-  const missing = [];
-  for (const [itemId, perUnit] of Object.entries(byItem)) {
-    const item = itemById[itemId];
-    if (!item) continue; // פריט נמחק/מושבת - מדלגים (אין מה לנכות)
-    const baseUnitId = item.unit_id;
-    const factorByUnitId = conversionsByItem[itemId] || {};
-
-    let qtyBase = 0;
-    for (const { unit_id, unit_name, qty } of Object.values(perUnit)) {
-      // אותה יחידה כמו הבסיס → פקטור 1; אחרת נדרשת רשומת המרה לפי unit_id.
-      const factor = (unit_id && unit_id === baseUnitId) ? 1 : factorByUnitId[unit_id];
-      if (factor == null) {
-        missing.push({ item_id: itemId, item_name: item.name, from_unit: unit_name, base_unit: item.unit });
-        continue;
-      }
-      qtyBase += qty * factor;
-    }
-    if (qtyBase > 0) lines.push({ item_id: itemId, qty_base: round4(qtyBase) });
-  }
-  return { lines, missing };
-}
-
 // מריץ את ניכוי המלאי המלא לשבת. אטומי, פעם-אחת, ומאומת המרה מלאה מראש.
 // זורק DeductionError (עם userMessage) על פקטור המרה חסר או מלאי לא מספיק.
 // מחזיר סיכום: כמה פריטים נוכו, פירוט before/after, ושורות שלא קושרו למלאי.
@@ -133,13 +113,9 @@ export async function deductInventoryForShabbat(shabbatId, performedBy = null) {
   if (cErr) throw cErr;
 
   const itemById = Object.fromEntries((items || []).map((i) => [i.id, i]));
-  const conversionsByItem = {}; // item_id -> { from_unit_id -> factor }
-  for (const c of convs || []) {
-    if (!c.from_unit_id) continue;
-    (conversionsByItem[c.inventory_item_id] ||= {})[c.from_unit_id] = Number(c.factor_to_base);
-  }
+  const conversionsByItem = indexConversions(convs || []);
 
-  const { lines, missing } = convertToBase(byItem, itemById, conversionsByItem);
+  const { lines, missing } = convertRequirementsToBase(byItem, itemById, conversionsByItem);
 
   // קצה 1: פקטור המרה חסר - לא נוגעים ב-DB, זורקים רשימה מתארת מה חסר.
   if (missing.length > 0) {

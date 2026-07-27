@@ -8,6 +8,7 @@ import { Drawer, FormDrawer, useRecordNav } from '../components/Drawer.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 import PriceInput from '../components/PriceInput.jsx';
 import { formatWithVat } from '../lib/vat.js';
+import { formatInventoryQuantity, splitPackageQuantity } from '../lib/inventoryPackages.js';
 
 // ניהול מלאי CRUD (סעיף 25). מסך ניהול גלובלי: פריטי מלאי, קטגוריות, שינוי ידני.
 // דוח החוסרים והפחתה לאחר הכנות נמצאים בתיק שבת (לשונית מלאי).
@@ -130,7 +131,12 @@ function ItemsManager({ onErr, canDelete }) {
     } catch (e) { onErr(e); }
   }
 
-  const isLow = (it) => it.min_alert_quantity != null && Number(it.quantity_on_hand) < Number(it.min_alert_quantity);
+  const minimumQuantity = (it) => (
+    Number(it.package_size) > 0 && it.min_alert_packages != null
+      ? Number(it.package_size) * Number(it.min_alert_packages)
+      : (it.min_alert_quantity == null ? null : Number(it.min_alert_quantity))
+  );
+  const isLow = (it) => minimumQuantity(it) != null && Number(it.quantity_on_hand) < minimumQuantity(it);
 
   // מסנן-על "מתחת למינימום" הוא חוצה-שדות (כמות מול מינימום), לכן קדם-סינון לפני DataTable.
   const rows = useMemo(
@@ -206,7 +212,12 @@ function ItemsManager({ onErr, canDelete }) {
         return (
           <td className={`p-0 text-sm font-medium ${low ? 'text-red-600' : ''}`}>
             <button type="button" onClick={() => setAdjusting(it)} className="w-full p-3 text-right hover:bg-brand-gold/10" title="לחיצה לשינוי כמות">
-              {fmt(it.quantity_on_hand)}{low && ' ⚠'}
+              <span>{formatInventoryQuantity(it.quantity_on_hand, it)}{low && ' ⚠'}</span>
+              {it.package_size && (
+                <span className="block text-xs font-normal text-brand-burgundy/45">
+                  {fmt(it.quantity_on_hand)} {it.unit}
+                </span>
+              )}
             </button>
           </td>
         );
@@ -219,13 +230,17 @@ function ItemsManager({ onErr, canDelete }) {
       rawCell: true,
       render: (it) => (
         <QuickEditCell
-          value={it.min_alert_quantity ?? ''}
+          value={it.package_size ? (it.min_alert_packages ?? '') : (it.min_alert_quantity ?? '')}
           ariaLabel="כמות מינימום"
           type="number"
           className="text-brand-burgundy/60"
-          onSave={(value) => saveInline(it.id, { min_alert_quantity: value === '' ? null : Number(value) })}
+          onSave={(value) => saveInline(it.id, it.package_size
+            ? { min_alert_packages: value === '' ? null : Number(value) }
+            : { min_alert_quantity: value === '' ? null : Number(value) })}
         >
-          {it.min_alert_quantity != null ? fmt(it.min_alert_quantity) : '-'}
+          {it.package_size
+            ? (it.min_alert_packages != null ? `${it.min_alert_packages} ${it.package_label}` : '-')
+            : (it.min_alert_quantity != null ? `${fmt(it.min_alert_quantity)} ${it.unit}` : '-')}
         </QuickEditCell>
       ),
     },
@@ -258,7 +273,11 @@ function ItemsManager({ onErr, canDelete }) {
       render: (it) => (
         it.last_purchase_price != null ? (
           <span className="text-right block">
-            {formatWithVat(it.last_purchase_price, { exempt: it.vat_exempt })}
+            {formatWithVat(
+              Number(it.last_purchase_price) * (Number(it.package_size) || 1),
+              { exempt: it.vat_exempt },
+            )}
+            {it.package_size && <span className="text-xs text-brand-burgundy/45 mr-1">ל{it.package_label}</span>}
             {it.vat_exempt && <span className="text-xs text-brand-burgundy/45 mr-1">(פטור)</span>}
           </span>
         ) : <span className="text-brand-burgundy/40">-</span>
@@ -428,6 +447,7 @@ function QuickEditCell({ value, children, onSave, ariaLabel, type = 'text', opti
 }
 
 function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onSuppliersChanged, onErr, embedded = false }) {
+  const initialSplit = splitPackageQuantity(initial.quantity_on_hand ?? 0, initial.package_size);
   const [f, setF] = useState({
     id: initial.id,
     name: initial.name || '',
@@ -435,8 +455,15 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
     unit_id: initial.unit_id || '',
     quantity_on_hand: initial.quantity_on_hand ?? 0,
     min_alert_quantity: initial.min_alert_quantity ?? '',
+    min_alert_packages: initial.min_alert_packages ?? '',
+    package_label: initial.package_label || '',
+    package_size: initial.package_size ?? '',
+    package_quantity: initial.package_size ? initialSplit.packages : 0,
+    loose_quantity: initial.package_size ? initialSplit.loose : (initial.quantity_on_hand ?? 0),
     default_supplier_id: initial.default_supplier_id || '',
-    last_purchase_price: initial.last_purchase_price ?? '',
+    last_purchase_price: initial.last_purchase_price == null
+      ? ''
+      : Number(initial.last_purchase_price) * (Number(initial.package_size) || 1),
     is_packaging: initial.is_packaging || false,
     vat_exempt: initial.vat_exempt || false,
     notes: initial.notes || '',
@@ -449,6 +476,23 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
     suppliers.find((s) => s.id === f.default_supplier_id)?.default_price_includes_vat || false;
   // שם יחידת הבסיס של הפריט (לתצוגה בטבלת ההמרות ובכמות הקיימת)
   const baseUnitName = units.find((u) => u.id === f.unit_id)?.name || initial.unit_ref?.name || initial.unit || '';
+
+  function changePackageSize(value) {
+    setF((state) => {
+      const oldMultiplier = Number(state.package_size) || 1;
+      const newMultiplier = Number(value) || 1;
+      const normalizedPrice = state.last_purchase_price === '' || state.last_purchase_price == null
+        ? state.last_purchase_price
+        : Number(state.last_purchase_price) / oldMultiplier;
+      return {
+        ...state,
+        package_size: value,
+        last_purchase_price: normalizedPrice === '' || normalizedPrice == null
+          ? normalizedPrice
+          : normalizedPrice * newMultiplier,
+      };
+    });
+  }
 
   async function addSupplier() {
     if (!newSupplier.trim()) return;
@@ -464,17 +508,40 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
     e.preventDefault();
     if (!f.name.trim()) return alert('חובה להזין שם מוצר.');
     if (!f.unit_id) return alert('חובה לבחור יחידת מידה.');
+    const hasPackageLabel = !!f.package_label.trim();
+    const hasPackageSize = f.package_size !== '' && f.package_size != null;
+    if (hasPackageLabel !== hasPackageSize) return alert('יש להגדיר יחד שם מארז וגודל מארז.');
+    if (hasPackageSize && !(Number(f.package_size) > 0)) return alert('גודל המארז חייב להיות מספר חיובי.');
+    if (hasPackageSize && f.min_alert_packages !== '' &&
+        (!Number.isInteger(Number(f.min_alert_packages)) || Number(f.min_alert_packages) < 0)) {
+      return alert('מינימום המארזים חייב להיות מספר שלם שאינו שלילי.');
+    }
     const payload = {
       ...f,
+      package_label: hasPackageLabel ? f.package_label.trim() : null,
+      package_size: hasPackageSize ? Number(f.package_size) : null,
       category_id: f.category_id || null,
       default_supplier_id: f.default_supplier_id || null,
-      min_alert_quantity: f.min_alert_quantity === '' ? null : Number(f.min_alert_quantity),
+      min_alert_packages: hasPackageSize
+        ? (f.min_alert_packages === '' ? null : Number(f.min_alert_packages))
+        : null,
+      min_alert_quantity: hasPackageSize ? null : (f.min_alert_quantity === '' ? null : Number(f.min_alert_quantity)),
       // last_purchase_price כבר מגיע כמחיר בסיס מנורמל (או null) מרכיב PriceInput
-      last_purchase_price: f.last_purchase_price === '' || f.last_purchase_price == null ? null : Number(f.last_purchase_price),
+      last_purchase_price: f.last_purchase_price === '' || f.last_purchase_price == null
+        ? null
+        : Number(f.last_purchase_price) / (hasPackageSize ? Number(f.package_size) : 1),
     };
     // בעריכה - הכמות משתנה רק דרך "שינוי כמות" המתועד, לא בטופס הכרטיס
     if (isEdit) delete payload.quantity_on_hand;
-    else payload.quantity_on_hand = Number(f.quantity_on_hand) || 0;
+    else if (hasPackageSize) {
+      payload.package_quantity = Number(f.package_quantity) || 0;
+      payload.loose_quantity = Number(f.loose_quantity) || 0;
+      delete payload.quantity_on_hand;
+    } else {
+      payload.quantity_on_hand = Number(f.loose_quantity) || 0;
+      delete payload.package_quantity;
+      delete payload.loose_quantity;
+    }
     onSave(payload);
   }
 
@@ -497,19 +564,38 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Field>
+        <Field label="שם מארז (למשל שק, קרטון)">
+          <input value={f.package_label} onChange={(e) => set('package_label', e.target.value)} className={inputCls} placeholder="ללא מארז" />
+        </Field>
+        <Field label={`כמות ${baseUnitName || 'יחידות בסיס'} במארז`}>
+          <input type="number" step="any" min="0" value={f.package_size} onChange={(e) => changePackageSize(e.target.value)} className={inputCls} dir="ltr" placeholder="למשל 5" />
+        </Field>
         {!isEdit ? (
           <Field label="כמות קיימת התחלתית">
-            <input type="number" step="any" value={f.quantity_on_hand} onChange={(e) => set('quantity_on_hand', e.target.value)} className={inputCls} dir="ltr" />
+            {Number(f.package_size) > 0 ? (
+              <div className="grid grid-cols-2 gap-2">
+                <input type="number" step="1" min="0" value={f.package_quantity} onChange={(e) => set('package_quantity', e.target.value)} className={inputCls} dir="ltr" placeholder="מארזים" />
+                <input type="number" step="any" min="0" value={f.loose_quantity} onChange={(e) => set('loose_quantity', e.target.value)} className={inputCls} dir="ltr" placeholder={baseUnitName} />
+              </div>
+            ) : (
+              <input type="number" step="any" min="0" value={f.loose_quantity} onChange={(e) => set('loose_quantity', e.target.value)} className={inputCls} dir="ltr" />
+            )}
           </Field>
         ) : (
           <Field label="כמות קיימת">
-            <div className="p-2 text-brand-burgundy/60 text-sm">{fmt(initial.quantity_on_hand)} {baseUnitName} - לשינוי השתמש ב״שינוי כמות״</div>
+            <div className="p-2 text-brand-burgundy/60 text-sm">
+              {formatInventoryQuantity(initial.quantity_on_hand, { ...initial, package_label: f.package_label, package_size: f.package_size, unit: baseUnitName })}
+              {' '}— לשינוי השתמש ב״שינוי כמות״
+            </div>
           </Field>
         )}
-        <Field label="כמות מינימום להתראה">
-          <input type="number" step="any" value={f.min_alert_quantity} onChange={(e) => set('min_alert_quantity', e.target.value)} className={inputCls} dir="ltr" placeholder="ללא" />
+        <Field label={Number(f.package_size) > 0 ? 'מינימום מארזים להתראה' : 'כמות מינימום להתראה'}>
+          <input type="number" step={Number(f.package_size) > 0 ? '1' : 'any'} min="0"
+            value={Number(f.package_size) > 0 ? f.min_alert_packages : f.min_alert_quantity}
+            onChange={(e) => set(Number(f.package_size) > 0 ? 'min_alert_packages' : 'min_alert_quantity', e.target.value)}
+            className={inputCls} dir="ltr" placeholder="ללא" />
         </Field>
-        <Field label="מחיר קנייה אחרון (₪)">
+        <Field label={`מחיר קנייה אחרון ל${Number(f.package_size) > 0 ? (f.package_label || 'מארז') : (baseUnitName || 'יחידה')} (₪)`}>
           <PriceInput
             value={f.last_purchase_price}
             onChange={(base) => set('last_purchase_price', base ?? '')}
@@ -569,11 +655,44 @@ function ItemForm({ categories, suppliers, units, initial, onSave, onCancel, onS
 function AdjustForm({ item, onSubmit, onCancel, embedded = false }) {
   const [mode, setMode] = useState('set'); // set = כמות חדשה | delta = תוספת/הפחתה
   const [value, setValue] = useState('');
+  const currentSplit = splitPackageQuantity(item.quantity_on_hand, item.package_size);
+  const [packageQuantity, setPackageQuantity] = useState(item.package_size ? currentSplit.packages : '');
+  const [looseQuantity, setLooseQuantity] = useState(item.package_size ? currentSplit.loose : '');
+  const [direction, setDirection] = useState('add');
   const [reason, setReason] = useState('count_error');
   const [note, setNote] = useState('');
 
+  function changeMode(nextMode) {
+    setMode(nextMode);
+    if (item.package_size) {
+      setPackageQuantity(nextMode === 'set' ? currentSplit.packages : 0);
+      setLooseQuantity(nextMode === 'set' ? currentSplit.loose : 0);
+    } else {
+      setValue('');
+    }
+  }
+
   function submit(e) {
     e.preventDefault();
+    if (item.package_size) {
+      const packages = Number(packageQuantity || 0);
+      const loose = Number(looseQuantity || 0);
+      if (!Number.isInteger(packages) || packages < 0 || loose < 0) {
+        return alert('מספר המארזים חייב להיות שלם והכמויות אינן יכולות להיות שליליות.');
+      }
+      const payload = { reason, note };
+      if (mode === 'set') {
+        payload.new_package_quantity = packages;
+        payload.new_loose_quantity = loose;
+      } else {
+        if (packages === 0 && loose === 0) return alert('יש להזין כמות לשינוי.');
+        payload.package_quantity = packages;
+        payload.loose_quantity = loose;
+        payload.direction = direction;
+      }
+      onSubmit(payload);
+      return;
+    }
     if (value === '' || Number.isNaN(Number(value))) return alert('יש להזין כמות.');
     const payload = { reason, note };
     if (mode === 'set') payload.new_quantity = Number(value);
@@ -584,21 +703,42 @@ function AdjustForm({ item, onSubmit, onCancel, embedded = false }) {
   return (
     <form onSubmit={submit} className={embedded ? 'space-y-3' : 'card space-y-3 border-r-4 border-brand-burgundy'}>
       {!embedded && <h3 className="font-bold text-brand-burgundy">שינוי כמות - {item.name}</h3>}
-      <p className="text-sm text-brand-burgundy/60">כמות נוכחית: {fmt(item.quantity_on_hand)} {item.unit}</p>
+      <p className="text-sm text-brand-burgundy/60">כמות נוכחית: {formatInventoryQuantity(item.quantity_on_hand, item)}</p>
       <div className="flex gap-2">
-        <button type="button" onClick={() => setMode('set')}
+        <button type="button" onClick={() => changeMode('set')}
           className={`px-3 py-1.5 rounded-lg text-sm ${mode === 'set' ? 'bg-brand-gold text-brand-burgundy-dark' : 'bg-brand-cream text-brand-burgundy/70'}`}>
           קביעת כמות חדשה
         </button>
-        <button type="button" onClick={() => setMode('delta')}
+        <button type="button" onClick={() => changeMode('delta')}
           className={`px-3 py-1.5 rounded-lg text-sm ${mode === 'delta' ? 'bg-brand-gold text-brand-burgundy-dark' : 'bg-brand-cream text-brand-burgundy/70'}`}>
           תוספת / הפחתה
         </button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Field label={mode === 'set' ? 'כמות חדשה' : 'שינוי (חיובי=תוספת, שלילי=הפחתה)'}>
-          <input type="number" step="any" value={value} onChange={(e) => setValue(e.target.value)} className={inputCls} dir="ltr" autoFocus />
-        </Field>
+        {item.package_size ? (
+          <>
+            {mode === 'delta' && (
+              <Field label="פעולה">
+                <select value={direction} onChange={(e) => setDirection(e.target.value)} className={inputCls}>
+                  <option value="add">הוספה</option>
+                  <option value="subtract">הפחתה</option>
+                </select>
+              </Field>
+            )}
+            <Field label={`מספר ${item.package_label}`}>
+              <input type="number" step="1" min="0" value={packageQuantity}
+                onChange={(e) => setPackageQuantity(e.target.value)} className={inputCls} dir="ltr" autoFocus />
+            </Field>
+            <Field label={`כמות חופשית ב${item.unit}`}>
+              <input type="number" step="any" min="0" value={looseQuantity}
+                onChange={(e) => setLooseQuantity(e.target.value)} className={inputCls} dir="ltr" />
+            </Field>
+          </>
+        ) : (
+          <Field label={mode === 'set' ? 'כמות חדשה' : 'שינוי (חיובי=תוספת, שלילי=הפחתה)'}>
+            <input type="number" step="any" value={value} onChange={(e) => setValue(e.target.value)} className={inputCls} dir="ltr" autoFocus />
+          </Field>
+        )}
         <Field label="סיבה">
           <select value={reason} onChange={(e) => setReason(e.target.value)} className={inputCls}>
             {ADJUST_REASONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -646,11 +786,24 @@ function HistoryPanel({ item, movements, onClose, embedded = false }) {
                 <tr key={m.id} className="border-b border-brand-cream-dark/50">
                   <td className="p-2" dir="ltr">{new Date(m.created_at).toLocaleDateString('he-IL')}</td>
                   <td className="p-2">{MOVEMENT_LABEL[m.movement_type] || m.movement_type}</td>
-                  <td className={`p-2 font-medium ${Number(m.quantity_delta) < 0 ? 'text-red-600' : 'text-green-700'}`} dir="ltr">
-                    {Number(m.quantity_delta) > 0 ? '+' : ''}{fmt(m.quantity_delta)}
+                  <td className={`p-2 font-medium ${Number(m.quantity_delta) < 0 ? 'text-red-600' : 'text-green-700'}`}>
+                    {formatInventoryQuantity(Math.abs(Number(m.quantity_delta)), {
+                      unit: item.unit,
+                      package_label: m.package_label_snapshot,
+                      package_size: m.package_size_snapshot,
+                    }, { signed: false })}
+                    <span className="mr-1">{Number(m.quantity_delta) < 0 ? '−' : '+'}</span>
                   </td>
-                  <td className="p-2" dir="ltr">{fmt(m.quantity_before)}</td>
-                  <td className="p-2" dir="ltr">{fmt(m.quantity_after)}</td>
+                  <td className="p-2">{formatInventoryQuantity(m.quantity_before, {
+                    unit: item.unit,
+                    package_label: m.package_label_snapshot,
+                    package_size: m.package_size_snapshot,
+                  })}</td>
+                  <td className="p-2">{formatInventoryQuantity(m.quantity_after, {
+                    unit: item.unit,
+                    package_label: m.package_label_snapshot,
+                    package_size: m.package_size_snapshot,
+                  })}</td>
                   <td className="p-2 text-brand-burgundy/60">
                     {m.shabbatot?.parasha ? `שבת ${m.shabbatot.parasha}` : (REASON_LABEL[m.reason] || m.reason || '-')}
                     {m.note && <span className="text-brand-burgundy/40"> · {m.note}</span>}

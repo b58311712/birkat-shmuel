@@ -5,6 +5,10 @@ import { Page } from '../components/Layout.jsx';
 import { Badge, PO_STATUS, SUPPLIER_PAYMENT_STATUS, SUPPLIER_CHANNEL } from '../lib/status.jsx';
 import PriceInput from '../components/PriceInput.jsx';
 import { formatWithVat } from '../lib/vat.js';
+import {
+  formatInventoryQuantity,
+  splitPackageQuantity,
+} from '../lib/inventoryPackages.js';
 
 // פירוט הזמנת רכש (סעיף 27.2): שורות, קבלת סחורה למלאי (27.3) ותשלום לספק (28.1).
 
@@ -106,12 +110,26 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
                     return (
                       <tr key={l.id} className="border-b border-brand-cream-dark/50">
                         <td className="p-2 font-medium">{l.item?.name || '-'} <span className="text-brand-burgundy/40">({l.item?.unit})</span></td>
-                        <td className="p-2" dir="ltr">{fmt(l.quantity)}</td>
-                        <td className={`p-2 font-medium ${full ? 'text-green-700' : partial ? 'text-amber-700' : 'text-brand-burgundy/50'}`} dir="ltr">
-                          {fmt(l.quantity_received)}
+                        <td className="p-2">{formatInventoryQuantity(l.quantity, {
+                          unit: l.item?.unit,
+                          package_label: l.package_label_snapshot,
+                          package_size: l.package_size_snapshot,
+                        })}</td>
+                        <td className={`p-2 font-medium ${full ? 'text-green-700' : partial ? 'text-amber-700' : 'text-brand-burgundy/50'}`}>
+                          {formatInventoryQuantity(l.quantity_received, {
+                            unit: l.item?.unit,
+                            package_label: l.package_label_snapshot,
+                            package_size: l.package_size_snapshot,
+                          })}
                         </td>
-                        <td className="p-2" dir="ltr">{formatWithVat(l.estimated_price, { exempt: l.item?.vat_exempt })}</td>
-                        <td className="p-2" dir="ltr">{formatWithVat(l.actual_price, { exempt: l.item?.vat_exempt })}</td>
+                        <td className="p-2" dir="ltr">{formatWithVat(
+                          l.estimated_price == null ? null : Number(l.estimated_price) * (Number(l.package_size_snapshot) || 1),
+                          { exempt: l.item?.vat_exempt },
+                        )}{l.package_size_snapshot ? ` / ${l.package_label_snapshot}` : ''}</td>
+                        <td className="p-2" dir="ltr">{formatWithVat(
+                          l.actual_price == null ? null : Number(l.actual_price) * (Number(l.package_size_snapshot) || 1),
+                          { exempt: l.item?.vat_exempt },
+                        )}{l.package_size_snapshot ? ` / ${l.package_label_snapshot}` : ''}</td>
                       </tr>
                     );
                   })}
@@ -185,17 +203,30 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
 // ---------------------------------------------------------------------------
 function ReceivePanel({ lines, supplierIncludesVat, poId, onCancel, onDone, onErr }) {
   const [rows, setRows] = useState(() =>
-    lines.map((l) => ({
+    lines.map((l) => {
+      const orderedSplit = splitPackageQuantity(l.quantity, l.package_size_snapshot);
+      const receivedSplit = splitPackageQuantity(l.quantity_received, l.package_size_snapshot);
+      return {
       line_id: l.id,
       name: l.item?.name,
       unit: l.item?.unit,
+      package_label: l.package_label_snapshot,
+      package_size: l.package_size_snapshot,
       vat_exempt: l.item?.vat_exempt || false,
       ordered: Number(l.quantity),
       alreadyReceived: Number(l.quantity_received),
       quantity_received: Number(l.quantity), // ברירת מחדל: התקבל הכל
+      package_quantity: orderedSplit.packages,
+      loose_quantity: orderedSplit.loose,
+      already_package_quantity: receivedSplit.packages,
+      already_loose_quantity: receivedSplit.loose,
       // מחיר בפועל מאוחסן כמחיר בסיס (לפני מע"מ); ברירת מחדל מהמשוער/בפועל הקודם
       actual_price: l.actual_price ?? l.estimated_price ?? '',
-    })));
+      actual_package_price: (l.actual_price ?? l.estimated_price) == null
+        ? ''
+        : Number(l.actual_price ?? l.estimated_price) * (Number(l.package_size_snapshot) || 1),
+    };
+    }));
   const [busy, setBusy] = useState(false);
 
   function setRow(idx, patch) { setRows((r) => r.map((x, i) => (i === idx ? { ...x, ...patch } : x))); }
@@ -204,12 +235,19 @@ function ReceivePanel({ lines, supplierIncludesVat, poId, onCancel, onDone, onEr
     e.preventDefault();
     // שולחים רק שורות שבהן הכמות המצטברת שונה מזו שכבר נרשמה
     const payload = rows
-      .filter((r) => Number(r.quantity_received) !== r.alreadyReceived)
-      .map((r) => ({
+      .filter((r) => r.package_size
+        ? Number(r.package_quantity) !== r.already_package_quantity || Number(r.loose_quantity) !== r.already_loose_quantity
+        : Number(r.quantity_received) !== r.alreadyReceived)
+      .map((r) => r.package_size ? {
+        line_id: r.line_id,
+        package_quantity: Number(r.package_quantity || 0),
+        loose_quantity: Number(r.loose_quantity || 0),
+        actual_package_price: r.actual_package_price === '' ? null : Number(r.actual_package_price),
+      } : {
         line_id: r.line_id,
         quantity_received: Number(r.quantity_received),
         actual_price: r.actual_price === '' ? null : Number(r.actual_price),
-      }));
+      });
     if (payload.length === 0) return alert('אין שינוי בכמויות שהתקבלו.');
     setBusy(true);
     try { await api.receivePurchaseOrder(poId, payload); onDone(); }
@@ -236,22 +274,35 @@ function ReceivePanel({ lines, supplierIncludesVat, poId, onCancel, onDone, onEr
             {rows.map((r, idx) => (
               <tr key={r.line_id} className="border-b border-brand-cream-dark/50">
                 <td className="p-2 font-medium">{r.name} <span className="text-brand-burgundy/40">({r.unit})</span></td>
-                <td className="p-2" dir="ltr">{fmt(r.ordered)}</td>
-                <td className="p-2 text-brand-burgundy/50" dir="ltr">{fmt(r.alreadyReceived)}</td>
+                <td className="p-2">{formatInventoryQuantity(r.ordered, r)}</td>
+                <td className="p-2 text-brand-burgundy/50">{formatInventoryQuantity(r.alreadyReceived, r)}</td>
                 <td className="p-2">
-                  <input type="number" step="any" min="0" value={r.quantity_received}
-                    onChange={(e) => setRow(idx, { quantity_received: e.target.value })}
-                    className={`${inputCls} w-24`} dir="ltr" />
+                  {r.package_size ? (
+                    <div className="flex gap-1 min-w-48">
+                      <input type="number" step="1" min="0" value={r.package_quantity}
+                        onChange={(e) => setRow(idx, { package_quantity: e.target.value })}
+                        className={`${inputCls} w-24`} dir="ltr" aria-label={r.package_label} />
+                      <input type="number" step="any" min="0" value={r.loose_quantity}
+                        onChange={(e) => setRow(idx, { loose_quantity: e.target.value })}
+                        className={`${inputCls} w-24`} dir="ltr" aria-label={r.unit} />
+                    </div>
+                  ) : (
+                    <input type="number" step="any" min="0" value={r.quantity_received}
+                      onChange={(e) => setRow(idx, { quantity_received: e.target.value })}
+                      className={`${inputCls} w-24`} dir="ltr" />
+                  )}
                 </td>
                 <td className="p-2">
                   <div className="w-40">
                     <PriceInput
-                      value={r.actual_price}
-                      onChange={(base) => setRow(idx, { actual_price: base ?? '' })}
+                      value={r.package_size ? r.actual_package_price : r.actual_price}
+                      onChange={(base) => setRow(idx, r.package_size
+                        ? { actual_package_price: base ?? '' }
+                        : { actual_price: base ?? '' })}
                       exempt={r.vat_exempt}
                       defaultIncludesVat={supplierIncludesVat}
                       className={`${inputCls} w-full`}
-                      placeholder="₪"
+                      placeholder={r.package_size ? `₪ ל${r.package_label}` : '₪ ליחידה'}
                     />
                   </div>
                 </td>

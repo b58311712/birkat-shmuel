@@ -219,7 +219,12 @@ function SupplierDetailBody({ data, onErr, onChanged }) {
   const [rows, setRows] = useState([]); // [{ inventory_item_id, last_purchase_price }]
 
   function startEdit() {
-    setRows(items.map((i) => ({ inventory_item_id: i.item_id, last_purchase_price: i.last_purchase_price ?? '' })));
+    setRows(items.map((i) => ({
+      inventory_item_id: i.item_id,
+      last_purchase_price: i.last_purchase_price == null
+        ? ''
+        : Number(i.last_purchase_price) * (Number(i.package_size) || 1),
+    })));
     api.invItems('?active=true').then(setAllItems).catch(onErr);
     setEditingItems(true);
   }
@@ -231,10 +236,15 @@ function SupplierDetailBody({ data, onErr, onChanged }) {
   async function saveItems() {
     const clean = rows
       .filter((r) => r.inventory_item_id)
-      .map((r) => ({
-        inventory_item_id: r.inventory_item_id,
-        last_purchase_price: r.last_purchase_price === '' ? null : Number(r.last_purchase_price),
-      }));
+      .map((r) => {
+        const item = allItems?.find((candidate) => candidate.id === r.inventory_item_id);
+        return {
+          inventory_item_id: r.inventory_item_id,
+          last_purchase_price: r.last_purchase_price === ''
+            ? null
+            : Number(r.last_purchase_price) / (Number(item?.package_size) || 1),
+        };
+      });
     try {
       await api.setSupplierItems(supplier.id, clean);
       setEditingItems(false);
@@ -277,9 +287,12 @@ function SupplierDetailBody({ data, onErr, onChanged }) {
                 {items.map((it) => (
                   <tr key={it.item_id} className="border-b border-brand-cream-dark/50">
                     <td className="p-2">{it.name}{!it.is_active && <span className="text-xs text-brand-burgundy/40 mr-1">(לא פעיל)</span>}</td>
-                    <td className="p-2">{it.unit}</td>
+                    <td className="p-2">{it.package_size ? `${it.package_label} (${it.package_size} ${it.unit})` : it.unit}</td>
                     <td className="p-2" dir="ltr">
-                      {formatWithVat(it.last_purchase_price, { exempt: it.vat_exempt })}
+                      {formatWithVat(
+                        it.last_purchase_price == null ? null : Number(it.last_purchase_price) * (Number(it.package_size) || 1),
+                        { exempt: it.vat_exempt },
+                      )}
                       {it.vat_exempt && <span className="text-xs text-brand-burgundy/40 mr-1">(פטור)</span>}
                     </td>
                   </tr>
@@ -306,7 +319,7 @@ function SupplierDetailBody({ data, onErr, onChanged }) {
                     exempt={rowItem?.vat_exempt || false}
                     defaultIncludesVat={supplier.default_price_includes_vat || false}
                     className={inputCls}
-                    placeholder="מחיר"
+                    placeholder={rowItem?.package_size ? `מחיר ל${rowItem.package_label}` : 'מחיר ליחידה'}
                   />
                 </div>
                 <button type="button" onClick={() => removeRow(idx)} className="text-red-600 hover:underline text-sm px-1 pt-2">הסר</button>

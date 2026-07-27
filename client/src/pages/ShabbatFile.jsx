@@ -5,6 +5,11 @@ import { Page } from '../components/Layout.jsx';
 import { DataTable } from '../components/DataTable.jsx';
 import { Badge, ORDER_STATUS, PAYMENT_STATUS } from '../lib/status.jsx';
 import { formatGregorianDate, formatShabbatHebrewDate, formatShabbatTitle } from '../lib/dates.js';
+import {
+  formatInventoryQuantity,
+  packageQuantityTotal,
+  splitPackageQuantity,
+} from '../lib/inventoryPackages.js';
 
 // מסך תיק שבת בלשוניות (סעיף 9). לשונית פעילה טוענת את הנתונים שלה עצמאית.
 const TABS = [
@@ -339,7 +344,7 @@ function InventoryTab({ id, onAuthError }) {
           פריטים בחוסר: <span className="font-bold text-brand-burgundy">{totalMissing}</span>
         </span>
         <span className="text-brand-burgundy/50 text-xs">
-          הצורך מחושב מהזמנות שנכנסות להכנות בלבד · הכמות הנדרשת מעוגלת כלפי מעלה
+          הצורך מחושב מהזמנות שנכנסות להכנות בלבד · המלצת הקנייה מעוגלת למארזים שלמים
         </span>
         {hasSuppliers && (
           <button onClick={() => setDeducting(true)} className="btn-primary text-sm mr-auto">
@@ -381,13 +386,13 @@ function InventoryTab({ id, onAuthError }) {
                       {it.name}
                       {it.is_packaging && <span className="text-xs text-brand-gold-dark mr-1">(אריזה)</span>}
                     </td>
-                    <td className="p-2 font-bold">{it.required}</td>
-                    <td className="p-2 text-brand-burgundy/60">{it.on_hand}</td>
+                    <td className="p-2 font-bold">{formatInventoryQuantity(it.required, it)}</td>
+                    <td className="p-2 text-brand-burgundy/60">{formatInventoryQuantity(it.on_hand, it)}</td>
                     <td className={`p-2 font-bold ${it.missing > 0 ? 'text-red-700' : 'text-green-700'}`}>
-                      {it.missing > 0 ? it.missing : '✓'}
+                      {it.missing > 0 ? formatInventoryQuantity(it.missing, it) : '✓'}
                     </td>
                     <td className="p-2 font-bold text-brand-gold-dark">
-                      {it.suggested_purchase > 0 ? it.suggested_purchase : '-'}
+                      {it.suggested_purchase > 0 ? formatInventoryQuantity(it.suggested_purchase, it) : '-'}
                     </td>
                     <td className="p-2 text-brand-burgundy/60">{it.unit}</td>
                   </tr>
@@ -439,13 +444,23 @@ function DeductionPanel({ id, onClose, onDone, onErr }) {
   useEffect(() => {
     api.invDeductionPreview(id).then((d) => {
       setRows(d.items);
-      setQty(Object.fromEntries(d.items.map((it) => [it.item_id, it.suggested_deduction])));
+      setQty(Object.fromEntries(d.items.map((it) => {
+        if (!it.package_size) return [it.item_id, it.suggested_deduction];
+        const split = splitPackageQuantity(it.suggested_deduction, it.package_size);
+        return [it.item_id, split];
+      })));
     }).catch(onErr);
   }, [id, onErr]);
 
   async function deduct() {
-    const lines = Object.entries(qty)
-      .map(([item_id, q]) => ({ item_id, quantity: Number(q) }))
+    const lines = rows
+      .map((item) => {
+        const value = qty[item.item_id];
+        const quantity = item.package_size
+          ? packageQuantityTotal(value?.packages, value?.loose, item.package_size)
+          : Number(value);
+        return { item_id: item.item_id, quantity };
+      })
       .filter((l) => l.quantity > 0);
     if (lines.length === 0) return alert('אין כמויות להפחתה.');
     if (!window.confirm('לבצע הפחתה בפועל מהמלאי? הפעולה מתועדת ומעדכנת את הכמויות.')) return;
@@ -495,13 +510,34 @@ function DeductionPanel({ id, onClose, onDone, onErr }) {
                   {it.name}
                   {it.is_packaging && <span className="text-xs text-brand-gold-dark mr-1">(אריזה)</span>}
                 </td>
-                <td className="p-2 text-brand-burgundy/60">{it.required}</td>
-                <td className="p-2 text-brand-burgundy/60">{it.on_hand}</td>
+                <td className="p-2 text-brand-burgundy/60">{formatInventoryQuantity(it.required, it)}</td>
+                <td className="p-2 text-brand-burgundy/60">{formatInventoryQuantity(it.on_hand, it)}</td>
                 <td className="p-2">
-                  <input type="number" step="any" min="0" dir="ltr"
-                    value={qty[it.item_id] ?? ''}
-                    onChange={(e) => setQty((s) => ({ ...s, [it.item_id]: e.target.value }))}
-                    className="w-24 border border-brand-cream-dark rounded-lg p-1.5 focus:border-brand-gold outline-none" />
+                  {it.package_size ? (
+                    <div className="flex gap-1 min-w-48">
+                      <input type="number" step="1" min="0" dir="ltr"
+                        aria-label={it.package_label}
+                        value={qty[it.item_id]?.packages ?? ''}
+                        onChange={(e) => setQty((state) => ({
+                          ...state,
+                          [it.item_id]: { ...state[it.item_id], packages: e.target.value },
+                        }))}
+                        className="w-24 border border-brand-cream-dark rounded-lg p-1.5 focus:border-brand-gold outline-none" />
+                      <input type="number" step="any" min="0" dir="ltr"
+                        aria-label={it.unit}
+                        value={qty[it.item_id]?.loose ?? ''}
+                        onChange={(e) => setQty((state) => ({
+                          ...state,
+                          [it.item_id]: { ...state[it.item_id], loose: e.target.value },
+                        }))}
+                        className="w-24 border border-brand-cream-dark rounded-lg p-1.5 focus:border-brand-gold outline-none" />
+                    </div>
+                  ) : (
+                    <input type="number" step="any" min="0" dir="ltr"
+                      value={qty[it.item_id] ?? ''}
+                      onChange={(e) => setQty((s) => ({ ...s, [it.item_id]: e.target.value }))}
+                      className="w-24 border border-brand-cream-dark rounded-lg p-1.5 focus:border-brand-gold outline-none" />
+                  )}
                 </td>
                 <td className="p-2 text-brand-burgundy/60">{it.unit}</td>
               </tr>
@@ -1289,13 +1325,13 @@ function PrintTab({ id, onAuthError }) {
                         <td className="border border-brand-cream-dark p-2">
                           {it.name}{it.is_packaging && <span className="text-xs text-brand-gold-dark mr-1">(אריזה)</span>}
                         </td>
-                        <td className="border border-brand-cream-dark p-2 font-bold">{it.required}</td>
-                        <td className="border border-brand-cream-dark p-2 text-brand-burgundy/60">{it.on_hand}</td>
+                        <td className="border border-brand-cream-dark p-2 font-bold">{formatInventoryQuantity(it.required, it)}</td>
+                        <td className="border border-brand-cream-dark p-2 text-brand-burgundy/60">{formatInventoryQuantity(it.on_hand, it)}</td>
                         <td className={`border border-brand-cream-dark p-2 font-bold ${it.missing > 0 ? 'text-red-700' : ''}`}>
-                          {it.missing > 0 ? it.missing : '✓'}
+                          {it.missing > 0 ? formatInventoryQuantity(it.missing, it) : '✓'}
                         </td>
                         <td className="border border-brand-cream-dark p-2 font-bold text-brand-gold-dark">
-                          {it.suggested_purchase > 0 ? it.suggested_purchase : '-'}
+                          {it.suggested_purchase > 0 ? formatInventoryQuantity(it.suggested_purchase, it) : '-'}
                         </td>
                         <td className="border border-brand-cream-dark p-2 text-brand-burgundy/60">{it.unit}</td>
                       </tr>

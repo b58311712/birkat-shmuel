@@ -11,6 +11,13 @@ import { asyncHandler, fail } from '../lib/helpers.js';
 import { buildInventoryReport } from '../services/shabbatFile.js';
 import { deductInventoryForShabbat } from '../services/inventoryDeduction.js';
 import { requireRole } from '../lib/auth.js';
+import {
+  effectiveMinimum,
+  finiteNumber,
+  packageConfig,
+  quantityFromPackageInput,
+  roundQuantity,
+} from '../lib/inventoryPackages.js';
 
 const router = Router();
 
@@ -402,7 +409,7 @@ router.get('/items', asyncHandler(async (req, res) => {
   let items = data;
   if (req.query.low_stock === 'true') {
     items = (data || []).filter((i) =>
-      i.min_alert_quantity != null && Number(i.quantity_on_hand) < Number(i.min_alert_quantity));
+      effectiveMinimum(i) != null && Number(i.quantity_on_hand) < effectiveMinimum(i));
   }
   res.json(items);
 }));
@@ -435,18 +442,40 @@ router.post('/items', asyncHandler(async (req, res) => {
   const {
     name, category_id, unit, quantity_on_hand, min_alert_quantity,
     default_supplier_id, last_purchase_price, is_packaging, vat_exempt, notes,
+    min_alert_packages,
   } = req.body || {};
   if (!name?.trim()) return fail(res, 400, 'חובה להזין שם מוצר.');
 
   const unitId = await resolveUnitId(req.body?.unit_id, unit);
   if (!unitId) return fail(res, 400, 'חובה לבחור יחידת מידה.');
+  const packages = packageConfig(req.body);
+  if (packages.error) return fail(res, 400, packages.error);
+  const minimumPackages = finiteNumber(min_alert_packages);
+  if (minimumPackages != null && (!Number.isInteger(minimumPackages) || minimumPackages < 0))
+    return fail(res, 400, 'מינימום המארזים חייב להיות מספר שלם שאינו שלילי.');
+  if (minimumPackages != null && !packages.package_size)
+    return fail(res, 400, 'ניתן להגדיר מינימום במארזים רק למוצר עם מארז.');
+  const hasInitialInput =
+    'quantity_on_hand' in (req.body || {})
+    || 'package_quantity' in (req.body || {})
+    || 'loose_quantity' in (req.body || {});
+  const parsedInitialQuantity =
+    quantityFromPackageInput(req.body, packages.package_size, 'quantity_on_hand');
+  const initialQuantity = hasInitialInput ? parsedInitialQuantity : 0;
+  if (initialQuantity == null || initialQuantity < 0)
+    return fail(res, 400, 'הכמות ההתחלתית אינה תקינה.');
+  const effectiveMin = minimumPackages != null
+    ? roundQuantity(minimumPackages * packages.package_size)
+    : num(min_alert_quantity);
 
   const { data, error } = await supabase.from('inventory_items').insert({
     name: name.trim(),
     category_id: category_id || null,
     unit_id: unitId, // הטריגר ימלא את unit הטקסטואלי משם היחידה
-    quantity_on_hand: num(quantity_on_hand) ?? 0,
-    min_alert_quantity: num(min_alert_quantity),
+    quantity_on_hand: initialQuantity,
+    min_alert_quantity: effectiveMin,
+    min_alert_packages: minimumPackages,
+    ...packages,
     default_supplier_id: default_supplier_id || null,
     last_purchase_price: num(last_purchase_price), // נשמר כמחיר בסיס (לפני מע"מ)
     is_packaging: !!is_packaging,
@@ -473,6 +502,43 @@ router.patch('/items/:id', asyncHandler(async (req, res) => {
     const unitId = await resolveUnitId(req.body.unit_id, req.body.unit);
     if (!unitId) return fail(res, 400, 'יחידת מידה לא יכולה להיות ריקה.');
     patch.unit_id = unitId;
+  }
+  const hasPackageFields =
+    'package_label' in (req.body || {}) || 'package_size' in (req.body || {});
+  let packageSize = null;
+  if (hasPackageFields) {
+    const packages = packageConfig(req.body);
+    if (packages.error) return fail(res, 400, packages.error);
+    Object.assign(patch, packages);
+    packageSize = packages.package_size;
+    if (!('min_alert_packages' in (req.body || {})) && packageSize) {
+      const { data: current, error: currentErr } = await supabase
+        .from('inventory_items').select('min_alert_packages').eq('id', req.params.id).maybeSingle();
+      if (currentErr) throw currentErr;
+      if (!current) return fail(res, 404, 'פריט מלאי לא נמצא.');
+      if (current.min_alert_packages != null) {
+        patch.min_alert_quantity = roundQuantity(Number(current.min_alert_packages) * packageSize);
+      }
+    }
+  } else if ('min_alert_packages' in (req.body || {})) {
+    const { data: current, error: currentErr } = await supabase
+      .from('inventory_items').select('package_size').eq('id', req.params.id).maybeSingle();
+    if (currentErr) throw currentErr;
+    if (!current) return fail(res, 404, 'פריט מלאי לא נמצא.');
+    packageSize = current.package_size == null ? null : Number(current.package_size);
+  }
+  if ('min_alert_packages' in (req.body || {})) {
+    const minimumPackages = finiteNumber(req.body.min_alert_packages);
+    if (minimumPackages != null && (!Number.isInteger(minimumPackages) || minimumPackages < 0))
+      return fail(res, 400, 'מינימום המארזים חייב להיות מספר שלם שאינו שלילי.');
+    if (minimumPackages != null && !(packageSize > 0))
+      return fail(res, 400, 'ניתן להגדיר מינימום במארזים רק למוצר עם מארז.');
+    patch.min_alert_packages = minimumPackages;
+    patch.min_alert_quantity = minimumPackages == null
+      ? num(req.body.min_alert_quantity)
+      : roundQuantity(minimumPackages * packageSize);
+  } else if (hasPackageFields && !packageSize) {
+    patch.min_alert_packages = null;
   }
   // נרמול שדות ריקים -> null / מספר
   if ('min_alert_quantity' in patch) patch.min_alert_quantity = num(patch.min_alert_quantity);
@@ -509,23 +575,41 @@ router.post('/items/:id/adjust', asyncHandler(async (req, res) => {
   if (!MANUAL_REASONS.includes(reason)) return fail(res, 400, 'סיבת שינוי לא תקינה.');
 
   const { data: item, error: iErr } = await supabase
-    .from('inventory_items').select('id, quantity_on_hand').eq('id', req.params.id).maybeSingle();
+    .from('inventory_items').select('id, quantity_on_hand, package_size').eq('id', req.params.id).maybeSingle();
   if (iErr) throw iErr;
   if (!item) return fail(res, 404, 'פריט מלאי לא נמצא.');
 
   const before = Number(item.quantity_on_hand);
   let after;
-  if (new_quantity !== undefined && new_quantity !== null && new_quantity !== '') {
+  const hasNewPackageQuantity =
+    'new_package_quantity' in (req.body || {}) || 'new_loose_quantity' in (req.body || {});
+  const hasDeltaPackageQuantity =
+    'package_quantity' in (req.body || {}) || 'loose_quantity' in (req.body || {});
+  if (hasNewPackageQuantity) {
+    after = quantityFromPackageInput({
+      package_quantity: req.body.new_package_quantity,
+      loose_quantity: req.body.new_loose_quantity,
+    }, item.package_size);
+    if (after === null) return fail(res, 400, 'כמות המארזים או היחידות אינה תקינה.');
+  } else if (new_quantity !== undefined && new_quantity !== null && new_quantity !== '') {
     after = num(new_quantity);
     if (after === null) return fail(res, 400, 'כמות חדשה לא תקינה.');
   } else {
-    const d = num(delta);
+    let d = num(delta);
+    if (hasDeltaPackageQuantity) {
+      if (!['add', 'subtract'].includes(req.body.direction)) {
+        return fail(res, 400, 'יש לבחור אם להוסיף או להפחית מהמלאי.');
+      }
+      const magnitude = quantityFromPackageInput(req.body, item.package_size);
+      const direction = req.body.direction === 'subtract' ? -1 : 1;
+      d = magnitude == null ? null : magnitude * direction;
+    }
     if (d === null || d === 0) return fail(res, 400, 'יש להזין כמות חדשה או שינוי (delta).');
     after = before + d;
   }
   if (after < 0) return fail(res, 400, 'כמות המלאי לא יכולה להיות שלילית.');
 
-  const change = Number((after - before).toFixed(4));
+  const change = roundQuantity(after - before);
   if (change === 0) return fail(res, 400, 'אין שינוי בכמות.');
 
   const { error: uErr } = await supabase.from('inventory_items')
@@ -567,6 +651,8 @@ router.get('/shabbat/:shabbatId/deduction-preview', asyncHandler(async (req, res
         name: it.name,
         unit: it.unit,
         is_packaging: it.is_packaging,
+        package_label: it.package_label,
+        package_size: it.package_size,
         required: it.required,          // כמות נדרשת מעוגלת לשבת
         on_hand: it.on_hand,            // כמות קיימת
         suggested_deduction: it.required, // ברירת מחדל - להפחית את כל הנדרש
