@@ -32,6 +32,7 @@ import AdminRecurringExpenses from './pages/AdminRecurringExpenses.jsx';
 import AdminEmail from './pages/AdminEmail.jsx';
 import Feedback from './pages/Feedback.jsx';
 import AdminFeedback from './pages/AdminFeedback.jsx';
+import AdminGuide from './pages/AdminGuide.jsx';
 
 const STORAGE_KEY = 'matbach_customer';
 const ADMIN_USER_KEY = 'matbach_admin_user';
@@ -189,6 +190,11 @@ export default function App() {
           <Route path="/admin/feedback" element={
             <AdminShell admin={admin} onAdminLogout={adminLogout}>
               <AdminFeedback onAuthError={adminLogout} />
+            </AdminShell>
+          } />
+          <Route path="/admin/guide" element={
+            <AdminShell admin={admin} onAdminLogout={adminLogout}>
+              <AdminGuide />
             </AdminShell>
           } />
           <Route path="/admin/*" element={<Navigate to="/admin" replace />} />

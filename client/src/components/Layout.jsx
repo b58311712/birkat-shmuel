@@ -47,6 +47,7 @@ export const adminMenuGroups = [
     items: [
       { to: '/admin/email', label: 'מיילים' },
       { to: '/admin/users', label: 'משתמשים' },
+      { to: '/admin/guide', label: 'הוראות שימוש' },
     ],
   },
 ];
@@ -214,6 +215,14 @@ export function AdminAccountMenu({ admin, open, onToggle, onLogout }) {
             <div className="text-sm font-bold truncate">{displayName}</div>
             {admin.role && <div className="text-xs text-surface-muted">{admin.role}</div>}
           </div>
+          {/* עזרה בהישג יד מכל מסך - המקום שבו משתמשים מחפשים אותה */}
+          <Link
+            to="/admin/guide"
+            onClick={onToggle}
+            className="block px-4 py-2 text-right text-sm font-medium transition-colors hover:bg-surface-canvas"
+          >
+            הוראות שימוש
+          </Link>
           {onLogout && (
             <button
               type="button"
