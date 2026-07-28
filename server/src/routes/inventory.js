@@ -61,6 +61,15 @@ async function resolveUnitId(unitId, unitText) {
 }
 
 async function deleteInventoryItem(itemId) {
+  // order_inventory_lines (מיגרציה 53) אינו נמחק כאן: זו שורה בהזמנה או במכירה
+  // של לקוח, ומחיקתה הייתה משנה סכום שכבר נגבה. מחזירים שגיאה במקום להפר FK.
+  const { count, error: linesErr } = await supabase
+    .from('order_inventory_lines')
+    .select('id', { count: 'exact', head: true })
+    .eq('inventory_item_id', itemId);
+  if (linesErr) throw linesErr;
+  if (count) return { blocked: true };
+
   const cleanup = await Promise.all([
     supabase.from('recipe_lines').delete().eq('inventory_item_id', itemId),
     supabase.from('packing_rules').delete().eq('packaging_item_id', itemId),
@@ -426,7 +435,7 @@ router.get('/items/:id', asyncHandler(async (req, res) => {
 
   const { data: movements, error: mErr } = await supabase
     .from('inventory_movements')
-    .select('*, shabbatot:shabbat_id (parasha)')
+    .select('*, shabbatot:shabbat_id (parasha), orders:order_id (order_number, order_kind), purchase_orders:purchase_order_id (po_number), performed_by_user:performed_by (full_name)')
     .eq('inventory_item_id', req.params.id)
     .order('created_at', { ascending: false })
     .limit(50);
@@ -602,7 +611,10 @@ router.patch('/items/:id', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/items/:id', requireRole('developer'), asyncHandler(async (req, res) => {
-  const { data, error } = await deleteInventoryItem(req.params.id);
+  const { data, error, blocked } = await deleteInventoryItem(req.params.id);
+  if (blocked) {
+    return fail(res, 409, 'הפריט מופיע בהזמנה או במכירה קיימת ולכן לא ניתן למחוק אותו. ניתן להשבית אותו במקום.');
+  }
   if (error) throw error;
   if (!data) return fail(res, 404, 'פריט מלאי לא נמצא.');
   await auditDelete(req, 'inventory_item', req.params.id);
@@ -802,13 +814,13 @@ router.post('/shabbat/:shabbatId/deduct-auto', asyncHandler(async (req, res) => 
 // תנועות מלאי - צפייה כללית (סעיף 25.5, ביקורת)
 // ===========================================================================
 
-// GET /api/admin/inventory/movements?item_id=&type=&limit= - היסטוריית תנועות
+// GET /api/admin/inventory/movements?item_id=&type=&limit= - היסטוריית תנועות (כל הפריטים, למסך המרוכז)
 router.get('/movements', asyncHandler(async (req, res) => {
   let q = supabase
     .from('inventory_movements')
-    .select('*, inventory_items:inventory_item_id (name, unit), shabbatot:shabbat_id (parasha)')
+    .select('*, inventory_items:inventory_item_id (name, unit), shabbatot:shabbat_id (parasha), orders:order_id (order_number, order_kind), purchase_orders:purchase_order_id (po_number), performed_by_user:performed_by (full_name)')
     .order('created_at', { ascending: false })
-    .limit(Math.min(Number(req.query.limit) || 100, 500));
+    .limit(Math.min(Number(req.query.limit) || 100, 1000));
   if (req.query.item_id) q = q.eq('inventory_item_id', req.query.item_id);
   if (req.query.type) q = q.eq('movement_type', req.query.type);
 

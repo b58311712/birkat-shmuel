@@ -28,7 +28,17 @@ const MOVEMENT_LABEL = {
   shabbat_deduction: 'הפחתה לשבת',
   purchase_receipt: 'קבלת סחורה',
   manual_adjustment: 'שינוי ידני',
+  sale_deduction: 'מכירת מוצרים',
+  sale_return: 'ביטול מכירה',
 };
+
+// הקשר תנועה: שבת / הזמנת רכש / הזמנת מכירה, ואם אין - סיבת השינוי הידני
+function movementContext(m) {
+  if (m.shabbatot?.parasha) return `שבת ${m.shabbatot.parasha}`;
+  if (m.orders?.order_number) return `מכירה ${m.orders.order_number}`;
+  if (m.purchase_orders?.po_number) return `הזמנת רכש ${m.purchase_orders.po_number}`;
+  return REASON_LABEL[m.reason] || m.reason || '-';
+}
 
 export default function AdminInventory({ onAuthError, currentAdmin }) {
   const [view, setView] = useState('items'); // items | categories | units
@@ -42,7 +52,7 @@ export default function AdminInventory({ onAuthError, currentAdmin }) {
   return (
     <Page title="ניהול מלאי" subtitle="פריטי מלאי, קטגוריות, יחידות מידה ושינוי ידני">
       <div className="flex gap-1 mb-5 border-b border-brand-cream-dark">
-        {[['items', 'פריטי מלאי'], ['categories', 'קטגוריות'], ['units', 'יחידות מידה']].map(([k, label]) => (
+        {[['items', 'פריטי מלאי'], ['movements', 'תנועות מלאי'], ['categories', 'קטגוריות'], ['units', 'יחידות מידה']].map(([k, label]) => (
           <button key={k} onClick={() => setView(k)}
             className={`px-4 py-2 font-medium border-b-2 -mb-px transition-colors ${
               view === k ? 'border-brand-gold text-brand-burgundy' : 'border-transparent text-brand-burgundy/50 hover:text-brand-burgundy'
@@ -53,6 +63,7 @@ export default function AdminInventory({ onAuthError, currentAdmin }) {
       </div>
 
       {view === 'items' && <ItemsManager onErr={handleErr} canDelete={canDelete} />}
+      {view === 'movements' && <MovementsManager onErr={handleErr} />}
       {view === 'categories' && <CategoriesManager onErr={handleErr} canDelete={canDelete} />}
       {view === 'units' && <UnitsManager onErr={handleErr} canDelete={canDelete} />}
     </Page>
@@ -800,6 +811,7 @@ function HistoryPanel({ item, movements, onClose, embedded = false }) {
                 <th className="p-2 text-right">שינוי</th>
                 <th className="p-2 text-right">לפני</th>
                 <th className="p-2 text-right">אחרי</th>
+                <th className="p-2 text-right">מי ביצע</th>
                 <th className="p-2 text-right">סיבה</th>
               </tr>
             </thead>
@@ -826,8 +838,9 @@ function HistoryPanel({ item, movements, onClose, embedded = false }) {
                     package_label: m.package_label_snapshot,
                     package_size: m.package_size_snapshot,
                   })}</td>
+                  <td className="p-2 text-brand-burgundy/60">{m.performed_by_user?.full_name || '-'}</td>
                   <td className="p-2 text-brand-burgundy/60">
-                    {m.shabbatot?.parasha ? `שבת ${m.shabbatot.parasha}` : (REASON_LABEL[m.reason] || m.reason || '-')}
+                    {movementContext(m)}
                     {m.note && <span className="text-brand-burgundy/40"> · {m.note}</span>}
                   </td>
                 </tr>
@@ -836,6 +849,125 @@ function HistoryPanel({ item, movements, onClose, embedded = false }) {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+// ===========================================================================
+// תנועות מלאי - מסך מרוכז לכל הפריטים (ביקורת - סעיף 25.5)
+// ===========================================================================
+function MovementsManager({ onErr }) {
+  const [list, setList] = useState(null);
+
+  const load = useCallback(() => {
+    api.invMovements('?limit=1000').then(setList).catch(onErr);
+  }, [onErr]);
+  useEffect(() => { load(); }, [load]);
+
+  // אפשרויות סינון "פריט" נגזרות מהתנועות שנטענו (רשימה ייחודית, ממוינת)
+  const itemOptions = useMemo(() => {
+    const seen = new Map();
+    for (const m of list || []) {
+      if (m.inventory_item_id && !seen.has(m.inventory_item_id)) {
+        seen.set(m.inventory_item_id, m.inventory_items?.name || '-');
+      }
+    }
+    return [...seen.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'he'));
+  }, [list]);
+
+  const columns = [
+    {
+      key: 'created_at',
+      label: 'תאריך',
+      type: 'date',
+      dir: 'ltr',
+      render: (m) => new Date(m.created_at).toLocaleDateString('he-IL'),
+    },
+    {
+      key: 'item',
+      label: 'פריט',
+      type: 'enum',
+      value: (m) => m.inventory_item_id || '',
+      options: itemOptions,
+      render: (m) => m.inventory_items?.name || '-',
+    },
+    {
+      key: 'movement_type',
+      label: 'סוג',
+      type: 'enum',
+      map: MOVEMENT_LABEL,
+      render: (m) => MOVEMENT_LABEL[m.movement_type] || m.movement_type,
+    },
+    {
+      key: 'quantity_delta',
+      label: 'שינוי',
+      type: 'number',
+      className: 'font-medium',
+      render: (m) => (
+        <span className={Number(m.quantity_delta) < 0 ? 'text-red-600' : 'text-green-700'}>
+          {formatInventoryQuantity(Math.abs(Number(m.quantity_delta)), {
+            unit: m.inventory_items?.unit,
+            package_label: m.package_label_snapshot,
+            package_size: m.package_size_snapshot,
+          }, { signed: false })}
+          <span className="mr-1">{Number(m.quantity_delta) < 0 ? '−' : '+'}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'quantity_before',
+      label: 'לפני',
+      type: 'number',
+      render: (m) => formatInventoryQuantity(m.quantity_before, {
+        unit: m.inventory_items?.unit,
+        package_label: m.package_label_snapshot,
+        package_size: m.package_size_snapshot,
+      }),
+    },
+    {
+      key: 'quantity_after',
+      label: 'אחרי',
+      type: 'number',
+      render: (m) => formatInventoryQuantity(m.quantity_after, {
+        unit: m.inventory_items?.unit,
+        package_label: m.package_label_snapshot,
+        package_size: m.package_size_snapshot,
+      }),
+    },
+    {
+      key: 'performed_by',
+      label: 'מי ביצע',
+      type: 'text',
+      value: (m) => m.performed_by_user?.full_name || '',
+      render: (m) => m.performed_by_user?.full_name || '-',
+    },
+    {
+      key: 'context',
+      label: 'הקשר',
+      type: 'text',
+      value: (m) => movementContext(m),
+      render: (m) => movementContext(m),
+    },
+    {
+      key: 'note',
+      label: 'הערה',
+      type: 'text',
+      value: (m) => m.note || '',
+      render: (m) => m.note || <span className="text-brand-burgundy/40">-</span>,
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-brand-burgundy/55">כל תנועות המלאי (עד 1000 האחרונות), לביקורת ומעקב. להוספה/הפחתה בפריט בודד - לשונית "פריטי מלאי".</p>
+      <DataTable
+        columns={columns}
+        rows={list}
+        rowKey={(m) => m.id}
+        empty="אין תנועות מלאי רשומות."
+      />
     </div>
   );
 }
