@@ -16,6 +16,7 @@ import shabbatotRoutes from './routes/shabbatot.js';
 import ordersRoutes from './routes/orders.js';
 import adminRoutes from './routes/admin.js';
 import shabbatFileRoutes from './routes/shabbatFile.js';
+import eventsRoutes from './routes/events.js';
 import volunteersRoutes from './routes/volunteers.js';
 import inventoryRoutes from './routes/inventory.js';
 import suppliersRoutes from './routes/suppliers.js';
@@ -51,6 +52,7 @@ app.use('/api/orders', ordersRoutes);
 app.use('/api/feedback', feedbackRoutes);
 // אזור הניהול - כל הקריאות מאחורי אימות מנהל (סעיף 5)
 app.use('/api/admin/shabbat-files', requireAdmin, shabbatFileRoutes);
+app.use('/api/admin/events', requireAdmin, eventsRoutes);
 app.use('/api/admin/volunteers', requireAdmin, volunteersRoutes);
 app.use('/api/admin/inventory', requireAdmin, inventoryRoutes);
 app.use('/api/admin/suppliers', requireAdmin, suppliersRoutes);

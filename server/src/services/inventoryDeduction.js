@@ -44,7 +44,8 @@ async function collectConsumption(shabbatId) {
       id, order_status, payment_status,
       order_meal_slots ( meal_slot_id, portions ),
       order_meals ( meal_slot_id, meal_id, portions ),
-      order_extras ( extra_id, actual_quantity )
+      order_extras ( extra_id, actual_quantity ),
+      order_inventory_lines ( inventory_item_id, quantity, unit_id )
     `)
     .eq('shabbat_id', shabbatId);
   if (oErr) throw oErr;
@@ -53,6 +54,7 @@ async function collectConsumption(shabbatId) {
   // ויחידות חיוב מצטברות לכל תוספת בתשלום.
   const portionsByMeal = {};
   const quantityByExtra = {};
+  const directLines = []; // שורות מלאי חופשיות - כמות מוחלטת, בלי מכפיל
   for (const o of orders || []) {
     if (!isOperational(o)) continue;
     const slotPortions = Object.fromEntries(
@@ -66,11 +68,16 @@ async function collectConsumption(shabbatId) {
       const q = Number(oe.actual_quantity || 0);
       if (q > 0) quantityByExtra[oe.extra_id] = (quantityByExtra[oe.extra_id] || 0) + q;
     }
+    for (const il of o.order_inventory_lines || []) {
+      if (Number(il.quantity || 0) > 0) directLines.push(il);
+    }
   }
 
   const mealIds = Object.keys(portionsByMeal);
   const extraIds = Object.keys(quantityByExtra);
-  if (mealIds.length === 0 && extraIds.length === 0) return { byItem: {}, unlinked: [] };
+  if (mealIds.length === 0 && extraIds.length === 0 && directLines.length === 0) {
+    return { byItem: {}, unlinked: [] };
+  }
 
   // שורות המרכיבים של המאכלים ושל התוספות - אותה טבלה, בעלים שונה.
   const [{ data: recipes, error: rErr }, extraLines] = await Promise.all([
@@ -101,6 +108,16 @@ async function collectConsumption(shabbatId) {
 
   for (const rl of recipes || []) addLine(rl, portionsByMeal[rl.meal_id] || 0);
   for (const rl of extraLines) addLine(rl, quantityByExtra[rl.extra_id] || 0);
+  // שורות מלאי חופשיות (מיגרציה 53): הכמות מוחלטת, ולכן המכפיל הוא 1.
+  // מבנה השורה מותאם לצורת ה-recipe_line כדי לעבור באותו addLine.
+  for (const il of directLines) {
+    addLine({
+      inventory_item_id: il.inventory_item_id,
+      quantity_per_portion: il.quantity,
+      unit_id: il.unit_id,
+      unit: null,
+    }, 1);
+  }
 
   return { byItem, unlinked };
 }

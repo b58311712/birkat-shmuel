@@ -218,6 +218,19 @@ export const api = {
   shabbatNotes: (id, notes) => request(`/admin/shabbat-files/${id}/notes`, { method: 'PATCH', body: JSON.stringify({ notes }) }),
   deleteShabbat: (id) => request(`/admin/shabbat-files/${id}`, { method: 'DELETE' }),
 
+  // אירועים - אירוע פנימי של הקהילה / אירוע פרטי חריג (מיגרציה 52)
+  // הגבייה של אירוע עוברת בנתיבי התשלומים הרגילים (orderPayments וכו') לפי
+  // order_id, ולכן אין כאן נתיב תשלום ייעודי.
+  events: () => request('/admin/events'),
+  event: (id) => request(`/admin/events/${id}`),
+  createEvent: (payload) => request('/admin/events', { method: 'POST', body: JSON.stringify(payload) }),
+  updateEvent: (id, payload) => request(`/admin/events/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  setEventMenu: (id, payload) => request(`/admin/events/${id}/menu`, { method: 'PUT', body: JSON.stringify(payload) }),
+  setEventPricing: (id, payload) => request(`/admin/events/${id}/pricing`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  recalcEventPrice: (id) => request(`/admin/events/${id}/recalc-price`, { method: 'POST' }),
+  promoteEvent: (id) => request(`/admin/events/${id}/promote`, { method: 'POST' }),
+  deleteEvent: (id) => request(`/admin/events/${id}`, { method: 'DELETE' }),
+
   // ניהול מתנדבים ומשימות קבועות (סעיף 24)
   volunteers: (q = '') => request(`/admin/volunteers${q}`),
   createVolunteer: (payload) => request('/admin/volunteers', { method: 'POST', body: JSON.stringify(payload) }),

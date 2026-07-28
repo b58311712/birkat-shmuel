@@ -56,9 +56,11 @@ export function suggestExtraQuantity(extra, ctx) {
   }
 }
 
-// מחשב סכום סופי (סעיף 16.2): בסיס + תוספות + חיובים ידניים - הנחות
-export function calcFinal({ baseAmount, extrasAmount, manualCharges, discounts }) {
-  const final = baseAmount + extrasAmount + manualCharges - discounts;
+// מחשב סכום סופי (סעיף 16.2): בסיס + תוספות + שורות מלאי + חיובים ידניים - הנחות
+// inventoryLines הוא סך order_inventory_lines (מיגרציה 53). ברירת מחדל 0 שומרת
+// על התנהגות זהה לכל הקוראים הקיימים שאינם מכירים את המרכיב הזה.
+export function calcFinal({ baseAmount, extrasAmount, manualCharges, discounts, inventoryLines = 0 }) {
+  const final = baseAmount + extrasAmount + Number(inventoryLines || 0) + manualCharges - discounts;
   return round2(Math.max(0, final));
 }
 

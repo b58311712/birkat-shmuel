@@ -49,6 +49,28 @@ export const PAYMENT_METHOD = {
   check: 'צ׳ק',
 };
 
+// תווית מועד: שבת מזוהה בפרשה, אירוע מזוהה בשם (מיגרציה 52).
+// מקור אמת אחד לכל המסכים שמציגים "לאיזה מועד ההזמנה שייכת", כדי שאירוע לא
+// יופיע כמקף רק בגלל ש-parasha ריק אצלו.
+export function occasionLabel(occasion) {
+  if (!occasion) return '-';
+  return (occasion.kind === 'event' ? occasion.title : occasion.parasha) || '-';
+}
+
+// סוג אירוע (מיגרציה 52)
+export const EVENT_TYPE = {
+  community: { label: 'אירוע קהילה', cls: 'bg-indigo-100 text-indigo-800' },
+  private: { label: 'אירוע פרטי', cls: 'bg-teal-100 text-teal-800' },
+};
+
+// סטטוס מועד (שבת או אירוע)
+export const OCCASION_STATUS = {
+  open: { label: 'פתוח', cls: 'bg-green-100 text-green-800' },
+  closed: { label: 'סגור', cls: 'bg-amber-100 text-amber-800' },
+  completed: { label: 'הושלם', cls: 'bg-blue-100 text-blue-800' },
+  cancelled: { label: 'בוטל', cls: 'bg-gray-200 text-gray-600' },
+};
+
 // סטטוס הזמנת רכש (סעיף 27.3)
 export const PO_STATUS = {
   draft: { label: 'טיוטה', cls: 'bg-gray-200 text-gray-700' },

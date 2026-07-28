@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
-import { Badge, ORDER_STATUS, PAYMENT_STATUS } from '../lib/status.jsx';
+import { Badge, ORDER_STATUS, PAYMENT_STATUS, occasionLabel } from '../lib/status.jsx';
 
 // היסטוריית ההזמנות של הלקוח (סעיף 5.4)
 export default function MyOrders({ customer }) {
@@ -30,7 +30,7 @@ export default function MyOrders({ customer }) {
               <div>
                 <div className="font-bold text-brand-burgundy">הזמנה {o.order_number}</div>
                 <div className="text-sm text-brand-burgundy/60">
-                  {o.shabbatot?.parasha} · {o.shabbatot?.gregorian_date}
+                  {occasionLabel(o.shabbatot)} · {o.shabbatot?.gregorian_date}
                 </div>
               </div>
               <div className="text-left">

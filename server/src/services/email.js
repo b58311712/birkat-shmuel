@@ -173,7 +173,9 @@ export function orderVars({ order, customer, shabbat }) {
   return {
     customer_name: customer?.full_name || '',
     order_number: order?.order_number || '',
-    parasha: shabbat?.parasha || '',
+    // המשתנה נקרא parasha מטעמי תאימות לנוסחי המייל הקיימים, אך הערך הוא תווית
+    // המועד: פרשה בשבת, ושם האירוע באירוע (מיגרציה 52).
+    parasha: (shabbat?.kind === 'event' ? shabbat?.title : shabbat?.parasha) || '',
     final_amount: order?.final_amount != null ? Number(order.final_amount).toFixed(2) : '',
     payment_method: PAYMENT_METHOD_HE[order?.preferred_payment_method] || '',
     payment_deadline: shabbat?.payment_deadline || '',

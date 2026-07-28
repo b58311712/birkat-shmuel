@@ -27,9 +27,12 @@ export async function ensureUpcomingShabbatot({ count = 8, from = new Date() } =
   const targets = upcomingSaturdays(count, from);
   if (!targets.length) return { requested: count, range: null, existing: 0, created_count: 0, created: [], skipped: [] };
 
+  // רק שבתות נספרות כקיימות. אירוע שנקבע במקרה לתאריך של שבת (מיגרציה 52) אינו
+  // מחליף אותה, והאינדקס הייחודי החלקי מאפשר לשתיהן להתקיים באותו תאריך.
   const { data: existingRows, error: selErr } = await supabase
     .from('shabbatot')
     .select('gregorian_date')
+    .eq('kind', 'shabbat')
     .in('gregorian_date', targets);
   if (selErr) throw selErr;
   const existing = new Set((existingRows || []).map((r) => r.gregorian_date));

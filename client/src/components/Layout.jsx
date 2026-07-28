@@ -14,11 +14,12 @@ export const adminMenuGroups = [
   },
   {
     id: 'orders',
-    label: 'הזמנות ושבת',
+    label: 'הזמנות ומועדים',
     items: [
       { to: '/admin/orders', label: 'הזמנות' },
       { to: '/admin/feedback', label: 'משובי לקוחות' },
       { to: '/admin/shabbat', label: 'תיקי שבת' },
+      { to: '/admin/events', label: 'אירועים' },
       { to: '/admin/print-form', label: 'דף הזמנה להדפסה' },
     ],
   },

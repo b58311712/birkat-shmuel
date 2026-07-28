@@ -11,7 +11,7 @@ async function loadByToken(token) {
   if (!token || String(token).length < 32) return null;
   const { data, error } = await supabase
     .from('order_feedback')
-    .select('id, order_id, status, token_expires_at, overall_rating, food_rating, quantity_rating, delivery_rating, comment, completed_at, orders(order_number, customers(full_name), shabbatot(parasha, hebrew_date, gregorian_date))')
+    .select('id, order_id, status, token_expires_at, overall_rating, food_rating, quantity_rating, delivery_rating, comment, completed_at, orders(order_number, customers(full_name), shabbatot(kind, title, parasha, hebrew_date, gregorian_date))')
     .eq('token_hash', hashFeedbackToken(token))
     .maybeSingle();
   if (error) throw error;

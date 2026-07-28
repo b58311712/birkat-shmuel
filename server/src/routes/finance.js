@@ -29,8 +29,10 @@ function yearKey(dateStr) {
 router.get('/summary', asyncHandler(async (req, res) => {
   // הזמנות פעילות עם השבת שלהן (לצורך קיבוץ הכנסות לפי שבת/חודש/שנה)
   const [ordersRes, paymentsRes, supPaymentsRes, expensesRes, refundsRes, pettyRes] = await Promise.all([
+    // אירועים נכללים במכוון: הם הכנסה לכל דבר. התווית מגיעה מ-title לאירוע
+    // ומ-parasha לשבת (מיגרציה 52), ו-kind מאפשר את הפילוח בין השניים.
     supabase.from('orders')
-      .select('id, order_number, final_amount, payment_status, order_status, shabbat_id, shabbatot(parasha, gregorian_date)')
+      .select('id, order_number, final_amount, payment_status, order_status, shabbat_id, shabbatot(kind, title, event_type, parasha, gregorian_date)')
       .in('order_status', ACTIVE),
     supabase.from('customer_payments').select('order_id, amount, paid_at'),
     supabase.from('supplier_payments').select('supplier_id, amount_paid, invoice_amount, status, paid_at, suppliers(name)'),
@@ -73,17 +75,33 @@ router.get('/summary', asyncHandler(async (req, res) => {
   const byShabbat = new Map();   // shabbat_id -> { label, date, expected, paid }
   const byMonth = new Map();     // YYYY-MM   -> { expected, paid }
   const byYear = new Map();      // YYYY      -> { expected, paid }
+  // פילוח הכנסות לפי סוג המועד: שבתות מול אירועי קהילה מול אירועים פרטיים.
+  const byKind = {
+    shabbat: { label: 'שבתות', expected: 0, paid: 0, count: 0 },
+    community: { label: 'אירועי קהילה', expected: 0, paid: 0, count: 0 },
+    private: { label: 'אירועים פרטיים', expected: 0, paid: 0, count: 0 },
+  };
 
   for (const o of orders) {
     const gdate = o.shabbatot?.gregorian_date || null;
     const expected = Number(o.final_amount || 0);
     const paid = paidByOrder.get(o.id) || 0;
+    const isEvent = o.shabbatot?.kind === 'event';
+
+    const kindKey = isEvent ? (o.shabbatot?.event_type || 'community') : 'shabbat';
+    if (byKind[kindKey]) {
+      byKind[kindKey].expected = round2(byKind[kindKey].expected + expected);
+      byKind[kindKey].paid = round2(byKind[kindKey].paid + paid);
+      byKind[kindKey].count += 1;
+    }
 
     const sKey = o.shabbat_id;
     if (sKey) {
       const cur = byShabbat.get(sKey) || {
         shabbat_id: sKey,
-        label: o.shabbatot?.parasha || '-',
+        label: (isEvent ? o.shabbatot?.title : o.shabbatot?.parasha) || '-',
+        kind: o.shabbatot?.kind || 'shabbat',
+        event_type: o.shabbatot?.event_type || null,
         date: gdate,
         expected: 0, paid: 0,
       };
@@ -189,7 +207,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
     .map((o) => ({
       id: o.id,
       order_number: o.order_number,
-      shabbat: o.shabbatot?.parasha || null,
+      shabbat: (o.shabbatot?.kind === 'event' ? o.shabbatot?.title : o.shabbatot?.parasha) || null,
       final_amount: round2(Number(o.final_amount || 0)),
       paid: round2(paidByOrder.get(o.id) || 0),
       balance: round2(Number(o.final_amount || 0) - (paidByOrder.get(o.id) || 0)),
@@ -222,6 +240,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
       by_shabbat: incomeByShabbat,
       by_month: incomeByMonth,
       by_year: incomeByYear,
+      by_kind: byKind,
     },
     expenses: {
       total: expensesTotal,

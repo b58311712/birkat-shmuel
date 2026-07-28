@@ -102,12 +102,31 @@ export default function AdminFinance({ onAuthError }) {
           )}
         </FinancePanel>
 
-        <FinancePanel title="הכנסות לפי שבת" subtitle="צפוי מול שולם">
+        <FinancePanel title="הכנסות לפי סוג מועד" subtitle="שבתות מול אירועים">
+          {!income.by_kind ? <Empty>אין נתוני הכנסות.</Empty> : (
+            <FinanceTable head={['סוג', 'הזמנות', 'צפוי', 'שולם', 'יתרה']}>
+              {Object.entries(income.by_kind).map(([key, row]) => (
+                <tr key={key}>
+                  <td className="px-5 py-4 font-bold">{row.label}</td>
+                  <td className="px-4 py-4 text-sm text-[#82777b] tabular-nums">{row.count}</td>
+                  <MoneyCell value={row.expected} /><MoneyCell value={row.paid} muted /><MoneyCell value={round2(row.expected - row.paid)} />
+                </tr>
+              ))}
+            </FinanceTable>
+          )}
+        </FinancePanel>
+
+        <FinancePanel title="הכנסות לפי מועד" subtitle="צפוי מול שולם, לכל שבת ואירוע">
           {income.by_shabbat.length === 0 ? <Empty>אין הזמנות פעילות.</Empty> : (
-            <FinanceTable head={['שבת', 'תאריך', 'צפוי', 'שולם', 'יתרה']}>
+            <FinanceTable head={['מועד', 'תאריך', 'צפוי', 'שולם', 'יתרה']}>
               {income.by_shabbat.map((row) => (
                 <tr key={row.shabbat_id}>
-                  <td className="px-5 py-4 font-bold">{row.label}</td>
+                  <td className="px-5 py-4 font-bold">
+                    {row.label}
+                    {row.kind === 'event' && (
+                      <span className="mr-2 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-800">אירוע</span>
+                    )}
+                  </td>
                   <td className="px-4 py-4 text-sm text-[#82777b]" dir="ltr">{row.date || '-'}</td>
                   <MoneyCell value={row.expected} /><MoneyCell value={row.paid} muted /><MoneyCell value={round2(row.expected - row.paid)} />
                 </tr>

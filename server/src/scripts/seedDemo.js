@@ -91,7 +91,11 @@ async function main() {
   }
 
   const parashot = weeks.map((w) => w.parasha).filter(Boolean);
-  const existing = await supabase.from('shabbatot').select('id, gregorian_date').in('gregorian_date', weeks.map((w) => w.dateStr));
+  // מוחקים ויוצרים מחדש רק שבתות. אירועים (מיגרציה 52) אינם חלק מזריעת הדמו
+  // ואסור שיימחקו רק בגלל שנקבעו לאותו תאריך.
+  const existing = await supabase.from('shabbatot').select('id, gregorian_date')
+    .eq('kind', 'shabbat')
+    .in('gregorian_date', weeks.map((w) => w.dateStr));
   if (existing.data?.length) await supabase.from('shabbatot').delete().in('id', existing.data.map((s) => s.id));
 
   for (const { dateStr, parasha } of weeks) {

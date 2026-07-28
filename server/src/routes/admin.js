@@ -12,7 +12,7 @@ const router = Router();
 
 const USER_SELECT = 'id, full_name, email, phone, role, is_active, notes, last_login_at, created_at, updated_at';
 const USER_ROLES = ['developer', 'manager', 'coordinator'];
-const CUSTOMER_SELECT = 'id, first_name, last_name, full_name, phone, phone_normalized, email, address, status, internal_notes, created_at, updated_at';
+const CUSTOMER_SELECT = 'id, first_name, last_name, full_name, phone, phone_normalized, email, address, status, internal_notes, is_organization, created_at, updated_at';
 const CUSTOMER_STATUSES = ['active', 'pending_approval', 'inactive', 'blocked'];
 const ORDER_PAYMENT_METHODS = ['cash', 'bank_transfer', 'check'];
 
@@ -67,6 +67,9 @@ function cleanCustomerPayload(body, { partial = false } = {}) {
   if (!partial || body.internal_notes !== undefined) {
     update.internal_notes = body.internal_notes ? String(body.internal_notes).trim() : null;
   }
+  // גורם משלם שאינו אדם פרטי (מיגרציה 54). שם הארגון נכנס כולו ל-first_name,
+  // כי full_name הוא עמודה מחושבת ושם ארגון אינו מתפצל לפרטי/משפחה.
+  if (body.is_organization !== undefined) update.is_organization = !!body.is_organization;
 
   return { update };
 }
@@ -131,6 +134,13 @@ router.get('/customers', asyncHandler(async (req, res) => {
     .from('customers')
     .select(CUSTOMER_SELECT)
     .order('created_at', { ascending: false });
+
+  // גורמים משלמים שאינם אנשים פרטיים (ועד הקהילה, קרן) הם רשומות לקוח לצורך
+  // הגבייה בלבד (מיגרציה 54), ואינם חלק מרשימת הלקוחות. בורר המשלם באירוע
+  // מבקש אותם במפורש עם include_organizations.
+  if (String(req.query.include_organizations || '') !== '1') {
+    q = q.eq('is_organization', false);
+  }
 
   if (req.query.status) q = q.eq('status', req.query.status);
   if (req.query.search) {
@@ -247,7 +257,7 @@ router.get('/customers/:id', asyncHandler(async (req, res) => {
 
   const { data: orders, error: ordersErr } = await supabase
     .from('orders')
-    .select('id, order_number, order_status, payment_status, final_amount, created_at, shabbatot(parasha, gregorian_date)')
+    .select('id, order_number, order_status, payment_status, final_amount, created_at, shabbatot(kind, title, parasha, gregorian_date)')
     .eq('customer_id', req.params.id)
     .order('created_at', { ascending: false });
   if (ordersErr) throw ordersErr;
@@ -468,7 +478,7 @@ router.delete('/users/:id', requireRole('developer'), asyncHandler(async (req, r
 router.get('/orders', asyncHandler(async (req, res) => {
   let q = supabase
     .from('orders')
-    .select('*, customers(full_name, phone), shabbatot(parasha, gregorian_date)')
+    .select('*, customers(full_name, phone), shabbatot(kind, title, parasha, gregorian_date)')
     .order('created_at', { ascending: false });
 
   if (req.query.status) q = q.eq('order_status', req.query.status);
@@ -483,7 +493,7 @@ router.get('/orders', asyncHandler(async (req, res) => {
 router.get('/orders/:id', asyncHandler(async (req, res) => {
   const { data: order, error } = await supabase
     .from('orders')
-    .select('*, customers(full_name, phone, email, address), shabbatot(parasha, hebrew_date, gregorian_date)')
+    .select('*, customers(full_name, phone, email, address), shabbatot(kind, title, parasha, hebrew_date, gregorian_date)')
     .eq('id', req.params.id).single();
   if (error) throw error;
 
@@ -871,10 +881,12 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString(); // לפני 7 ימים (ISO)
   const ACTIVE = ['pending_approval', 'approved', 'needs_correction', 'delivered'];
 
-  // השבת הקרובה = השבת הפעילה הבאה מהיום (כולל היום)
+  // השבת הקרובה = השבת הפעילה הבאה מהיום (כולל היום). אירועים מסוננים - הכרטיס
+  // הזה מדבר על שבת, ואירוע קרוב יותר לא אמור לתפוס את מקומה (מיגרציה 52).
   const { data: nextShabbat } = await supabase
     .from('shabbatot')
     .select('id, parasha, hebrew_date, gregorian_date, payment_deadline')
+    .eq('kind', 'shabbat')
     .gte('gregorian_date', today)
     .order('gregorian_date', { ascending: true })
     .limit(1)
@@ -1015,7 +1027,7 @@ router.post('/orders/payment-reminders', asyncHandler(async (req, res) => {
 
   const { data: orders, error } = await supabase
     .from('orders')
-    .select('id, order_number, final_amount, preferred_payment_method, customer_id, shabbat_id, customers(full_name, email), shabbatot(parasha, payment_deadline)')
+    .select('id, order_number, final_amount, preferred_payment_method, customer_id, shabbat_id, customers(full_name, email), shabbatot(kind, title, parasha, payment_deadline)')
     .eq('order_status', 'approved')
     .in('payment_status', ['unpaid', 'partially_paid']);
   if (error) throw error;

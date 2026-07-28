@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import {
   Badge, ORDER_STATUS, PAYMENT_STATUS, REFUND_STATUS, DELIVERY_METHOD, PAYMENT_METHOD,
+  occasionLabel,
 } from '../lib/status.jsx';
 
 // פירוט הזמנה מלא לניהול - כל השדות כפי שהתקבלו מהטופס + פעולות (סעיף 9.3, 11)
@@ -63,7 +64,7 @@ export default function AdminOrderView({ onAuthError, currentAdmin }) {
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4 pb-4 border-b border-brand-cream-dark">
           <div>
             <h1 className="text-2xl font-extrabold text-brand-burgundy">הזמנה {order.order_number}</h1>
-            <p className="text-brand-burgundy/60">{order.shabbatot?.parasha} · {order.shabbatot?.gregorian_date}</p>
+            <p className="text-brand-burgundy/60">{occasionLabel(order.shabbatot)} · {order.shabbatot?.gregorian_date}</p>
             {order.created_at && (
               <p className="text-sm text-brand-burgundy/50 mt-0.5">
                 בוצעה בתאריך {new Date(order.created_at).toLocaleString('he-IL')}

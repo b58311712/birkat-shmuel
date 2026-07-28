@@ -68,9 +68,11 @@ export function formatHebrewDate(value) {
   return `${hebrewNumber(day)} ${month} ${hebrewNumber(Number(year) % 1000)}`;
 }
 
+// כותרת המועד: פרשה בשבת, שם האירוע באירוע (מיגרציה 52).
+// אירוע שקודם לתיק עבודה מלא מוצג במסכי תיק השבת, ובלי זה היה מופיע בלי שם.
 export function formatShabbatTitle(shabbat) {
   if (!shabbat) return '';
-  return shabbat.parasha || '';
+  return (shabbat.kind === 'event' ? shabbat.title : shabbat.parasha) || '';
 }
 
 export function formatShabbatHebrewDate(shabbat) {

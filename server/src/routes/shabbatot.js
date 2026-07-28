@@ -1,4 +1,8 @@
 // שבתות (סעיף 8)
+//
+// מאז מיגרציה 52 טבלת shabbatot מכילה גם אירועים (kind='event'). כל שליפת
+// *רשימה* כאן חייבת לסנן kind='shabbat', אחרת אירוע פרטי של חבר קהילה יוצג
+// לכל הקהילה בטופס ההזמנה. האירועים נשלפים דרך /api/admin/events בלבד.
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { asyncHandler } from '../lib/helpers.js';
@@ -13,6 +17,7 @@ router.get('/open', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('shabbatot')
     .select('id, parasha, hebrew_date, gregorian_date, status, payment_deadline')
+    .eq('kind', 'shabbat')
     .eq('status', 'open')
     .gte('gregorian_date', today)
     .lte('gregorian_date', inMonth)
@@ -26,6 +31,7 @@ router.get('/', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('shabbatot')
     .select('*')
+    .eq('kind', 'shabbat')
     .order('gregorian_date', { ascending: false });
   if (error) throw error;
   res.json(data);

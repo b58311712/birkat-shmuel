@@ -17,6 +17,7 @@ import AdminOrders from './pages/AdminOrders.jsx';
 import AdminOrderView from './pages/AdminOrderView.jsx';
 import AdminOrderEdit from './pages/AdminOrderEdit.jsx';
 import ShabbatFiles from './pages/ShabbatFiles.jsx';
+import AdminEvents from './pages/AdminEvents.jsx';
 import ShabbatFile from './pages/ShabbatFile.jsx';
 import AdminVolunteers from './pages/AdminVolunteers.jsx';
 import AdminInventory from './pages/AdminInventory.jsx';
@@ -120,6 +121,11 @@ export default function App() {
           <Route path="/admin/shabbat" element={
             <AdminShell admin={admin} onAdminLogout={adminLogout}>
               <ShabbatFiles onAuthError={adminLogout} currentAdmin={admin} />
+            </AdminShell>
+          } />
+          <Route path="/admin/events" element={
+            <AdminShell admin={admin} onAdminLogout={adminLogout}>
+              <AdminEvents onAuthError={adminLogout} currentAdmin={admin} />
             </AdminShell>
           } />
           <Route path="/admin/shabbat/:id" element={

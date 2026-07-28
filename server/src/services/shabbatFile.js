@@ -46,7 +46,8 @@ async function loadShabbatOrders(shabbatId) {
       customers ( full_name, phone ),
       order_meal_slots ( meal_slot_id, portions ),
       order_meals ( meal_slot_id, meal_id, meal_name_snapshot, portions ),
-      order_extras ( extra_id, actual_quantity )
+      order_extras ( extra_id, actual_quantity ),
+      order_inventory_lines ( inventory_item_id, item_name_snapshot, quantity, unit_id )
     `)
     .eq('shabbat_id', shabbatId)
     .order('order_number');
@@ -82,6 +83,11 @@ export async function buildSummary(shabbatId) {
   return {
     shabbat: {
       id: shabbat.id,
+      // kind/title מבדילים בין שבת לאירוע שקודם לתיק מלא (מיגרציה 52).
+      // הכותרת בממשק נגזרת מהם דרך formatShabbatTitle.
+      kind: shabbat.kind,
+      title: shabbat.title,
+      event_type: shabbat.event_type,
       parasha: shabbat.parasha,
       hebrew_date: shabbat.hebrew_date,
       gregorian_date: shabbat.gregorian_date,
@@ -137,6 +143,21 @@ function computeQuantitiesByExtra(orders) {
     }
   }
   return quantityByExtra;
+}
+
+// עוזר משותף: אוסף את שורות המלאי החופשיות (מיגרציה 53) מכל ההזמנות התפעוליות.
+// בשונה ממאכל ומתוספת, אין כאן מכפיל - הכמות שהוזנה היא הכמות הנצרכת.
+// מחזיר מערך שטוח של שורות (ולא מפה), כי אותו פריט יכול להופיע בכמה הזמנות
+// ביחידות הזנה שונות, וההמרה ליחידת הבסיס קורית בשלב מאוחר יותר.
+function collectDirectInventoryLines(orders) {
+  const lines = [];
+  for (const o of orders) {
+    if (!isOperational(o)) continue;
+    for (const line of o.order_inventory_lines || []) {
+      if (Number(line.quantity || 0) > 0) lines.push(line);
+    }
+  }
+  return lines;
 }
 
 // לשונית כמויות ומטבח (סעיף 9.4, 21):
@@ -379,6 +400,18 @@ export async function buildInventoryReport(shabbatId) {
   // אחת, ולכן המכפיל הוא סך יחידות החיוב שהוזמנו בשבת.
   for (const rl of await fetchExtraRecipeLines(extraIds)) {
     addRequirement(rl, quantityByExtra[rl.extra_id] || 0);
+  }
+
+  // שורות מלאי חופשיות (מיגרציה 53): פריט שנצרך ישירות בלי מאכל מתווך. הכמות
+  // מוחלטת ולכן המכפיל 1. מותאם לצורת שורת מתכון כדי לעבור באותו addRequirement.
+  for (const line of collectDirectInventoryLines(orders)) {
+    addRequirement({
+      inventory_item_id: line.inventory_item_id,
+      ingredient_name: line.item_name_snapshot,
+      quantity_per_portion: line.quantity,
+      unit_id: line.unit_id,
+      unit: null,
+    }, 1);
   }
 
   const itemIds = [...new Set([

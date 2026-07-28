@@ -57,10 +57,14 @@ async function deleteOrder(orderId) {
 }
 
 // GET /api/admin/shabbat-files - רשימת שבתות עם ספירת הזמנות (לבחירת תיק)
+//
+// נכללים כל השבתות, ובנוסף אירועים שקודמו לתיק עבודה מלא (use_full_workfile).
+// אירוע שלא קודם מנוהל במסך האירועים הקל ואינו מופיע כאן (מיגרציה 52).
 router.get('/', asyncHandler(async (req, res) => {
   const { data: shabbatot, error } = await supabase
     .from('shabbatot')
-    .select('id, parasha, hebrew_date, gregorian_date, status, payment_deadline')
+    .select('id, kind, title, parasha, hebrew_date, gregorian_date, status, payment_deadline')
+    .or('kind.eq.shabbat,use_full_workfile.eq.true')
     .order('gregorian_date', { ascending: false });
   if (error) throw error;
 

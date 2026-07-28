@@ -44,9 +44,15 @@ router.post('/', asyncHandler(async (req, res) => {
     return fail(res, 400, 'יש לבחור אמצעי תשלום תקין.');
 
   // --- שבת חייבת להיות פתוחה (סעיף 8.4) ---
+  // הנתיב הזה הוא ההזמנה העצמית של הלקוח, ולכן מוגבל לשבתות בלבד. הזמנת אירוע
+  // נוצרת רק במשרד דרך /api/admin/events (מיגרציה 52). הבדיקה כאן היא ההגנה
+  // האמיתית: סינון הרשימה ב-/shabbatot/open מסתיר את האירוע, אך אינו מונע
+  // שליחת מזהה אירוע ישירות.
   const { data: shabbat, error: shErr } = await supabase
-    .from('shabbatot').select('id, status, parasha, payment_deadline').eq('id', b.shabbat_id).single();
+    .from('shabbatot').select('id, kind, status, parasha, payment_deadline').eq('id', b.shabbat_id).single();
   if (shErr) throw shErr;
+  if (shabbat.kind !== 'shabbat')
+    return fail(res, 400, 'לא ניתן להזמין למועד הזה.');
   if (shabbat.status !== 'open')
     return fail(res, 400, 'השבת שנבחרה סגורה להזמנות.');
 
@@ -154,7 +160,7 @@ async function sendOrderEmails({ order, shabbat, customerId }) {
 router.get('/customer/:customerId', asyncHandler(async (req, res) => {
   const { data, error } = await supabase
     .from('orders')
-    .select('*, shabbatot(parasha, hebrew_date, gregorian_date)')
+    .select('*, shabbatot(kind, title, parasha, hebrew_date, gregorian_date)')
     .eq('customer_id', req.params.customerId)
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -167,7 +173,7 @@ router.get('/customer/:customerId', asyncHandler(async (req, res) => {
 router.get('/:id', asyncHandler(async (req, res) => {
   const { data: order, error } = await supabase
     .from('orders')
-    .select('*, customers(full_name, phone), shabbatot(parasha, hebrew_date, gregorian_date)')
+    .select('*, customers(full_name, phone), shabbatot(kind, title, parasha, hebrew_date, gregorian_date)')
     .eq('id', req.params.id).single();
   if (error) throw error;
 
