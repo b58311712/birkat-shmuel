@@ -87,7 +87,7 @@ export default function AdminFinance({ onAuthError }) {
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
         <FinancePanel title="חובות לקוחות" subtitle={`${reports.customer_debts.length} יתרות פתוחות`} full>
           {reports.customer_debts.length === 0 ? <Empty>אין חובות פתוחים - כל ההזמנות הפעילות שולמו במלואן.</Empty> : (
-            <FinanceTable head={['הזמנה', 'שבת', 'סכום סופי', 'שולם', 'יתרה', '']}>
+            <FinanceTable head={['הזמנה', 'מקור', 'סכום סופי', 'שולם', 'יתרה', '']}>
               {reports.customer_debts.map((order) => (
                 <tr key={order.id}>
                   <td className="px-5 py-4 font-mono text-xs font-bold text-brand-burgundy" dir="ltr">{order.order_number}</td>
@@ -95,14 +95,18 @@ export default function AdminFinance({ onAuthError }) {
                   <MoneyCell value={order.final_amount} />
                   <MoneyCell value={order.paid} muted />
                   <MoneyCell value={order.balance} danger />
-                  <td className="px-4 py-4"><ActionIconLink as={Link} to={`/admin/orders/${order.id}`} icon="open" label="פתיחה" tone="warning" /></td>
+                  <td className="px-4 py-4">
+                    <ActionIconLink as={Link}
+                      to={order.order_kind === 'product_sale' ? '/admin/sales' : `/admin/orders/${order.id}`}
+                      icon="open" label="פתיחה" tone="warning" />
+                  </td>
                 </tr>
               ))}
             </FinanceTable>
           )}
         </FinancePanel>
 
-        <FinancePanel title="הכנסות לפי סוג מועד" subtitle="שבתות מול אירועים">
+        <FinancePanel title="הכנסות לפי סוג" subtitle="שבתות, אירועים ומכירת מוצרים">
           {!income.by_kind ? <Empty>אין נתוני הכנסות.</Empty> : (
             <FinanceTable head={['סוג', 'הזמנות', 'צפוי', 'שולם', 'יתרה']}>
               {Object.entries(income.by_kind).map(([key, row]) => (

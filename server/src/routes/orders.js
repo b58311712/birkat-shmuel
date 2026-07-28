@@ -177,10 +177,13 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .eq('id', req.params.id).single();
   if (error) throw error;
 
-  const [slots, meals, extras] = await Promise.all([
+  // שורות המלאי הן כל תוכנה של מכירת מוצרים (מיגרציה 55), ולכן בלעדיהן הלקוח
+  // היה רואה סכום לתשלום בלי לדעת על מה.
+  const [slots, meals, extras, inventoryLines] = await Promise.all([
     supabase.from('order_meal_slots').select('*, meal_slots(name)').eq('order_id', order.id),
     supabase.from('order_meals').select('*').eq('order_id', order.id),
     supabase.from('order_extras').select('*').eq('order_id', order.id),
+    supabase.from('order_inventory_lines').select('*, units(name)').eq('order_id', order.id).order('created_at'),
   ]);
 
   res.json({
@@ -188,6 +191,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     slots: slots.data || [],
     meals: meals.data || [],
     extras: extras.data || [],
+    inventory_lines: inventoryLines.data || [],
   });
 }));
 

@@ -57,6 +57,27 @@ export function occasionLabel(occasion) {
   return (occasion.kind === 'event' ? occasion.title : occasion.parasha) || '-';
 }
 
+// סוג הזמנה (מיגרציה 55)
+export const ORDER_KIND = {
+  occasion: { label: 'הזמנת מועד', cls: 'bg-brand-cream text-brand-burgundy' },
+  product_sale: { label: 'מכירת מוצרים', cls: 'bg-emerald-100 text-emerald-800' },
+};
+
+// תווית ההקשר של הזמנה: לאיזה מועד היא שייכת, או "מכירת מוצרים" כשאין מועד.
+// מקור אמת אחד לכל המסכים המציגים רשימת הזמנות, כדי שמכירה לא תופיע כמקף רק
+// בגלל ש-shabbatot ריק אצלה (מיגרציה 55).
+export function orderContextLabel(order) {
+  if (!order) return '-';
+  if (order.order_kind === 'product_sale') return ORDER_KIND.product_sale.label;
+  return occasionLabel(order.shabbatot);
+}
+
+// תאריך ההקשר של הזמנה: תאריך המועד, או תאריך המכירה כשאין מועד.
+export function orderContextDate(order) {
+  if (!order) return null;
+  return order.shabbatot?.gregorian_date || order.sale_date || null;
+}
+
 // סוג אירוע (מיגרציה 52)
 export const EVENT_TYPE = {
   community: { label: 'אירוע קהילה', cls: 'bg-indigo-100 text-indigo-800' },

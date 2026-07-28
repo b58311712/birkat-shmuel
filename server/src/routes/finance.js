@@ -29,10 +29,11 @@ function yearKey(dateStr) {
 router.get('/summary', asyncHandler(async (req, res) => {
   // הזמנות פעילות עם השבת שלהן (לצורך קיבוץ הכנסות לפי שבת/חודש/שנה)
   const [ordersRes, paymentsRes, supPaymentsRes, expensesRes, refundsRes, pettyRes] = await Promise.all([
-    // אירועים נכללים במכוון: הם הכנסה לכל דבר. התווית מגיעה מ-title לאירוע
-    // ומ-parasha לשבת (מיגרציה 52), ו-kind מאפשר את הפילוח בין השניים.
+    // אירועים ומכירות מוצרים נכללים במכוון: הם הכנסה לכל דבר. התווית מגיעה
+    // מ-title לאירוע ומ-parasha לשבת (מיגרציה 52), ו-kind מאפשר את הפילוח.
+    // למכירת מוצרים אין מועד, ולכן sale_date הוא מקור התאריך שלה (מיגרציה 55).
     supabase.from('orders')
-      .select('id, order_number, final_amount, payment_status, order_status, shabbat_id, shabbatot(kind, title, event_type, parasha, gregorian_date)')
+      .select('id, order_number, order_kind, sale_date, final_amount, payment_status, order_status, shabbat_id, shabbatot(kind, title, event_type, parasha, gregorian_date)')
       .in('order_status', ACTIVE),
     supabase.from('customer_payments').select('order_id, amount, paid_at'),
     supabase.from('supplier_payments').select('supplier_id, amount_paid, invoice_amount, status, paid_at, suppliers(name)'),
@@ -80,15 +81,19 @@ router.get('/summary', asyncHandler(async (req, res) => {
     shabbat: { label: 'שבתות', expected: 0, paid: 0, count: 0 },
     community: { label: 'אירועי קהילה', expected: 0, paid: 0, count: 0 },
     private: { label: 'אירועים פרטיים', expected: 0, paid: 0, count: 0 },
+    sale: { label: 'מכירת מוצרים', expected: 0, paid: 0, count: 0 },
   };
 
   for (const o of orders) {
-    const gdate = o.shabbatot?.gregorian_date || null;
+    const isSale = o.order_kind === 'product_sale';
+    // מכירת מוצרים אינה משויכת למועד, ולכן תאריך המכירה הוא מפתח הקיבוץ שלה.
+    // בלעדיו היא הייתה נעלמת מהכנסות לפי חודש ולפי שנה.
+    const gdate = o.shabbatot?.gregorian_date || o.sale_date || null;
     const expected = Number(o.final_amount || 0);
     const paid = paidByOrder.get(o.id) || 0;
     const isEvent = o.shabbatot?.kind === 'event';
 
-    const kindKey = isEvent ? (o.shabbatot?.event_type || 'community') : 'shabbat';
+    const kindKey = isSale ? 'sale' : (isEvent ? (o.shabbatot?.event_type || 'community') : 'shabbat');
     if (byKind[kindKey]) {
       byKind[kindKey].expected = round2(byKind[kindKey].expected + expected);
       byKind[kindKey].paid = round2(byKind[kindKey].paid + paid);
@@ -207,7 +212,10 @@ router.get('/summary', asyncHandler(async (req, res) => {
     .map((o) => ({
       id: o.id,
       order_number: o.order_number,
-      shabbat: (o.shabbatot?.kind === 'event' ? o.shabbatot?.title : o.shabbatot?.parasha) || null,
+      order_kind: o.order_kind,
+      shabbat: o.order_kind === 'product_sale'
+        ? 'מכירת מוצרים'
+        : ((o.shabbatot?.kind === 'event' ? o.shabbatot?.title : o.shabbatot?.parasha) || null),
       final_amount: round2(Number(o.final_amount || 0)),
       paid: round2(paidByOrder.get(o.id) || 0),
       balance: round2(Number(o.final_amount || 0) - (paidByOrder.get(o.id) || 0)),

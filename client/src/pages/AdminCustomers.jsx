@@ -5,7 +5,7 @@ import { Page } from '../components/Layout.jsx';
 import { ActionIconLink } from '../components/ActionIcon.jsx';
 import { DataTable } from '../components/DataTable.jsx';
 import { Drawer, useRecordNav } from '../components/Drawer.jsx';
-import { Badge, CUSTOMER_STATUS, ORDER_STATUS, PAYMENT_STATUS, occasionLabel } from '../lib/status.jsx';
+import { Badge, CUSTOMER_STATUS, ORDER_STATUS, PAYMENT_STATUS, orderContextLabel, orderContextDate } from '../lib/status.jsx';
 
 const HEADER_ALIASES = {
   givenName: ['given name', 'first name', 'שם פרטי'],
@@ -464,7 +464,10 @@ function CustomerDetailBody({ data }) {
                 {orders.map((order) => (
                   <tr key={order.id} className="border-b border-brand-cream-dark/50">
                     <td className="p-2 font-medium" dir="ltr">{order.order_number}</td>
-                    <td className="p-2">{occasionLabel(order.shabbatot)} {order.shabbatot?.gregorian_date ? `(${formatShortDate(order.shabbatot.gregorian_date)})` : ''}</td>
+                    <td className="p-2">
+                      {orderContextLabel(order)}
+                      {orderContextDate(order) ? ` (${formatShortDate(orderContextDate(order))})` : ''}
+                    </td>
                     <td className="p-2"><Badge map={ORDER_STATUS} value={order.order_status} /></td>
                     <td className="p-2"><Badge map={PAYMENT_STATUS} value={order.payment_status} /></td>
                     <td className="p-2" dir="ltr">{order.final_amount != null ? `₪${order.final_amount}` : '-'}</td>

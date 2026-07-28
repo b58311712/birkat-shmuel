@@ -231,6 +231,20 @@ export const api = {
   promoteEvent: (id) => request(`/admin/events/${id}/promote`, { method: 'POST' }),
   deleteEvent: (id) => request(`/admin/events/${id}`, { method: 'DELETE' }),
 
+  // מכירת מוצרים מהמלאי ללקוח (מיגרציה 55, סעיף 38)
+  // הגבייה עוברת בנתיבי התשלומים הרגילים (orderPayments וכו') לפי order_id,
+  // ולכן אין כאן נתיב תשלום ייעודי.
+  sales: () => request('/admin/sales'),
+  sale: (id) => request(`/admin/sales/${id}`),
+  createSale: (payload) => request('/admin/sales', { method: 'POST', body: JSON.stringify(payload) }),
+  updateSale: (id, payload) => request(`/admin/sales/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  setSaleLines: (id, lines) => request(`/admin/sales/${id}/lines`, { method: 'PUT', body: JSON.stringify({ lines }) }),
+  cancelSale: (id) => request(`/admin/sales/${id}/cancel`, { method: 'POST' }),
+  deleteSale: (id) => request(`/admin/sales/${id}`, { method: 'DELETE' }),
+  saleItemCost: (itemId, unitId) => request(
+    `/admin/sales/item-cost?item_id=${itemId}${unitId ? `&unit_id=${unitId}` : ''}`,
+  ),
+
   // ניהול מתנדבים ומשימות קבועות (סעיף 24)
   volunteers: (q = '') => request(`/admin/volunteers${q}`),
   createVolunteer: (payload) => request('/admin/volunteers', { method: 'POST', body: JSON.stringify(payload) }),

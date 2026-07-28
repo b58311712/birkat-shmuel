@@ -7,6 +7,8 @@ import { normalizePhone, isValidPhone, splitFullName, joinName } from '../lib/he
 import { hashPassword, requireRole } from '../lib/auth.js';
 import { sendTemplateEmail, orderVars, registrationVars } from '../services/email.js';
 import { createAdminNotification } from '../services/adminNotifications.js';
+import { syncSaleInventory } from '../services/productSale.js';
+import { calcFinal } from '../services/pricing.js';
 
 const router = Router();
 
@@ -86,6 +88,16 @@ async function auditDelete(req, entityType, entityId, details = null) {
 }
 
 async function deleteOrder(orderId) {
+  // מכירת מוצרים הורידה מלאי בפועל ביצירתה (מיגרציה 55). מחיקה בלי החזרה הייתה
+  // מאבדת את הכמות לתמיד, ולכן מסנכרנים ליעד ריק לפני שמוחקים.
+  const { data: order, error: kindErr } = await supabase
+    .from('orders').select('order_kind').eq('id', orderId).maybeSingle();
+  if (kindErr) throw kindErr;
+  if (order?.order_kind === 'product_sale') {
+    const sync = await syncSaleInventory(orderId, [], null);
+    if (!sync.ok) throw new Error(sync.message);
+  }
+
   await Promise.all([
     supabase.from('customer_payments').delete().eq('order_id', orderId),
     supabase.from('order_refunds').delete().eq('order_id', orderId),
@@ -257,7 +269,7 @@ router.get('/customers/:id', asyncHandler(async (req, res) => {
 
   const { data: orders, error: ordersErr } = await supabase
     .from('orders')
-    .select('id, order_number, order_status, payment_status, final_amount, created_at, shabbatot(kind, title, parasha, gregorian_date)')
+    .select('id, order_kind, sale_date, order_number, order_status, payment_status, final_amount, created_at, shabbatot(kind, title, parasha, gregorian_date)')
     .eq('customer_id', req.params.id)
     .order('created_at', { ascending: false });
   if (ordersErr) throw ordersErr;
@@ -474,13 +486,17 @@ router.delete('/users/:id', requireRole('developer'), asyncHandler(async (req, r
   res.json({ ok: true });
 }));
 
-// GET /api/admin/orders?status=&shabbat_id= - רשימת הזמנות לניהול (סעיף 9.3)
+// GET /api/admin/orders?status=&shabbat_id=&include_sales= - רשימת הזמנות לניהול (סעיף 9.3)
+//
+// מכירות מוצרים מוסתרות כברירת מחדל: אין להן מועד, והמסך שלהן הוא /admin/sales.
+// include_sales=1 מאפשר להציג את כולן יחד למי שרוצה תמונה כספית מלאה.
 router.get('/orders', asyncHandler(async (req, res) => {
   let q = supabase
     .from('orders')
     .select('*, customers(full_name, phone), shabbatot(kind, title, parasha, gregorian_date)')
     .order('created_at', { ascending: false });
 
+  if (req.query.include_sales !== '1') q = q.eq('order_kind', 'occasion');
   if (req.query.status) q = q.eq('order_status', req.query.status);
   if (req.query.shabbat_id) q = q.eq('shabbat_id', req.query.shabbat_id);
 
@@ -535,10 +551,14 @@ router.put('/orders/:id', asyncHandler(async (req, res) => {
 
   // --- טוענים את ההזמנה הקיימת ---
   const { data: order, error: getErr } = await supabase
-    .from('orders').select('id, order_status, shabbat_id').eq('id', req.params.id).single();
+    .from('orders').select('id, order_kind, order_status, shabbat_id').eq('id', req.params.id).single();
   if (getErr) throw getErr;
   if (order.order_status === 'cancelled')
     return fail(res, 409, 'לא ניתן לערוך הזמנה מבוטלת.');
+  // מכירת מוצרים אינה בנויה מסעודות ומאכלים, והנתיב הזה היה מאפס את שורות
+  // המלאי שלה ואת סכומן. העריכה שלה עוברת ב-/api/admin/sales (מיגרציה 55).
+  if (order.order_kind === 'product_sale')
+    return fail(res, 409, 'מכירת מוצרים נערכת במסך המכירות.');
 
   // --- ולידציה בסיסית ---
   if (!Array.isArray(b.slots) || b.slots.length === 0)
@@ -667,17 +687,24 @@ router.patch('/orders/:id/customer', asyncHandler(async (req, res) => {
 
 // מחשב מחדש את סכומי ההנחות/חיובים והסכום הסופי של ההזמנה מטבלאות המשנה.
 // מקור אמת יחיד - נקרא אחרי כל הוספה/מחיקה של הנחה או חיוב.
+// inventory_lines_amount (מיגרציה 53) הוא מרכיב מלא בסכום הסופי - הוא כל תוכנה
+// של מכירת מוצרים ורכיב באירוע. בלעדיו הוספת הנחה או חיוב ידני הייתה מאפסת אותו.
 async function recomputeOrderAmounts(orderId) {
   const [{ data: order }, { data: mc }, { data: dc }] = await Promise.all([
-    supabase.from('orders').select('base_amount, extras_amount').eq('id', orderId).single(),
+    supabase.from('orders').select('base_amount, extras_amount, inventory_lines_amount').eq('id', orderId).single(),
     supabase.from('order_manual_charges').select('amount').eq('order_id', orderId),
     supabase.from('order_discounts').select('discount_amount').eq('order_id', orderId),
   ]);
   const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
   const manualCharges = round2((mc || []).reduce((s, r) => s + Number(r.amount || 0), 0));
   const discounts = round2((dc || []).reduce((s, r) => s + Number(r.discount_amount || 0), 0));
-  const finalAmount = round2(Math.max(0,
-    Number(order.base_amount) + Number(order.extras_amount) + manualCharges - discounts));
+  const finalAmount = calcFinal({
+    baseAmount: Number(order.base_amount || 0),
+    extrasAmount: Number(order.extras_amount || 0),
+    inventoryLines: Number(order.inventory_lines_amount || 0),
+    manualCharges,
+    discounts,
+  });
 
   await supabase.from('orders').update({
     manual_charges_amount: manualCharges,
@@ -691,7 +718,7 @@ async function recomputeOrderAmounts(orderId) {
 // טוען הזמנה ומוודא שאינה מבוטלת - הנחות/חיובים אסורים על הזמנה מבוטלת.
 async function loadEditableOrder(res, orderId) {
   const { data: order, error } = await supabase
-    .from('orders').select('id, order_status, base_amount, extras_amount').eq('id', orderId).single();
+    .from('orders').select('id, order_kind, order_status, base_amount, extras_amount, inventory_lines_amount').eq('id', orderId).single();
   if (error || !order) { fail(res, 404, 'הזמנה לא נמצאה.'); return null; }
   if (order.order_status === 'cancelled') { fail(res, 409, 'לא ניתן לשנות הזמנה מבוטלת.'); return null; }
   return order;
@@ -711,9 +738,11 @@ router.post('/orders/:id/discounts', asyncHandler(async (req, res) => {
   const order = await loadEditableOrder(res, orderId);
   if (!order) return;
 
-  // סכום ההנחה מחושב מתוך בסיס+תוספות (לפני הנחות אחרות)
+  // סכום ההנחה מחושב מתוך בסיס+תוספות+שורות מלאי (לפני הנחות אחרות).
+  // בלי שורות המלאי הנחה על מכירת מוצרים הייתה מחושבת מתוך אפס ונעלמת בשקט.
   const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-  const amountBefore = round2(Number(order.base_amount) + Number(order.extras_amount));
+  const amountBefore = round2(Number(order.base_amount)
+    + Number(order.extras_amount) + Number(order.inventory_lines_amount || 0));
   const discountAmount = discount_type === 'percentage'
     ? round2(amountBefore * val / 100)
     : round2(Math.min(val, amountBefore));
@@ -825,8 +854,11 @@ router.post('/orders/:id/approve', asyncHandler(async (req, res) => {
   // 18.3 - מייל אישור ללקוח (כולל תזכורת לתשלום)
   const { data: customer } = await supabase
     .from('customers').select('full_name, email').eq('id', data.customer_id).maybeSingle();
-  const { data: shabbat } = await supabase
-    .from('shabbatot').select('parasha, payment_deadline').eq('id', data.shabbat_id).maybeSingle();
+  // shabbat_id ריק במכירת מוצרים (מיגרציה 55). בלי הבדיקה השאילתה הייתה
+  // נשלחת עם id=eq.null ונכשלת בהמרה ל-uuid.
+  const { data: shabbat } = data.shabbat_id
+    ? await supabase.from('shabbatot').select('parasha, payment_deadline').eq('id', data.shabbat_id).maybeSingle()
+    : { data: null };
   await sendTemplateEmail({
     code: 'order_approved',
     to: customer?.email,
@@ -1028,6 +1060,9 @@ router.post('/orders/payment-reminders', asyncHandler(async (req, res) => {
   const { data: orders, error } = await supabase
     .from('orders')
     .select('id, order_number, final_amount, preferred_payment_method, customer_id, shabbat_id, customers(full_name, email), shabbatot(kind, title, parasha, payment_deadline)')
+    // מכירת מוצרים אינה נכנסת לתזכורות: אין לה מועד ואין לה מועד תשלום, ותבנית
+    // המייל בנויה סביב שניהם. הגבייה שלה מנוהלת ידנית במסך המכירות.
+    .eq('order_kind', 'occasion')
     .eq('order_status', 'approved')
     .in('payment_status', ['unpaid', 'partially_paid']);
   if (error) throw error;

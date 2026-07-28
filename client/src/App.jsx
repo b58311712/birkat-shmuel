@@ -18,6 +18,7 @@ import AdminOrderView from './pages/AdminOrderView.jsx';
 import AdminOrderEdit from './pages/AdminOrderEdit.jsx';
 import ShabbatFiles from './pages/ShabbatFiles.jsx';
 import AdminEvents from './pages/AdminEvents.jsx';
+import AdminSales from './pages/AdminSales.jsx';
 import ShabbatFile from './pages/ShabbatFile.jsx';
 import AdminVolunteers from './pages/AdminVolunteers.jsx';
 import AdminInventory from './pages/AdminInventory.jsx';
@@ -126,6 +127,11 @@ export default function App() {
           <Route path="/admin/events" element={
             <AdminShell admin={admin} onAdminLogout={adminLogout}>
               <AdminEvents onAuthError={adminLogout} currentAdmin={admin} />
+            </AdminShell>
+          } />
+          <Route path="/admin/sales" element={
+            <AdminShell admin={admin} onAdminLogout={adminLogout}>
+              <AdminSales onAuthError={adminLogout} currentAdmin={admin} />
             </AdminShell>
           } />
           <Route path="/admin/shabbat/:id" element={

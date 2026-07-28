@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
-import { Badge, ORDER_STATUS, PAYMENT_STATUS, PAYMENT_METHOD, occasionLabel } from '../lib/status.jsx';
+import { Badge, ORDER_STATUS, PAYMENT_STATUS, PAYMENT_METHOD, orderContextLabel, orderContextDate } from '../lib/status.jsx';
 
 // צפייה בהזמנה בודדת + מסך סיכום לאחר יצירה (סעיף 18.1)
 export default function OrderView() {
@@ -18,6 +18,10 @@ export default function OrderView() {
 
   if (loading) return <Page title="הזמנה"><p>טוען...</p></Page>;
   if (!order) return <Page title="הזמנה"><p>ההזמנה לא נמצאה.</p></Page>;
+
+  // מכירת מוצרים בנויה משורות מלאי בלבד (מיגרציה 55): אין לה סעודות, מאכלים,
+  // תוספות ולא אולם, ולכן החלקים האלה מוחלפים בטבלת המוצרים שנרכשו.
+  const isSale = order.order_kind === 'product_sale';
 
   // קיבוץ מאכלים לפי סעודה
   const slotNames = Object.fromEntries((order.slots || []).map((s) => [s.meal_slot_id, s.meal_slots?.name]));
@@ -37,8 +41,10 @@ export default function OrderView() {
       <div className="card">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4 pb-4 border-b border-brand-cream-dark">
           <div>
-            <h1 className="text-2xl font-extrabold text-brand-burgundy">הזמנה {order.order_number}</h1>
-            <p className="text-brand-burgundy/60">{occasionLabel(order.shabbatot)} · {order.shabbatot?.gregorian_date}</p>
+            <h1 className="text-2xl font-extrabold text-brand-burgundy">
+              {isSale ? 'מכירה' : 'הזמנה'} {order.order_number}
+            </h1>
+            <p className="text-brand-burgundy/60">{orderContextLabel(order)} · {orderContextDate(order)}</p>
             {order.created_at && (
               <p className="text-sm text-brand-burgundy/50 mt-0.5">
                 בוצעה בתאריך {new Date(order.created_at).toLocaleString('he-IL')}
@@ -50,6 +56,25 @@ export default function OrderView() {
             <Badge map={PAYMENT_STATUS} value={order.payment_status} />
           </div>
         </div>
+
+        {/* מוצרים שנרכשו (מכירת מוצרים) */}
+        {isSale && (
+          <div className="mb-4">
+            <div className="font-bold text-brand-gold-dark mb-2">מוצרים</div>
+            {(order.inventory_lines || []).map((l) => (
+              <div key={l.id} className="flex justify-between text-sm py-1 border-b border-brand-cream-dark/50 last:border-0">
+                <span>
+                  {l.item_name_snapshot} × {Number(l.quantity)}
+                  {l.units?.name && <span className="text-brand-burgundy/50"> {l.units.name}</span>}
+                </span>
+                <span className="tabular-nums">{Number(l.line_total).toFixed(2)} ₪</span>
+              </div>
+            ))}
+            {!(order.inventory_lines || []).length && (
+              <div className="text-sm text-brand-burgundy/40">אין מוצרים במכירה.</div>
+            )}
+          </div>
+        )}
 
         {/* סעודות ומאכלים */}
         <div className="space-y-4 mb-4">
@@ -86,8 +111,9 @@ export default function OrderView() {
         )}
 
         <div className="grid sm:grid-cols-3 gap-3 mb-4 rounded-xl border border-brand-cream-dark p-3 text-sm">
-          <Detail label="שם האולם" value={order.venue_name} />
-          <Detail label="כתובת האולם" value={order.venue_address} />
+          {!isSale && <Detail label="שם האולם" value={order.venue_name} />}
+          {!isSale && <Detail label="כתובת האולם" value={order.venue_address} />}
+          {isSale && <Detail label="תאריך המכירה" value={order.sale_date} />}
           <Detail label="אמצעי תשלום" value={PAYMENT_METHOD[order.preferred_payment_method]} />
         </div>
 
@@ -100,8 +126,15 @@ export default function OrderView() {
 
         {/* סיכום מחיר */}
         <div className="bg-brand-cream/50 rounded-xl p-4 space-y-1">
-          <Row label="מחיר בסיס" value={order.base_amount} />
-          <Row label="תוספות" value={order.extras_amount} />
+          {isSale ? (
+            <Row label={'מוצרים (כולל מע"מ)'} value={order.inventory_lines_amount} />
+          ) : (
+            <>
+              <Row label="מחיר בסיס" value={order.base_amount} />
+              <Row label="תוספות" value={order.extras_amount} />
+            </>
+          )}
+          {Number(order.manual_charges_amount) > 0 && <Row label="חיובים נוספים" value={order.manual_charges_amount} />}
           {Number(order.discount_amount) > 0 && <Row label="הנחה" value={-order.discount_amount} />}
           <div className="flex justify-between font-extrabold text-lg text-brand-burgundy pt-2 border-t border-brand-cream-dark">
             <span>סה"כ לתשלום</span>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
-import { Badge, ORDER_STATUS, PAYMENT_STATUS, occasionLabel } from '../lib/status.jsx';
+import { Badge, ORDER_STATUS, PAYMENT_STATUS, orderContextLabel, orderContextDate } from '../lib/status.jsx';
 
 // היסטוריית ההזמנות של הלקוח (סעיף 5.4)
 export default function MyOrders({ customer }) {
@@ -28,9 +28,11 @@ export default function MyOrders({ customer }) {
             <Link to={`/order/${o.id}`} key={o.id}
               className="card flex items-center justify-between gap-4 hover:shadow-card-hover transition-shadow">
               <div>
-                <div className="font-bold text-brand-burgundy">הזמנה {o.order_number}</div>
+                <div className="font-bold text-brand-burgundy">
+                  {o.order_kind === 'product_sale' ? 'מכירה' : 'הזמנה'} {o.order_number}
+                </div>
                 <div className="text-sm text-brand-burgundy/60">
-                  {occasionLabel(o.shabbatot)} · {o.shabbatot?.gregorian_date}
+                  {orderContextLabel(o)} · {orderContextDate(o)}
                 </div>
               </div>
               <div className="text-left">
