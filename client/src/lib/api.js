@@ -91,6 +91,9 @@ export const api = {
   createOrder: (payload) => request('/orders', { method: 'POST', body: JSON.stringify(payload) }),
   customerOrders: (id) => request(`/orders/customer/${id}`),
   order: (id) => request(`/orders/${id}`),
+  // עריכה עצמית של הזמנה ע"י לקוח, מוגנת בקוד בן 6 ספרות (עד שבועיים לפני המועד)
+  verifyOrderEditCode: (id, code) => request(`/orders/${id}/verify-edit-code`, { method: 'POST', body: JSON.stringify({ code }) }),
+  editOrder: (id, payload) => request(`/orders/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   feedback: (token) => request(`/feedback/${encodeURIComponent(token)}`),
   saveFeedback: (token, payload) => request(`/feedback/${encodeURIComponent(token)}`, { method: 'PUT', body: JSON.stringify(payload) }),
 

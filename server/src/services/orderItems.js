@@ -1,9 +1,13 @@
-// בניית פריטי הזמנה + חישוב סכומים - משותף ליצירה (POST /orders) ולעריכה (PUT /admin/orders/:id)
+// בניית פריטי הזמנה + חישוב סכומים - משותף ליצירה (POST /orders) ולעריכה (PUT /admin/orders/:id,
+// PUT /orders/:id של הלקוח).
 // כל המחירים מחושבים בשרת מהמחירון הפעיל הנוכחי ונשמרים "קפואים" (סעיף 15.3).
 import { supabase } from '../lib/supabase.js';
 import { calcBase, suggestExtraQuantity, calcFinal, round2 } from './pricing.js';
 import { fetchSlotSplits, percentFor } from './categorySplits.js';
 import { roundUp } from '../lib/helpers.js';
+
+// אמצעי תשלום מותרים בטופס ההזמנה/עריכה - משותף ליצירה (הלקוח) ולעריכה (מנהל+לקוח).
+export const PAYMENT_METHODS = ['cash', 'bank_transfer', 'check'];
 
 // טווח המנות הסטנדרטי לסעודה. כמות מחוץ לטווח מותרת רק כ"בקשת חריג" (סעיף 12.2)
 // הדורשת אישור מודע של מנהל. אין תקרה/רצפה קשיחה - כל כמות חיובית שלמה מותרת בחריג.
@@ -281,4 +285,122 @@ export async function buildOrderItems(input) {
       final_amount: finalAmount,
     },
   };
+}
+
+// טוען את פריטי המשנה המלאים של הזמנה (סעודות עם שם+מנות, מאכלים, תוספות, שורות
+// מלאי של מכירת מוצרים) - משותף ל-GET /api/orders/:id וגם לבניית פירוט ההזמנה
+// לשליחה במייל (orderNotifications.js), כדי לא לשכפל את אותן שאילתות פעמיים.
+export async function loadOrderItems(orderId) {
+  const [slots, meals, extras, inventoryLines] = await Promise.all([
+    supabase.from('order_meal_slots').select('*, meal_slots(name)').eq('order_id', orderId),
+    supabase.from('order_meals').select('*').eq('order_id', orderId),
+    supabase.from('order_extras').select('*').eq('order_id', orderId),
+    supabase.from('order_inventory_lines').select('*, units(name)').eq('order_id', orderId).order('created_at'),
+  ]);
+  return {
+    slots: slots.data || [],
+    meals: meals.data || [],
+    extras: extras.data || [],
+    inventoryLines: inventoryLines.data || [],
+  };
+}
+
+// שומר עריכה מלאה של הזמנה (סעודות/מאכלים/תוספות/פרטי משלוח/אמצעי תשלום/הערות) -
+// משותף לעריכת מנהל (PUT /admin/orders/:id) ולעריכה עצמית של לקוח באמצעות קוד
+// (PUT /orders/:id). מניחה שהקורא כבר אימת שההזמנה קיימת, אינה מבוטלת, ואינה
+// מכירת מוצרים (order_kind='product_sale' - אין לה סעודות/מאכלים בכלל).
+// לא שולחת מייל/תשובה - זו אחריות הקורא, כדי לא לעכב את res.json מאחורי שליחת מייל.
+//   order            - השורה הקיימת (חייבת לכלול id, shabbat_id)
+//   body             - גוף הבקשה (slots/meals/extras/venue.../preferred_payment_method/notes)
+//   allowShabbatChange - true (מנהל): b.shabbat_id יכול לשנות את המועד. false (לקוח): מתעלמים
+//                        משדה זה ותמיד נשארים על shabbat_id הקיים - שינוי מועד דורש פנייה למשרד.
+//   historyAction    - טקסט שורת ההיסטוריה (למשל 'ההזמנה נערכה ע"י מנהל' / 'ע"י הלקוח')
+//   changedBy        - app_users.id של המנהל שערך, או null (לקוח/ללא זיהוי משתמש מערכת)
+// זורק Error עם .userMessage בכשל ולידציה - הקורא אחראי לתפוס ולהחזיר 400.
+export async function saveOrderEdit({ order, body, allowShabbatChange = true, historyAction, changedBy = null }) {
+  const b = body;
+
+  if (!Array.isArray(b.slots) || b.slots.length === 0) {
+    const err = new Error('missing-slots');
+    err.userMessage = 'יש לבחור לפחות סעודה אחת.';
+    throw err;
+  }
+  const venueName = String(b.venue_name || '').trim();
+  const venueAddress = String(b.venue_address || '').trim();
+  if (!venueName) {
+    const err = new Error('missing-venue-name');
+    err.userMessage = 'יש להזין את שם האולם.';
+    throw err;
+  }
+  if (!venueAddress) {
+    const err = new Error('missing-venue-address');
+    err.userMessage = 'יש להזין את כתובת האולם.';
+    throw err;
+  }
+  if (!PAYMENT_METHODS.includes(b.preferred_payment_method)) {
+    const err = new Error('invalid-payment-method');
+    err.userMessage = 'יש לבחור אמצעי תשלום תקין.';
+    throw err;
+  }
+  const shabbatId = allowShabbatChange ? (b.shabbat_id || order.shabbat_id) : order.shabbat_id;
+
+  // --- חישוב-מחדש של פריטי המשנה + סכומים (משותף עם יצירה) ---
+  const built = await buildOrderItems({
+    slots: b.slots,
+    meals: b.meals,
+    extras: b.extras,
+    orderId: order.id,
+  });
+  const { slotRows, mealRows, extraRows, amounts, exception } = built;
+
+  // --- מוודאים שתיק שבת קיים אם השבת שונתה ---
+  if (shabbatId !== order.shabbat_id) {
+    const { data: existing } = await supabase
+      .from('shabbat_files').select('id').eq('shabbat_id', shabbatId).maybeSingle();
+    if (!existing) await supabase.from('shabbat_files').insert({ shabbat_id: shabbatId });
+  }
+
+  // --- עדכון שדות ראש ההזמנה + סכומים מחושבים ---
+  const update = {
+    shabbat_id: shabbatId,
+    delivery_method: b.delivery_method || 'volunteer_transport',
+    contact_name: b.contact_name ?? null,
+    contact_phone: b.contact_phone ?? null,
+    venue_name: venueName,
+    venue_address: venueAddress,
+    transport_notes: b.transport_notes ?? null,
+    notes: String(b.notes || '').trim() || null,
+    preferred_payment_method: b.preferred_payment_method,
+    base_amount: amounts.base_amount,
+    extras_amount: amounts.extras_amount,
+    manual_charges_amount: amounts.manual_charges_amount,
+    discount_amount: amounts.discount_amount,
+    final_amount: amounts.final_amount,
+    portions_exception_requested: exception.requested,
+    portions_exception_note: exception.note,
+  };
+  const { error: updErr } = await supabase.from('orders').update(update).eq('id', order.id);
+  if (updErr) throw updErr;
+
+  // --- מחיקה ובנייה מחדש של פריטי המשנה ---
+  await Promise.all([
+    supabase.from('order_meal_slots').delete().eq('order_id', order.id),
+    supabase.from('order_meals').delete().eq('order_id', order.id),
+    supabase.from('order_extras').delete().eq('order_id', order.id),
+  ]);
+  await supabase.from('order_meal_slots').insert(slotRows.map((s) => ({ ...s, order_id: order.id })));
+  if (mealRows.length)
+    await supabase.from('order_meals').insert(mealRows.map((m) => ({ ...m, order_id: order.id })));
+  if (extraRows.length)
+    await supabase.from('order_extras').insert(extraRows.map((e) => ({ ...e, order_id: order.id })));
+
+  await supabase.from('order_history').insert({
+    order_id: order.id,
+    changed_by: changedBy,
+    action: exception.requested ? `${historyAction} (כמות מנות חריגה - ${exception.note})` : historyAction,
+  });
+
+  const { data: updated, error: getErr } = await supabase.from('orders').select('*').eq('id', order.id).single();
+  if (getErr) throw getErr;
+  return updated;
 }

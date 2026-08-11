@@ -1,13 +1,14 @@
-// יצירת וניהול הזמנות (סעיף 10, 11)
+// יצירת וניהול הזמנות (סעיף 10, 11) + עריכה עצמית של הזמנה ע"י לקוח באמצעות קוד
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { asyncHandler, fail } from '../lib/helpers.js';
-import { buildOrderItems } from '../services/orderItems.js';
+import { buildOrderItems, saveOrderEdit, loadOrderItems, PAYMENT_METHODS } from '../services/orderItems.js';
 import { createAdminNotification } from '../services/adminNotifications.js';
-import { sendTemplateEmail, orderVars, officeEmail } from '../services/email.js';
+import { sendOrderCreatedEmails, sendOrderUpdatedEmail } from '../services/orderNotifications.js';
+import { hashPassword, verifyPassword } from '../lib/auth.js';
+import { generateEditCode, isEditWindowOpen, MAX_CODE_ATTEMPTS, LOCK_MINUTES } from '../services/orderEdit.js';
 
 const router = Router();
-const PAYMENT_METHODS = ['cash', 'bank_transfer', 'check'];
 
 // ------- עזר: טוען תיק שבת קיים או פותח חדש (סעיף 8.5) -------
 async function ensureShabbatFile(shabbatId) {
@@ -49,7 +50,7 @@ router.post('/', asyncHandler(async (req, res) => {
   // האמיתית: סינון הרשימה ב-/shabbatot/open מסתיר את האירוע, אך אינו מונע
   // שליחת מזהה אירוע ישירות.
   const { data: shabbat, error: shErr } = await supabase
-    .from('shabbatot').select('id, kind, status, parasha, payment_deadline').eq('id', b.shabbat_id).single();
+    .from('shabbatot').select('id, kind, status, parasha, gregorian_date, payment_deadline').eq('id', b.shabbat_id).single();
   if (shErr) throw shErr;
   if (shabbat.kind !== 'shabbat')
     return fail(res, 400, 'לא ניתן להזמין למועד הזה.');
@@ -75,6 +76,10 @@ router.post('/', asyncHandler(async (req, res) => {
   // --- תיק שבת (סעיף 8.5) ---
   await ensureShabbatFile(b.shabbat_id);
 
+  // --- קוד עריכה (בן 6 ספרות, כמו סיסמה) - נשמר רק כ-hash, נשלח במייל פעם אחת ---
+  const editCode = generateEditCode();
+  const editCodeHash = await hashPassword(editCode);
+
   // --- יצירת ראש ההזמנה ---
   const { data: order, error: ordErr } = await supabase.from('orders').insert({
     order_number: orderNumber,
@@ -96,6 +101,7 @@ router.post('/', asyncHandler(async (req, res) => {
     final_amount: amounts.final_amount,
     portions_exception_requested: exception.requested,
     portions_exception_note: exception.note,
+    edit_code_hash: editCodeHash,
   }).select('*').single();
   if (ordErr) throw ordErr;
 
@@ -135,24 +141,10 @@ router.post('/', asyncHandler(async (req, res) => {
   res.status(201).json({ ok: true, order });
 
   // --- מיילים (סעיף 18) - ברקע, לא חוסמים את התשובה ולא מפילים את הבקשה ---
-  sendOrderEmails({ order, shabbat, customerId: b.customer_id }).catch((e) =>
-    console.warn('sendOrderEmails failed:', e.message)
+  sendOrderCreatedEmails({ order, shabbat, customerId: b.customer_id, editCode }).catch((e) =>
+    console.warn('sendOrderCreatedEmails failed:', e.message)
   );
 }));
-
-// שליחת מיילי "הזמנה חדשה" ברקע (סיכום ללקוח + התראה למנהלים). לא נזרק כלפי מעלה.
-async function sendOrderEmails({ order, shabbat, customerId }) {
-  const { data: customer } = await supabase
-    .from('customers').select('full_name, email').eq('id', customerId).maybeSingle();
-  const vars = orderVars({ order, customer, shabbat });
-
-  // 18.1 - סיכום הזמנה ללקוח (אם יש מייל)
-  await sendTemplateEmail({ code: 'order_summary', to: customer?.email, vars, orderId: order.id });
-
-  // 18.2 - התראה על הזמנה חדשה (בנוסף להתראה במסך שכבר נוצרה).
-  // נשלחת *רק* לתיבת המשרד, לא לכל המשתמשים בהרשאת מנהל.
-  await sendTemplateEmail({ code: 'new_order_manager_alert', to: officeEmail(), vars, orderId: order.id });
-}
 
 // =====================================================================
 // GET /api/orders/customer/:customerId - היסטוריית הזמנות של לקוח (סעיף 5.4)
@@ -177,22 +169,112 @@ router.get('/:id', asyncHandler(async (req, res) => {
     .eq('id', req.params.id).single();
   if (error) throw error;
 
-  // שורות המלאי הן כל תוכנה של מכירת מוצרים (מיגרציה 55), ולכן בלעדיהן הלקוח
-  // היה רואה סכום לתשלום בלי לדעת על מה.
-  const [slots, meals, extras, inventoryLines] = await Promise.all([
-    supabase.from('order_meal_slots').select('*, meal_slots(name)').eq('order_id', order.id),
-    supabase.from('order_meals').select('*').eq('order_id', order.id),
-    supabase.from('order_extras').select('*').eq('order_id', order.id),
-    supabase.from('order_inventory_lines').select('*, units(name)').eq('order_id', order.id).order('created_at'),
-  ]);
+  const items = await loadOrderItems(order.id);
 
   res.json({
     ...order,
-    slots: slots.data || [],
-    meals: meals.data || [],
-    extras: extras.data || [],
-    inventory_lines: inventoryLines.data || [],
+    slots: items.slots,
+    meals: items.meals,
+    extras: items.extras,
+    inventory_lines: items.inventoryLines,
   });
+}));
+
+// =====================================================================
+// עריכה עצמית של הזמנה ע"י לקוח, מוגנת בקוד בן 6 ספרות (נשלח במייל ביצירה) -
+// מותרת רק עד שבועיים לפני מועד השבת (isEditWindowOpen), בלי תלות בסטטוס אישור.
+// =====================================================================
+
+// טוען את ההזמנה ומאמת קוד עריכה. מחזיר { order, shabbat } בהצלחה, או
+// { status, message } לכשל - הקורא מחליט איך להגיב (fail/res).
+async function checkEditAccess(orderId, code) {
+  const { data: order, error } = await supabase
+    .from('orders')
+    .select('*, shabbatot(kind, title, parasha, gregorian_date, payment_deadline)')
+    .eq('id', orderId).maybeSingle();
+  if (error) throw error;
+  if (!order) return { status: 404, message: 'ההזמנה לא נמצאה.' };
+  if (order.order_kind !== 'occasion' || order.order_status === 'cancelled') {
+    return { status: 409, message: 'לא ניתן לערוך הזמנה זו.' };
+  }
+  if (!order.edit_code_hash) {
+    return { status: 409, message: 'לא זמינה עריכה עצמאית להזמנה זו. יש לפנות למשרד.' };
+  }
+  if (order.edit_code_locked_until && new Date(order.edit_code_locked_until) > new Date()) {
+    return { status: 429, message: 'יותר מדי ניסיונות עם קוד שגוי. נא לנסות שוב מאוחר יותר, או לפנות למשרד.' };
+  }
+  const shabbat = order.shabbatot;
+  if (!isEditWindowOpen(shabbat?.gregorian_date)) {
+    return { status: 403, message: 'לא ניתן לערוך הזמנה פחות משבועיים לפני מועד השבת. יש לפנות למשרד.' };
+  }
+
+  const valid = await verifyPassword(String(code || ''), order.edit_code_hash);
+  if (!valid) {
+    const attempts = (order.edit_code_attempts || 0) + 1;
+    const update = { edit_code_attempts: attempts };
+    if (attempts >= MAX_CODE_ATTEMPTS) {
+      update.edit_code_locked_until = new Date(Date.now() + LOCK_MINUTES * 60 * 1000).toISOString();
+    }
+    await supabase.from('orders').update(update).eq('id', order.id);
+    return { status: 401, message: 'קוד שגוי.' };
+  }
+
+  // איפוס מונה הניסיונות בהצלחה
+  await supabase.from('orders').update({ edit_code_attempts: 0, edit_code_locked_until: null }).eq('id', order.id);
+
+  return { order, shabbat };
+}
+
+// POST /api/orders/:id/verify-edit-code - אימות קוד + החזרת ההזמנה המלאה למילוי טופס עריכה
+router.post('/:id/verify-edit-code', asyncHandler(async (req, res) => {
+  const result = await checkEditAccess(req.params.id, req.body?.code);
+  if (result.status) return fail(res, result.status, result.message);
+
+  const { order, shabbat } = result;
+  const items = await loadOrderItems(order.id);
+  res.json({
+    ...order,
+    shabbatot: shabbat,
+    slots: items.slots,
+    meals: items.meals,
+    extras: items.extras,
+  });
+}));
+
+// PUT /api/orders/:id - עריכה עצמית מלאה ע"י הלקוח (סעודות/מאכלים/תוספות/משלוח),
+// לא כולל שינוי השבת עצמה. body: { code, ...כמו PUT /api/admin/orders/:id }
+router.put('/:id', asyncHandler(async (req, res) => {
+  const result = await checkEditAccess(req.params.id, req.body?.code);
+  if (result.status) return fail(res, result.status, result.message);
+  const { order, shabbat } = result;
+
+  let updated;
+  try {
+    updated = await saveOrderEdit({
+      order,
+      body: req.body,
+      allowShabbatChange: false,
+      historyAction: 'ההזמנה נערכה ע"י הלקוח',
+    });
+  } catch (e) {
+    if (e.userMessage) return fail(res, 400, e.userMessage);
+    throw e;
+  }
+
+  await createAdminNotification({
+    notification_type: 'order_edited',
+    entity_table: 'orders',
+    entity_id: updated.id,
+    title: 'הזמנה נערכה ע"י הלקוח',
+    body: `הזמנה ${updated.order_number}`,
+    link_path: `/admin/orders/${updated.id}`,
+  });
+
+  res.json({ ok: true, order: updated });
+
+  sendOrderUpdatedEmail({ order: updated, shabbat, customerId: updated.customer_id }).catch((e) =>
+    console.warn('sendOrderUpdatedEmail failed:', e.message)
+  );
 }));
 
 export default router;

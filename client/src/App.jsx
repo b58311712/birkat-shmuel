@@ -10,6 +10,7 @@ import AdminLogin from './pages/AdminLogin.jsx';
 import NewOrder from './pages/NewOrder.jsx';
 import MyOrders from './pages/MyOrders.jsx';
 import OrderView from './pages/OrderView.jsx';
+import OrderEdit from './pages/OrderEdit.jsx';
 import AdminDashboard from './pages/AdminDashboard.jsx';
 import AdminCustomers from './pages/AdminCustomers.jsx';
 import AdminRegistrations from './pages/AdminRegistrations.jsx';
@@ -222,6 +223,7 @@ export default function App() {
           <Route path="/new-order" element={<Shell customer={customer} onLogout={logout}><NewOrder customer={customer} /></Shell>} />
           <Route path="/my-orders" element={<Shell customer={customer} onLogout={logout}><MyOrders customer={customer} /></Shell>} />
           <Route path="/order/:id" element={<Shell customer={customer} onLogout={logout}><OrderView /></Shell>} />
+          <Route path="/order/:id/edit" element={<Shell customer={customer} onLogout={logout}><OrderEdit /></Shell>} />
           <Route path="*" element={<Navigate to="/new-order" replace />} />
         </>
       )}

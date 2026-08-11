@@ -2,10 +2,11 @@
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { asyncHandler, fail } from '../lib/helpers.js';
-import { buildOrderItems } from '../services/orderItems.js';
+import { saveOrderEdit } from '../services/orderItems.js';
 import { normalizePhone, isValidPhone, splitFullName, joinName } from '../lib/helpers.js';
 import { hashPassword, requireRole } from '../lib/auth.js';
 import { sendTemplateEmail, orderVars, registrationVars } from '../services/email.js';
+import { sendOrderUpdatedEmail } from '../services/orderNotifications.js';
 import { createAdminNotification } from '../services/adminNotifications.js';
 import { syncSaleInventory } from '../services/productSale.js';
 import { calcFinal } from '../services/pricing.js';
@@ -16,7 +17,6 @@ const USER_SELECT = 'id, full_name, email, phone, role, is_active, notes, last_l
 const USER_ROLES = ['developer', 'manager', 'coordinator'];
 const CUSTOMER_SELECT = 'id, first_name, last_name, full_name, phone, phone_normalized, email, address, status, internal_notes, is_organization, created_at, updated_at';
 const CUSTOMER_STATUSES = ['active', 'pending_approval', 'inactive', 'blocked'];
-const ORDER_PAYMENT_METHODS = ['cash', 'bank_transfer', 'check'];
 
 function cleanEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -546,12 +546,11 @@ router.delete('/orders/:id', requireRole('developer'), asyncHandler(async (req, 
 
 // PUT /api/admin/orders/:id - עריכה מלאה של הזמנה ע"י מנהל (שבת, אספקה, סעודות, מאכלים, תוספות)
 // המחירים מחושבים מחדש בשרת מהמחירון הפעיל (כמו ביצירה). לא ניתן לערוך הזמנה מבוטלת.
+// הליבה משותפת עם עריכת הלקוח (PUT /api/orders/:id) דרך saveOrderEdit (orderItems.js).
 router.put('/orders/:id', asyncHandler(async (req, res) => {
-  const b = req.body;
-
   // --- טוענים את ההזמנה הקיימת ---
   const { data: order, error: getErr } = await supabase
-    .from('orders').select('id, order_kind, order_status, shabbat_id').eq('id', req.params.id).single();
+    .from('orders').select('id, order_kind, order_status, shabbat_id, customer_id').eq('id', req.params.id).single();
   if (getErr) throw getErr;
   if (order.order_status === 'cancelled')
     return fail(res, 409, 'לא ניתן לערוך הזמנה מבוטלת.');
@@ -560,82 +559,26 @@ router.put('/orders/:id', asyncHandler(async (req, res) => {
   if (order.order_kind === 'product_sale')
     return fail(res, 409, 'מכירת מוצרים נערכת במסך המכירות.');
 
-  // --- ולידציה בסיסית ---
-  if (!Array.isArray(b.slots) || b.slots.length === 0)
-    return fail(res, 400, 'יש לבחור לפחות סעודה אחת.');
-  const venueName = String(b.venue_name || '').trim();
-  const venueAddress = String(b.venue_address || '').trim();
-  if (!venueName) return fail(res, 400, 'יש להזין את שם האולם.');
-  if (!venueAddress) return fail(res, 400, 'יש להזין את כתובת האולם.');
-  if (!ORDER_PAYMENT_METHODS.includes(b.preferred_payment_method))
-    return fail(res, 400, 'יש לבחור אמצעי תשלום תקין.');
-  const shabbatId = b.shabbat_id || order.shabbat_id;
-
-  // --- חישוב-מחדש של פריטי המשנה + סכומים (משותף עם יצירה) ---
-  let built;
+  let updated;
   try {
-    built = await buildOrderItems({
-      slots: b.slots,
-      meals: b.meals,
-      extras: b.extras,
-      orderId: order.id,
+    updated = await saveOrderEdit({
+      order,
+      body: req.body,
+      allowShabbatChange: true,
+      historyAction: 'ההזמנה נערכה ע"י מנהל',
+      changedBy: req.appUser?.sub || null,
     });
   } catch (e) {
     if (e.userMessage) return fail(res, 400, e.userMessage);
     throw e;
   }
-  const { slotRows, mealRows, extraRows, amounts, exception } = built;
 
-  // --- מוודאים שתיק שבת קיים אם השבת שונתה ---
-  if (shabbatId !== order.shabbat_id) {
-    const { data: existing } = await supabase
-      .from('shabbat_files').select('id').eq('shabbat_id', shabbatId).maybeSingle();
-    if (!existing) await supabase.from('shabbat_files').insert({ shabbat_id: shabbatId });
-  }
-
-  // --- עדכון שדות ראש ההזמנה + סכומים מחושבים ---
-  const update = {
-    shabbat_id: shabbatId,
-    delivery_method: b.delivery_method || 'volunteer_transport',
-    contact_name: b.contact_name ?? null,
-    contact_phone: b.contact_phone ?? null,
-    venue_name: venueName,
-    venue_address: venueAddress,
-    transport_notes: b.transport_notes ?? null,
-    notes: String(b.notes || '').trim() || null,
-    preferred_payment_method: b.preferred_payment_method,
-    base_amount: amounts.base_amount,
-    extras_amount: amounts.extras_amount,
-    manual_charges_amount: amounts.manual_charges_amount,
-    discount_amount: amounts.discount_amount,
-    final_amount: amounts.final_amount,
-    portions_exception_requested: exception.requested,
-    portions_exception_note: exception.note,
-  };
-  const { error: updErr } = await supabase.from('orders').update(update).eq('id', order.id);
-  if (updErr) throw updErr;
-
-  // --- מחיקה ובנייה מחדש של פריטי המשנה ---
-  await Promise.all([
-    supabase.from('order_meal_slots').delete().eq('order_id', order.id),
-    supabase.from('order_meals').delete().eq('order_id', order.id),
-    supabase.from('order_extras').delete().eq('order_id', order.id),
-  ]);
-  await supabase.from('order_meal_slots').insert(slotRows.map((s) => ({ ...s, order_id: order.id })));
-  if (mealRows.length)
-    await supabase.from('order_meals').insert(mealRows.map((m) => ({ ...m, order_id: order.id })));
-  if (extraRows.length)
-    await supabase.from('order_extras').insert(extraRows.map((e) => ({ ...e, order_id: order.id })));
-
-  await supabase.from('order_history').insert({
-    order_id: order.id, changed_by: req.appUser?.sub || null,
-    action: exception.requested
-      ? `ההזמנה נערכה ע"י מנהל (כמות מנות חריגה - ${exception.note})`
-      : 'ההזמנה נערכה ע"י מנהל',
-  });
-
-  const { data: updated } = await supabase.from('orders').select('*').eq('id', order.id).single();
   res.json({ ok: true, order: updated });
+
+  // מייל עדכון ללקוח עם פירוט ההזמנה המלא לאחר העריכה - ברקע, לא חוסם את התשובה.
+  sendOrderUpdatedEmail({ order: updated, customerId: updated.customer_id }).catch((e) =>
+    console.warn('sendOrderUpdatedEmail failed:', e.message)
+  );
 }));
 
 // PATCH /api/admin/orders/:id/customer - עדכון פרטי הלקוח של ההזמנה (שם/טלפון/דוא"ל/כתובת)

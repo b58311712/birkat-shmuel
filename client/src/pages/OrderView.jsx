@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { Badge, ORDER_STATUS, PAYMENT_STATUS, PAYMENT_METHOD, orderContextLabel, orderContextDate } from '../lib/status.jsx';
+import { canEditOrder } from '../lib/orderEdit.js';
 
 // צפייה בהזמנה בודדת + מסך סיכום לאחר יצירה (סעיף 18.1)
 export default function OrderView() {
   const { id } = useParams();
   const [sp] = useSearchParams();
+  const nav = useNavigate();
   const created = sp.get('created') === '1';
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [editModalOpen, setEditModalOpen] = useState(false);
 
   useEffect(() => {
     api.order(id).then(setOrder).finally(() => setLoading(false));
@@ -51,9 +54,16 @@ export default function OrderView() {
               </p>
             )}
           </div>
-          <div className="flex gap-1">
-            <Badge map={ORDER_STATUS} value={order.order_status} />
-            <Badge map={PAYMENT_STATUS} value={order.payment_status} />
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex gap-1">
+              <Badge map={ORDER_STATUS} value={order.order_status} />
+              <Badge map={PAYMENT_STATUS} value={order.payment_status} />
+            </div>
+            {canEditOrder(order) && (
+              <button type="button" className="btn-ghost text-sm" onClick={() => setEditModalOpen(true)}>
+                ✎ ערוך הזמנה
+              </button>
+            )}
           </div>
         </div>
 
@@ -146,7 +156,65 @@ export default function OrderView() {
       <div className="mt-4">
         <Link to="/my-orders" className="btn-ghost">← חזרה להזמנות שלי</Link>
       </div>
+
+      {editModalOpen && (
+        <EditCodeModal
+          orderId={order.id}
+          onClose={() => setEditModalOpen(false)}
+          onVerified={(fullOrder, code) => nav(`/order/${order.id}/edit`, { state: { order: fullOrder, code } })}
+        />
+      )}
     </Page>
+  );
+}
+
+// מודאל הזנת קוד עריכה - אימות מוקדם לפני מעבר למסך העריכה, כדי שקוד שגוי
+// ייתפס כאן ולא רק בשמירה בסוף הטופס.
+function EditCodeModal({ orderId, onClose, onVerified }) {
+  const [codeInput, setCodeInput] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(e) {
+    e.preventDefault();
+    setVerifying(true);
+    setError('');
+    try {
+      const data = await api.verifyOrderEditCode(orderId, codeInput.trim());
+      onVerified(data, codeInput.trim());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-burgundy-dark/55 p-3 sm:p-6">
+      <section className="w-full max-w-sm rounded-xl bg-white shadow-card border border-brand-cream-dark p-5">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <h2 className="text-lg font-extrabold text-brand-burgundy">קוד עריכה</h2>
+          <button type="button" onClick={onClose} className="btn-ghost px-3 py-1.5" aria-label="סגירה">×</button>
+        </div>
+        <p className="text-sm text-brand-burgundy/60 mb-4">
+          נא להזין את קוד העריכה בן 6 הספרות שנשלח במייל בעת יצירת ההזמנה.
+        </p>
+        {error && <div className="bg-red-50 text-red-700 rounded-xl p-3 mb-3">{error}</div>}
+        <form onSubmit={submit} className="space-y-3">
+          <input
+            className="input w-full text-center text-2xl tracking-[0.5em]"
+            value={codeInput}
+            onChange={(e) => setCodeInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="000000"
+            inputMode="numeric"
+            autoFocus
+          />
+          <button type="submit" className="btn-primary w-full" disabled={verifying || codeInput.length !== 6}>
+            {verifying ? 'בודק...' : 'המשך לעריכה'}
+          </button>
+        </form>
+      </section>
+    </div>
   );
 }
 

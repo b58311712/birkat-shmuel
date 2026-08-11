@@ -15,8 +15,9 @@ import { supabase } from '../lib/supabase.js';
 import { renderBrandedEmail } from './emailTemplate.js';
 import { isGmailApiConfigured, sendViaGmailApi } from './gmailApi.js';
 
-// תיאורים בעברית לאמצעי תשלום - לשימוש ב-placeholder {payment_method}
-const PAYMENT_METHOD_HE = {
+// תיאורים בעברית לאמצעי תשלום - לשימוש ב-placeholder {payment_method}, ומיוצא
+// גם לבניית פירוט ההזמנה המלא (orderDetailsText.js).
+export const PAYMENT_METHOD_HE = {
   bank_transfer: 'העברה בנקאית',
   cash: 'מזומן',
   check: 'צ׳ק',
