@@ -46,7 +46,7 @@ async function loadShabbatOrders(shabbatId) {
       customers ( full_name, phone ),
       order_meal_slots ( meal_slot_id, portions ),
       order_meals ( meal_slot_id, meal_id, meal_name_snapshot, portions ),
-      order_extras ( extra_id, actual_quantity ),
+      order_extras ( extra_id, extra_name_snapshot, actual_quantity ),
       order_inventory_lines ( inventory_item_id, item_name_snapshot, quantity, unit_id )
     `)
     .eq('shabbat_id', shabbatId)
@@ -107,9 +107,12 @@ export async function buildSummary(shabbatId) {
 // עוזר משותף: צובר סך המנות לכל מאכל על פני כל ההזמנות התפעוליות של השבת.
 // המנות של מאכל = מנות הסעודה שאליה הוא שייך באותה הזמנה. מאכל שנבחר בכמה
 // סעודות/הזמנות - נסכם את כולן (סעיף 21.2, בלי הפרדה). משמש מטבח + מלאי.
-// מחזיר { portionsByMeal, nameByMeal }.
+// portionsByMealSlot שומר גם את הפירוט לפי סעודה - משמש קטגוריות עם
+// round_prep_by_slot (עיגול כמות הכנה בנפרד לכל סעודה, סעיף 21).
+// מחזיר { portionsByMeal, portionsByMealSlot, nameByMeal }.
 function computePortionsByMeal(orders) {
   const portionsByMeal = {}; // meal_id -> total portions
+  const portionsByMealSlot = {}; // meal_id -> { meal_slot_id -> portions }
   const nameByMeal = {}; // meal_id -> שם תצוגה (snapshot אחרון)
   for (const o of orders) {
     if (!isOperational(o)) continue;
@@ -122,10 +125,12 @@ function computePortionsByMeal(orders) {
       const p = om.portions != null ? Number(om.portions) : (slotMap[om.meal_slot_id] || 0);
       if (!p) continue;
       portionsByMeal[om.meal_id] = (portionsByMeal[om.meal_id] || 0) + p;
+      const bySlot = (portionsByMealSlot[om.meal_id] ||= {});
+      bySlot[om.meal_slot_id] = (bySlot[om.meal_slot_id] || 0) + p;
       nameByMeal[om.meal_id] = om.meal_name_snapshot;
     }
   }
-  return { portionsByMeal, nameByMeal };
+  return { portionsByMeal, portionsByMealSlot, nameByMeal };
 }
 
 // עוזר משותף: צובר את הכמות שהוזמנה לכל תוספת בתשלום (ביחידות החיוב שלה) על פני
@@ -164,11 +169,14 @@ function collectDirectInventoryLines(orders) {
 //   - סך מנות לכל מאכל (איחוד כל הסעודות, בלי הפרדה - סעיף 21.2)
 //   - קיבוץ לפי קטגוריה
 //   - חומרי גלם לפי מתכונים * מנות, כמות מדויקת + מעוגלת (סעיף 21.3, 21.4)
+//   - קטגוריה עם round_prep_by_slot (למשל סלטים): הכמות המעוגלת מחושבת בנפרד
+//     לכל סעודה (מנות הסעודה * כמות-למנה) ומעוגלת לחצי הקרוב, ואז מסוכמת -
+//     במקום עיגול כלפי מעלה על סך מנות השבת מכל הסעודות יחד.
 export async function buildKitchenReport(shabbatId) {
   const { shabbat, orders } = await loadShabbatOrders(shabbatId);
   if (!shabbat) return null;
 
-  const { portionsByMeal, nameByMeal } = computePortionsByMeal(orders);
+  const { portionsByMeal, portionsByMealSlot, nameByMeal } = computePortionsByMeal(orders);
   const mealIds = Object.keys(portionsByMeal);
   if (mealIds.length === 0) {
     return { shabbat_id: shabbatId, categories: [], total_portions: 0 };
@@ -183,7 +191,7 @@ export async function buildKitchenReport(shabbatId) {
       supabase.from('recipe_lines')
         .select('meal_id, ingredient_name, quantity_per_portion, unit')
         .in('meal_id', mealIds),
-      supabase.from('categories').select('id, name, display_order'),
+      supabase.from('categories').select('id, name, display_order, round_prep_by_slot'),
     ]);
   if (mErr) throw mErr;
   if (rErr) throw rErr;
@@ -206,19 +214,26 @@ export async function buildKitchenReport(shabbatId) {
     const portions = portionsByMeal[mealId];
     grandTotalPortions += portions;
 
+    const catId = meal?.category_id || '_uncat';
+    const cat = catById[catId] || { id: catId, name: 'ללא קטגוריה', display_order: 999 };
+
     const ingredients = (recipesByMeal[mealId] || []).map((rl) => {
-      const exact = Number(rl.quantity_per_portion) * portions;
+      const qtyPerPortion = Number(rl.quantity_per_portion);
+      const exact = qtyPerPortion * portions;
+      const rounded = cat.round_prep_by_slot
+        // כל סעודה בנפרד: מנות הסעודה * כמות-למנה, מעוגל לחצי הקרוב, ואז מסוכם.
+        ? round4(Object.values(portionsByMealSlot[mealId] || {})
+            .reduce((sum, slotPortions) => sum + roundToNearestHalf(qtyPerPortion * slotPortions), 0))
+        : roundUp(exact);   // עיגול כללי כלפי מעלה (סעיף 21.4)
       return {
         ingredient_name: rl.ingredient_name,
         unit: rl.unit,
-        quantity_per_portion: Number(rl.quantity_per_portion),
+        quantity_per_portion: qtyPerPortion,
         exact_quantity: round4(exact),
-        rounded_quantity: roundUp(exact),   // עיגול כללי כלפי מעלה (סעיף 21.4)
+        rounded_quantity: rounded,
       };
     });
 
-    const catId = meal?.category_id || '_uncat';
-    const cat = catById[catId] || { id: catId, name: 'ללא קטגוריה', display_order: 999 };
     (catBuckets[catId] ||= { category: cat, meals: [] }).meals.push({
       meal_id: mealId,
       name: nameByMeal[mealId] || meal?.name || 'מאכל',
@@ -791,33 +806,51 @@ export async function buildVolunteerReport(shabbatId) {
   };
 }
 
-// דוח פירוט ללקוח (סעיף 33.6): לכל הזמנה תפעולית - המאכלים שהזמין לפי סעודה,
+// דוח פירוט ללקוח (סעיף 33.6): לכל הזמנה תפעולית - המאכלים שהזמין לפי סעודה
+// (כולל פירוט האריזה של כל מאכל - סעיף 22, מאחד את דוח האריזה הנפרד לתוך דף זה),
 // ללא מחיר וללא מצב תשלום. דף זה נשאר אצל הלקוח עם האוכל.
 export async function buildCustomerSlips(shabbatId) {
   const { shabbat, orders } = await loadShabbatOrders(shabbatId);
   if (!shabbat) return null;
 
   const opOrders = orders.filter(isOperational);
-  const { data: slots, error: slErr } = await supabase
-    .from('meal_slots').select('id, name, display_order').order('display_order');
+  const mealIds = [...new Set(opOrders.flatMap((o) => (o.order_meals || []).map((m) => m.meal_id)))];
+
+  const [{ data: slots, error: slErr }, { data: rules, error: rErr }] = await Promise.all([
+    supabase.from('meal_slots').select('id, name, display_order').order('display_order'),
+    mealIds.length
+      ? supabase.from('packing_rules')
+          .select('meal_id, packaging_label, portions_per_package')
+          .in('meal_id', mealIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
   if (slErr) throw slErr;
+  if (rErr) throw rErr;
   const slotName = Object.fromEntries((slots || []).map((s) => [s.id, s.name]));
   const slotOrder = Object.fromEntries((slots || []).map((s) => [s.id, s.display_order ?? 999]));
+  const rulesByMeal = {};
+  for (const r of rules || []) (rulesByMeal[r.meal_id] ||= []).push(r);
 
   const ordersOut = opOrders.map((o) => {
     const portionsBySlot = Object.fromEntries(
       (o.order_meal_slots || []).map((ms) => [ms.meal_slot_id, Number(ms.portions || 0)]),
     );
-    // מקבצים מאכלים לפי סעודה
+    // מקבצים מאכלים לפי סעודה, וליד כל מאכל - באיזו אריזה ובאיזו כמות הוא יוצא
     const bySlot = {};
     for (const om of o.order_meals || []) {
       const sid = om.meal_slot_id;
+      // כמות המאכל: הכמות שלו אם הקטגוריה מחלקת מנות, אחרת כל מנות הסעודה (כמו בדוח אריזה).
+      const p = om.portions != null ? Number(om.portions) : (portionsBySlot[sid] || 0);
       // בקטגוריה שמחלקת מנות מציגים גם את הכמות לצד שם המאכל (למשל "סלמון × 30").
-      const label = om.portions != null
+      const name = om.portions != null
         ? `${om.meal_name_snapshot} × ${Number(om.portions)}`
         : om.meal_name_snapshot;
+      const packages = (rulesByMeal[om.meal_id] || []).map((r) => ({
+        packaging_label: r.packaging_label,
+        count: p > 0 ? roundUp(p / Number(r.portions_per_package)) : 0,
+      }));
       (bySlot[sid] ||= { slot_id: sid, slot_name: slotName[sid] || 'סעודה', portions: portionsBySlot[sid] || 0, meals: [] })
-        .meals.push(label);
+        .meals.push({ meal_id: om.meal_id, name, packages });
     }
     const slotsOut = Object.values(bySlot)
       .sort((a, b) => (slotOrder[a.slot_id] ?? 999) - (slotOrder[b.slot_id] ?? 999));
@@ -832,6 +865,11 @@ export async function buildCustomerSlips(shabbatId) {
       venue_address: o.venue_address,
       total_portions: Object.values(portionsBySlot).reduce((a, b) => a + b, 0),
       slots: slotsOut,
+      extras: (o.order_extras || []).map((e) => ({
+        extra_id: e.extra_id,
+        name: e.extra_name_snapshot,
+        quantity: Number(e.actual_quantity),
+      })),
     };
   });
 
@@ -839,18 +877,18 @@ export async function buildCustomerSlips(shabbatId) {
 }
 
 // לשונית הדפסות / תיק עבודה (סעיף 9.9, 33): מרכז את כל הדוחות לתיק עבודה אחד
-// להדפסה - שער, סיכום, מטבח, חומרי גלם וחוסרים, אריזה, שינוע, מתנדבים, ופירוט ללקוח.
+// להדפסה - שער, סיכום, מטבח, חומרי גלם וחוסרים, שינוע, מתנדבים, ופירוט ללקוח
+// (פירוט האריזה לכל מאכל מאוחד לתוך דף פירוט הלקוח - אין דוח אריזה נפרד כאן).
 // מאחד את בוני הדוחות הקיימים בקריאה אחת כדי שהפרונט יפיק מסמך מרוכז אחד.
 export async function buildWorkFile(shabbatId) {
   const { shabbat } = await loadShabbatOrders(shabbatId);
   if (!shabbat) return null;
 
-  const [summary, kitchen, inventory, packing, transport, volunteers, customerSlips] =
+  const [summary, kitchen, inventory, transport, volunteers, customerSlips] =
     await Promise.all([
       buildSummary(shabbatId),
       buildKitchenReport(shabbatId),
       buildInventoryReport(shabbatId),
-      buildPackingReport(shabbatId),
       buildTransportReport(shabbatId),
       buildVolunteerReport(shabbatId),
       buildCustomerSlips(shabbatId),
@@ -862,7 +900,6 @@ export async function buildWorkFile(shabbatId) {
     summary,
     kitchen,
     inventory,
-    packing,
     transport,
     volunteers,
     customer_slips: customerSlips,
@@ -871,4 +908,10 @@ export async function buildWorkFile(shabbatId) {
 
 function round4(n) {
   return Math.round((Number(n) + Number.EPSILON) * 10000) / 10000;
+}
+
+// עיגול לחצי הקרוב ביותר (למשל 1.6 -> 1.5, 2.26 -> 2.5) - סעיף 21.4 לקטגוריות
+// עם round_prep_by_slot.
+function roundToNearestHalf(n) {
+  return Math.round(Number(n) * 2) / 2;
 }

@@ -156,57 +156,27 @@ export function OrderBuilderForm({
     return map;
   }, [catalog]);
 
-  // מפתחות המאכלים שנוצרו ע"י ירושה (`childSlotId:mealId`) - מסומנים בבורר כנעולים
-  // ואינם נספרים במכסת התוספת. הערך במפה עבורם הוא הסמל 'inherited'.
-  const inheritedKeys = useMemo(() => {
-    const s = new Set();
-    for (const [key, v] of Object.entries(meals)) {
-      if (v === 'inherited') s.add(key);
-    }
-    return s;
-  }, [meals]);
-
-  // סנכרון ירושה: בכל שינוי בבחירת סעודת-האב, המאכלים היורשים בסעודות היעד
-  // מסונכרנים אוטומטית. תוספות ידניות בבוקר (ערך true) לא נגעות.
+  // גיזום: מאכל שנבחר בסעודת-יעד של קטגוריה יורשת אך בוטל בסעודת-האב - מוסר
+  // אוטומטית, כי מאגר המועמדים המותרים בסעודת-היעד הוא בדיוק מה שנבחר בסעודת-האב.
   useEffect(() => {
     if (!catalog || Object.keys(inheritByCategory).length === 0) return;
-    // מזהי הסעודות שנבחרו כרגע (יש בהן מנות) - רק אליהן משוכפלת הירושה.
-    const activeSlotIds = new Set(selectedSlots.map((s) => s.meal_slot_id));
-
     setMeals((prev) => {
       let changed = false;
       const next = { ...prev };
-      // הירושים שאמורים להתקיים כעת: לכל קטגוריה יורשת, כל מאכל שנבחר בסעודת-האב
-      // מסומן בכל סעודת-יעד פעילה שהמאכל זמין בה (ושאינה סעודת-האב עצמה).
-      const shouldExist = new Set();
-      for (const meal of catalog.meals) {
+      for (const key of Object.keys(prev)) {
+        const [slotId, mealId] = key.split(':');
+        const meal = catalog.meals.find((m) => m.id === mealId);
+        if (!meal) continue;
         const inh = inheritByCategory[meal.category_id];
-        if (!inh) continue;
-        const parentKey = `${inh.parentSlotId}:${meal.id}`;
-        if (!Object.prototype.hasOwnProperty.call(prev, parentKey)) continue; // לא נבחר בלילה
-        for (const slotId of activeSlotIds) {
-          if (slotId === inh.parentSlotId) continue;
-          if (!meal.available_slot_ids.includes(slotId)) continue;
-          shouldExist.add(`${slotId}:${meal.id}`);
-        }
-      }
-      // הוספת ירושים חסרים (בלי לדרוס תוספת ידנית קיימת של אותו מאכל).
-      for (const key of shouldExist) {
-        if (!Object.prototype.hasOwnProperty.call(next, key)) {
-          next[key] = 'inherited';
-          changed = true;
-        }
-      }
-      // הסרת ירושים שכבר אינם רלוונטיים (בוטלו בלילה / הסעודה נסגרה).
-      for (const [key, v] of Object.entries(next)) {
-        if (v === 'inherited' && !shouldExist.has(key)) {
+        if (!inh || inh.parentSlotId === slotId) continue;
+        if (!Object.prototype.hasOwnProperty.call(prev, `${inh.parentSlotId}:${mealId}`)) {
           delete next[key];
           changed = true;
         }
       }
       return changed ? next : prev;
     });
-  }, [catalog, inheritByCategory, meals, selectedSlots]);
+  }, [catalog, inheritByCategory, meals]);
 
   const orderPreview = useMemo(() => {
     if (!catalog) return { slots: [], extras: [] };
@@ -273,8 +243,6 @@ export function OrderBuilderForm({
   function toggleMeal(slotId, mealId) {
     const key = `${slotId}:${mealId}`;
     setMeals((m) => {
-      // מאכל ירוש נעול - לא ניתן לבטלו ידנית (מבוטל רק ע"י ביטול בסעודת-האב).
-      if (m[key] === 'inherited') return m;
       const next = { ...m };
       // "נבחר" = המפתח קיים (הערך יכול להיות 0 בקטגוריה במצב equal).
       if (Object.prototype.hasOwnProperty.call(next, key)) {
@@ -480,7 +448,6 @@ export function OrderBuilderForm({
                   slotPortions={selectedSlots.find((s) => s.meal_slot_id === meal_slot_id)?.portions || 0}
                   selectedMeals={meals}
                   inheritByCategory={inheritByCategory}
-                  inheritedKeys={inheritedKeys}
                   onToggleMeal={toggleMeal}
                   onSetMealPortions={setMealPortions}
                 />

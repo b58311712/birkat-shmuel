@@ -12,7 +12,7 @@ import {
 
 const router = Router();
 
-const CATEGORY_SELECT = 'id, name, internal_description, display_order, recommended_min, max_allowed, requires_portion_split, split_mode, primary_percent, secondary_percent, inherit_from_slot_id, extra_allowed, is_active, created_at, updated_at';
+const CATEGORY_SELECT = 'id, name, internal_description, display_order, recommended_min, max_allowed, requires_portion_split, split_mode, primary_percent, secondary_percent, inherit_from_slot_id, extra_allowed, round_prep_by_slot, is_active, created_at, updated_at';
 const MEAL_SELECT = 'id, name, category_id, included_in_base, requires_extra_charge, extra_charge_amount, is_secondary, has_recipe, has_quantity, has_packaging, kitchen_prep_notes, kitchen_report_notes, preparation_instructions, display_order, is_active, created_at, updated_at, category:category_id (id, name)';
 
 const SPLIT_MODES = ['none', 'equal', 'additive'];
@@ -81,6 +81,10 @@ function normalizeCategory(body, { partial = false } = {}) {
     patch.inherit_from_slot_id = body.inherit_from_slot_id ? String(body.inherit_from_slot_id) : null;
   }
   if (!partial || body.extra_allowed !== undefined) patch.extra_allowed = intOrNull(body.extra_allowed);
+  // עיגול כמות הכנה בנפרד לכל סעודה (סעיף 21, למשל סלטים): ברירת מחדל כבוי.
+  if (!partial || body.round_prep_by_slot !== undefined) {
+    patch.round_prep_by_slot = Boolean(body.round_prep_by_slot);
+  }
   if (body.is_active !== undefined) patch.is_active = Boolean(body.is_active);
 
   if (patch.recommended_min != null && patch.recommended_min < 0) return { error: 'מינימום מומלץ לא יכול להיות שלילי.' };

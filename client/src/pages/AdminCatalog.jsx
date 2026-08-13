@@ -1188,6 +1188,7 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel, embedded = false }
     secondary_percent: initial.secondary_percent ?? 50,
     inherit_from_slot_id: initial.inherit_from_slot_id || '',
     extra_allowed: initial.extra_allowed ?? '',
+    round_prep_by_slot: initial.round_prep_by_slot ?? false,
     meal_slot_ids: initial.meal_slot_ids || [],
     // דריסת אחוזי החלוקה פר-סעודה: { [slotId]: { primary_percent, secondary_percent } }.
     // שדה ריק = "לפי ברירת המחדל" (האחוז הכללי של הקטגוריה למטה).
@@ -1292,6 +1293,15 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel, embedded = false }
           </div>
         )}
       </Field>
+      <Field label="חישוב כמות הכנה">
+        <label className="flex items-center gap-2 text-sm text-brand-burgundy">
+          <input type="checkbox" checked={f.round_prep_by_slot} onChange={(e) => set('round_prep_by_slot', e.target.checked)} />
+          לחשב ולעגל את כמות ההכנה בנפרד לכל סעודה (לחצי הקרוב), ולא כלפי מעלה על סך מנות השבת
+        </label>
+        <p className="mt-1 text-xs text-brand-burgundy/60">
+          מיועד לקטגוריות עם כמות-למנה קבועה כמו סלטים (למשל 0.04 ליטר/ק"ג לסועד). ברירת המחדל: עיגול כלפי מעלה על סך כל מנות השבת.
+        </p>
+      </Field>
       <Field label="קטגוריה רלוונטית לסעודות">
         <CheckboxGrid
           options={mealSlots}
@@ -1315,7 +1325,7 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel, embedded = false }
               ))}
           </select>
           {f.inherit_from_slot_id && (
-            <Field label="כמה מותר להוסיף בסעודה היורשת">
+            <Field label="כמה ניתן לבחור בסעודה היורשת מתוך מה שנבחר בסעודת-האב">
               <input type="number" min="0" value={f.extra_allowed}
                 onChange={(e) => set('extra_allowed', e.target.value)} className={inputCls} dir="ltr" placeholder="0" />
             </Field>
@@ -1323,8 +1333,9 @@ function CategoryForm({ initial, mealSlots, onSave, onCancel, embedded = false }
         </div>
         {f.inherit_from_slot_id && (
           <p className="mt-1 text-xs text-brand-burgundy/60">
-            בסעודות האחרות של קטגוריה זו, המאכלים שנבחרו בסעודת-האב יסומנו אוטומטית (נעולים),
-            והלקוח יוכל להוסיף עד המספר שהוגדר. בסעודת-האב עצמה חל כלל "מקסימום מותר" הרגיל.
+            בסעודות האחרות של קטגוריה זו, הלקוח בוחר ידנית אילו מאכלים - רק מתוך אלו
+            שכבר נבחרו בסעודת-האב (לא ניתן להוסיף מאכל חדש שלא נבחר שם) - עד המספר
+            שהוגדר כאן. בסעודת-האב עצמה חל כלל "מקסימום מותר" הרגיל.
           </p>
         )}
       </Field>

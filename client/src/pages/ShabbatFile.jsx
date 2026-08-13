@@ -1281,32 +1281,66 @@ function PrintTable({ head, children }) {
   );
 }
 
+// רשימת הדוחות הניתנים לבחירה בלשונית הדפסות - רק המסומנים נכנסים ל-.print-area (סעיף 33)
+const PRINT_REPORTS = [
+  { key: 'workSlips', label: 'דוח עבודה מרוכז' },
+  { key: 'cooking', label: 'שיבוץ מבשלים' },
+  { key: 'volunteers', label: 'שיבוץ מתנדבים' },
+  { key: 'customerSlips', label: 'פירוט ללקוח' },
+  { key: 'kitchen', label: 'דוח עבודה למטבח' },
+  { key: 'inventory', label: 'חומרי גלם וחוסרים' },
+  { key: 'transport', label: 'דוח שינוע' },
+  { key: 'summary', label: 'סיכום הזמנות' },
+];
+
 function PrintTab({ id, onAuthError }) {
   const [data, setData] = useState(null);
+  const [selected, setSelected] = useState(() => Object.fromEntries(PRINT_REPORTS.map((r) => [r.key, r.key === 'workSlips'])));
   useEffect(() => { api.shabbatWorkFile(id).then(setData).catch(onAuthError); }, [id, onAuthError]);
 
   if (!data) return <p>טוען...</p>;
+
+  const toggleReport = (key) => setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
+  const anySelected = PRINT_REPORTS.some((r) => selected[r.key]);
 
   const sh = data.shabbat;
   const genDate = new Date(data.generated_at).toLocaleString('he-IL');
   const s = data.summary;
   const k = data.kitchen;
   const inv = data.inventory;
-  const pk = data.packing;
   const tr = data.transport;
   const vol = data.volunteers;
   const slips = data.customer_slips;
 
   const hasOperational = (s?.operational_orders || 0) > 0;
 
+  // דוח עבודה מרוכז פנימי (סעיף 33.6/33.7): מבשל לכל מאכל + שאר משימות ההתנדבות
+  const cookByMeal = Object.fromEntries((vol?.cooking_meals || []).map((m) => [m.meal_id, m]));
+  const otherVolunteerTasks = (vol?.tasks || []).filter((t) => !t.area_is_cooking);
+
   return (
     <div>
       {/* סרגל פעולות - לא מודפס */}
-      <div className="no-print flex items-center justify-between flex-wrap gap-2 mb-4 card">
-        <div className="text-sm text-brand-burgundy/70">
-          תיק עבודה מרוכז לשבת - מוכן להדפסה. הופק: {genDate}
+      <div className="no-print card mb-4">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <div className="text-sm text-brand-burgundy/70">
+            תיק עבודה מרוכז לשבת - מוכן להדפסה. הופק: {genDate}
+          </div>
+          <div className="flex items-center gap-3">
+            {!anySelected && <span className="text-sm text-red-700">לא נבחרו דוחות להדפסה</span>}
+            <button onClick={() => window.print()} disabled={!anySelected} className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed">
+              🖨️ הדפסת תיק העבודה
+            </button>
+          </div>
         </div>
-        <button onClick={() => window.print()} className="btn-primary">🖨️ הדפסת תיק העבודה</button>
+        <div className="flex flex-wrap gap-x-5 gap-y-2 pt-3 border-t border-brand-cream-dark">
+          {PRINT_REPORTS.map((r) => (
+            <label key={r.key} className="flex items-center gap-1.5 text-sm text-brand-burgundy cursor-pointer">
+              <input type="checkbox" checked={!!selected[r.key]} onChange={() => toggleReport(r.key)} />
+              {r.label}
+            </label>
+          ))}
+        </div>
       </div>
 
       {!hasOperational && (
@@ -1318,40 +1352,94 @@ function PrintTab({ id, onAuthError }) {
 
       {/* אזור ההדפסה בפועל */}
       <div className="print-area bg-white">
-        {/* 1. עמוד שער (סעיף 33.2) */}
-        <section className="print-section text-center py-10 print-avoid">
-          <div className="text-brand-gold-dark font-bold text-lg mb-2">מטבח החסד · ברכת שמואל</div>
-          <h1 className="text-4xl font-extrabold text-brand-burgundy mb-2">תיק עבודה לשבת</h1>
-          <div className="text-2xl text-brand-burgundy mt-4">{formatShabbatTitle(sh) || '-'}</div>
-          <div className="text-sm font-medium text-brand-gold-dark/90 mt-1">{formatShabbatHebrewDate(sh)}</div>
-          <div className="text-brand-burgundy/70">{formatGregorianDate(sh?.gregorian_date)}</div>
-          <div className="inline-grid grid-cols-2 gap-x-8 gap-y-1 mt-8 text-brand-burgundy text-sm text-right">
-            <span className="text-brand-burgundy/60">סך הזמנות:</span><span className="font-bold">{s?.total_orders ?? 0}</span>
-            <span className="text-brand-burgundy/60">נכנסות להכנות:</span><span className="font-bold">{s?.operational_orders ?? 0}</span>
-            <span className="text-brand-burgundy/60">סך מנות:</span><span className="font-bold">{s?.total_portions ?? 0}</span>
-            <span className="text-brand-burgundy/60">מנות בהכנה:</span><span className="font-bold">{s?.operational_portions ?? 0}</span>
-          </div>
-          {sh?.notes && (
-            <div className="mt-6 text-sm text-brand-burgundy/70 max-w-lg mx-auto whitespace-pre-wrap">
-              <span className="font-bold">הערות: </span>{sh.notes}
-            </div>
-          )}
-          <div className="text-xs text-brand-burgundy/40 mt-8">הופק: {genDate}</div>
-        </section>
+        {/* 1. דוח עבודה מרוכז להזמנה - פנימי בלבד, כולל שיבוץ מתנדבים (לא ניתן ללקוח) */}
+        {selected.workSlips && slips?.orders?.length > 0 && slips.orders.map((o) => (
+          <OrderSlipSection key={`work-${o.order_id}`} sh={sh} o={o} withVolunteers
+            cookByMeal={cookByMeal} otherVolunteerTasks={otherVolunteerTasks} />
+        ))}
 
-        {/* 2. סיכום הזמנות (סעיף 33.2) */}
-        {s && (
-          <ReportBlock title="סיכום הזמנות">
-            <div className="grid grid-cols-4 gap-3 mb-3 text-center">
-              <SlipStat label="סך הזמנות" value={s.total_orders} />
-              <SlipStat label="סך מנות" value={s.total_portions} />
-              <SlipStat label="נכנסות להכנות" value={s.operational_orders} />
-              <SlipStat label="מנות בהכנה" value={s.operational_portions} />
-            </div>
+        {/* 2. שיבוץ מבשלים - מי מכין כל מאכל */}
+        {selected.cooking && vol?.cooking_meals?.length > 0 && (
+          <ReportBlock title="שיבוץ מבשלים"
+            subtitle={`${vol.cooking_unassigned_count || 0} מאכלים ללא מבשל`}>
+            <PrintTable head={['מאכל', 'מנות', 'מבשל/ים', 'מחליפים']}>
+              {vol.cooking_meals.map((meal) => (
+                <tr key={meal.meal_id}>
+                  <td className="border border-brand-cream-dark p-2 font-medium">{meal.meal_name}</td>
+                  <td className="border border-brand-cream-dark p-2 font-bold">{meal.portions}</td>
+                  <td className="border border-brand-cream-dark p-2">
+                    {meal.is_unassigned
+                      ? <span className="text-red-700 font-bold">ללא מבשל</span>
+                      : (
+                        <>
+                          {meal.cooks.map((c) => (
+                            <span key={c.volunteer_id} className="inline-block ml-3">
+                              {c.volunteer_name}{c.phone && <span className="text-brand-burgundy/50 text-xs mr-1" dir="ltr">{c.phone}</span>}{c.has_vehicle ? ' 🚗' : ''}
+                            </span>
+                          ))}
+                          {meal.is_override && <span className="text-xs text-brand-gold-dark">(מחליף לשבת זו)</span>}
+                        </>
+                      )}
+                  </td>
+                  <td className="border border-brand-cream-dark p-2 text-brand-burgundy/60">
+                    {meal.backup_cooks?.length
+                      ? meal.backup_cooks.map((c) => (
+                        <span key={c.volunteer_id} className="inline-block ml-3">
+                          {c.volunteer_name}{c.phone && <span className="text-brand-burgundy/50 text-xs mr-1" dir="ltr">{c.phone}</span>}
+                        </span>
+                      ))
+                      : '-'}
+                  </td>
+                </tr>
+              ))}
+            </PrintTable>
           </ReportBlock>
         )}
 
-        {/* 3. דוח עבודה למטבח + 4. חומרי גלם (סעיף 33.3) */}
+        {/* 3. שיבוץ מתנדבים (סעיף 33.2) */}
+        {selected.volunteers && (
+        <ReportBlock title="שיבוץ מתנדבים"
+          subtitle={vol ? `${vol.unassigned_count} משימות ללא שיבוץ` : ''}>
+          {!vol?.tasks?.length ? (
+            <p className="text-brand-burgundy/50 text-sm">אין משימות מוגדרות.</p>
+          ) : (
+            <PrintTable head={['תחום', 'מועד', 'משימה', 'אחראי']}>
+              {vol.tasks.map((t) => (
+                <tr key={t.task_id}>
+                  <td className="border border-brand-cream-dark p-2 text-brand-burgundy/70">
+                    {t.area_name || '-'}
+                  </td>
+                  <td className="border border-brand-cream-dark p-2 text-brand-burgundy/70">
+                    {DAY_LABELS[t.execution_day] || 'כללי'}{t.shift ? ` · ${SHIFT_LABELS[t.shift]}` : ''}{t.timing_note ? ` · ${t.timing_note}` : ''}
+                  </td>
+                  <td className="border border-brand-cream-dark p-2">
+                    {t.name}
+                    {t.linked_meal_name && <span className="text-xs text-brand-burgundy/50 mr-1">({t.linked_meal_name})</span>}
+                  </td>
+                  <td className="border border-brand-cream-dark p-2">
+                    {!t.lead
+                      ? <span className="text-red-700 font-bold">ללא שיבוץ</span>
+                      : (
+                        <span className="inline-block ml-3">
+                          {t.lead.volunteer_name}{t.lead.phone && <span className="text-brand-burgundy/50 text-xs mr-1" dir="ltr">{t.lead.phone}</span>}{t.lead.has_vehicle ? ' 🚗' : ''}
+                          {t.is_override && <span className="text-[10px] text-brand-gold-dark mr-1">(דריסה)</span>}
+                        </span>
+                      )}
+                  </td>
+                </tr>
+              ))}
+            </PrintTable>
+          )}
+        </ReportBlock>
+        )}
+
+        {/* 4. דפי פירוט ללקוח - כל הזמנה בעמוד נפרד, נשאר אצל הלקוח (סעיף 33.6, ללא מחירים, בלי מתנדבים) */}
+        {selected.customerSlips && slips?.orders?.length > 0 && slips.orders.map((o) => (
+          <OrderSlipSection key={`customer-${o.order_id}`} sh={sh} o={o} />
+        ))}
+
+        {/* 5. דוח עבודה למטבח + חומרי גלם (סעיף 33.3) */}
+        {selected.kitchen && (
         <ReportBlock title="דוח עבודה למטבח" subtitle={k ? `סך ${k.total_portions} מנות` : ''}>
           {!k?.categories?.length ? (
             <p className="text-brand-burgundy/50 text-sm">אין מאכלים בהכנה.</p>
@@ -1396,9 +1484,11 @@ function PrintTab({ id, onAuthError }) {
             ))
           )}
         </ReportBlock>
+        )}
 
-        {/* 5. דוח חוסרים וקניות (סעיף 33.2, 26) */}
-        <ReportBlock title="דוח חומרי גלם וחוסרים">
+        {/* 6. דוח חוסרים וקניות (סעיף 33.2, 26) */}
+        {selected.inventory && (
+        <ReportBlock title="חומרי גלם וחוסרים">
           {!inv?.suppliers?.length && !inv?.direct_suppliers?.length && !inv?.unlinked?.length ? (
             <p className="text-brand-burgundy/50 text-sm">אין צורך מחושב.</p>
           ) : (
@@ -1470,38 +1560,10 @@ function PrintTab({ id, onAuthError }) {
             </>
           )}
         </ReportBlock>
-
-        {/* 6. דוח אריזה לפי הזמנות (סעיף 33.4) */}
-        <ReportBlock title="דוח אריזה לפי הזמנות">
-          {!pk?.orders?.length ? (
-            <p className="text-brand-burgundy/50 text-sm">אין הזמנות לאריזה.</p>
-          ) : (
-            pk.orders.map((o) => (
-              <div key={o.order_id} className="mb-4 print-avoid">
-                <div className="flex justify-between font-bold text-brand-burgundy px-1">
-                  <span><span className="font-mono text-brand-burgundy/60">#{o.order_number}</span> {o.customer_name}</span>
-                  <span>{o.total_portions} מנות · {o.slots.join(', ')}</span>
-                </div>
-                <PrintTable head={['מאכל', 'סעודה', 'מנות', 'אריזות']}>
-                  {o.items.map((it, i) => (
-                    <tr key={i}>
-                      <td className="border border-brand-cream-dark p-2">{it.meal_name}</td>
-                      <td className="border border-brand-cream-dark p-2 text-brand-burgundy/60">{it.slot_name}</td>
-                      <td className="border border-brand-cream-dark p-2">{it.portions}</td>
-                      <td className="border border-brand-cream-dark p-2">
-                        {it.packages.length === 0 ? '-' : it.packages.map((p, j) => (
-                          <span key={j} className="inline-block ml-2"><span className="font-bold">{p.count}</span> × {p.packaging_label}</span>
-                        ))}
-                      </td>
-                    </tr>
-                  ))}
-                </PrintTable>
-              </div>
-            ))
-          )}
-        </ReportBlock>
+        )}
 
         {/* 7. דוח שינוע (סעיף 33.5) */}
+        {selected.transport && (
         <ReportBlock title="דוח שינוע">
           {!tr?.orders?.length ? (
             <p className="text-brand-burgundy/50 text-sm">אין הזמנות לשינוע (כולן באיסוף עצמי).</p>
@@ -1521,115 +1583,194 @@ function PrintTab({ id, onAuthError }) {
             </PrintTable>
           )}
         </ReportBlock>
-
-        {/* 8. פירוט בישול - מי מכין כל מאכל */}
-        {vol?.cooking_meals?.length > 0 && (
-          <ReportBlock title="פירוט בישול - מי מכין כל מאכל"
-            subtitle={`${vol.cooking_unassigned_count || 0} מאכלים ללא מבשל`}>
-            <PrintTable head={['מאכל', 'מנות', 'מבשל/ים', 'מחליפים']}>
-              {vol.cooking_meals.map((meal) => (
-                <tr key={meal.meal_id}>
-                  <td className="border border-brand-cream-dark p-2 font-medium">{meal.meal_name}</td>
-                  <td className="border border-brand-cream-dark p-2 font-bold">{meal.portions}</td>
-                  <td className="border border-brand-cream-dark p-2">
-                    {meal.is_unassigned
-                      ? <span className="text-red-700 font-bold">ללא מבשל</span>
-                      : (
-                        <>
-                          {meal.cooks.map((c) => (
-                            <span key={c.volunteer_id} className="inline-block ml-3">
-                              {c.volunteer_name}{c.phone && <span className="text-brand-burgundy/50 text-xs mr-1" dir="ltr">{c.phone}</span>}{c.has_vehicle ? ' 🚗' : ''}
-                            </span>
-                          ))}
-                          {meal.is_override && <span className="text-xs text-brand-gold-dark">(מחליף לשבת זו)</span>}
-                        </>
-                      )}
-                  </td>
-                  <td className="border border-brand-cream-dark p-2 text-brand-burgundy/60">
-                    {meal.backup_cooks?.length
-                      ? meal.backup_cooks.map((c) => (
-                        <span key={c.volunteer_id} className="inline-block ml-3">
-                          {c.volunteer_name}{c.phone && <span className="text-brand-burgundy/50 text-xs mr-1" dir="ltr">{c.phone}</span>}
-                        </span>
-                      ))
-                      : '-'}
-                  </td>
-                </tr>
-              ))}
-            </PrintTable>
-          </ReportBlock>
         )}
 
-        {/* 9. דוח שיבוץ מתנדבים (סעיף 33.2) */}
-        <ReportBlock title="דוח שיבוץ מתנדבים"
-          subtitle={vol ? `${vol.unassigned_count} משימות ללא שיבוץ` : ''}>
-          {!vol?.tasks?.length ? (
-            <p className="text-brand-burgundy/50 text-sm">אין משימות מוגדרות.</p>
-          ) : (
-            <PrintTable head={['תחום', 'מועד', 'משימה', 'אחראי']}>
-              {vol.tasks.map((t) => (
-                <tr key={t.task_id}>
-                  <td className="border border-brand-cream-dark p-2 text-brand-burgundy/70">
-                    {t.area_name || '-'}
-                  </td>
-                  <td className="border border-brand-cream-dark p-2 text-brand-burgundy/70">
-                    {DAY_LABELS[t.execution_day] || 'כללי'}{t.shift ? ` · ${SHIFT_LABELS[t.shift]}` : ''}{t.timing_note ? ` · ${t.timing_note}` : ''}
-                  </td>
-                  <td className="border border-brand-cream-dark p-2">
-                    {t.name}
-                    {t.linked_meal_name && <span className="text-xs text-brand-burgundy/50 mr-1">({t.linked_meal_name})</span>}
-                  </td>
-                  <td className="border border-brand-cream-dark p-2">
-                    {!t.lead
-                      ? <span className="text-red-700 font-bold">ללא שיבוץ</span>
-                      : (
-                        <span className="inline-block ml-3">
-                          {t.lead.volunteer_name}{t.lead.phone && <span className="text-brand-burgundy/50 text-xs mr-1" dir="ltr">{t.lead.phone}</span>}{t.lead.has_vehicle ? ' 🚗' : ''}
-                          {t.is_override && <span className="text-[10px] text-brand-gold-dark mr-1">(דריסה)</span>}
-                        </span>
-                      )}
-                  </td>
-                </tr>
-              ))}
-            </PrintTable>
-          )}
-        </ReportBlock>
-
-        {/* 9. דפי פירוט ללקוח - כל הזמנה בעמוד נפרד (סעיף 33.6, ללא מחירים) */}
-        {slips?.orders?.length > 0 && slips.orders.map((o) => (
-          <section key={o.order_id} className="print-section print-avoid py-6">
-            <div className="text-center mb-4">
-              <div className="text-brand-gold-dark font-bold">מטבח החסד · ברכת שמואל</div>
-              <h2 className="text-2xl font-extrabold text-brand-burgundy">פירוט הזמנה ללקוח</h2>
-              <div className="text-brand-burgundy/70">{formatShabbatTitle(sh)}</div>
-              <div className="text-sm font-medium text-brand-gold-dark/90">{formatShabbatHebrewDate(sh)}</div>
+        {/* 8. סיכום הזמנות (סעיף 33.2) */}
+        {selected.summary && s && (
+          <ReportBlock title="סיכום הזמנות">
+            <div className="grid grid-cols-4 gap-3 mb-3 text-center">
+              <SlipStat label="סך הזמנות" value={s.total_orders} />
+              <SlipStat label="סך מנות" value={s.total_portions} />
+              <SlipStat label="נכנסות להכנות" value={s.operational_orders} />
+              <SlipStat label="מנות בהכנה" value={s.operational_portions} />
             </div>
-            <div className="border border-brand-cream-dark rounded-lg p-4 max-w-xl mx-auto">
-              <div className="flex justify-between border-b border-brand-cream-dark pb-2 mb-3">
-                <span className="font-bold text-brand-burgundy text-lg">{o.customer_name}</span>
-                <span className="font-mono text-brand-burgundy/60">#{o.order_number}</span>
-              </div>
-              <div className="text-sm text-brand-burgundy/70 mb-3 space-y-0.5">
-                <div>איש קשר: {o.contact_name} {o.contact_phone && <span dir="ltr">({o.contact_phone})</span>}</div>
-                <div>אספקה: {DELIVERY_LABELS[o.delivery_method] || o.delivery_method}
-                  {(o.venue_name || o.venue_address) && ` · ${[o.venue_name, o.venue_address].filter(Boolean).join(' · ')}`}</div>
-                <div>סך מנות: <span className="font-bold text-brand-burgundy">{o.total_portions}</span></div>
-              </div>
-              {o.slots.map((slot) => (
-                <div key={slot.slot_id} className="mb-2">
-                  <div className="font-bold text-brand-burgundy">{slot.slot_name}
-                    <span className="text-sm font-normal text-brand-burgundy/60"> · {slot.portions} מנות</span>
-                  </div>
-                  <ul className="list-disc pr-5 text-sm text-brand-burgundy/80">
-                    {slot.meals.map((meal, i) => <li key={i}>{meal}</li>)}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
+          </ReportBlock>
+        )}
       </div>
     </div>
+  );
+}
+
+// כרטיס פירוט הזמנה - קלף אחד לכל הזמנה. משמש גם לדף הלקוח הנקי (withVolunteers
+// לא מסופק - נשאר אצל הלקוח עם האוכל, בלי מידע מתנדבים) וגם לדוח העבודה הפנימי
+// המרוכז (withVolunteers=true - כולל מבשל לכל מאכל, מתנדב שינוע ושאר משימות ההתנדבות).
+function OrderSlipSection({ sh, o, withVolunteers, cookByMeal, otherVolunteerTasks }) {
+  // דוח העבודה הפנימי (withVolunteers) צריך להיות ברור וגדול ככל האפשר לצוות
+  // המטבח: כיתוב רץ בשחור מלא (לא מוחלש/צבע מותג), בלי מסגרת חיצונית ובלי
+  // הגבלת רוחב, שוליים מצומצמים. דף הלקוח (הרגיל) נשאר בדיוק כמו שהיה.
+  const boxCls = withVolunteers ? 'p-1' : 'border border-brand-cream-dark rounded-lg p-4 max-w-xl mx-auto';
+  const checkboxCls = withVolunteers ? 'border-black' : 'border-brand-burgundy/60';
+  return (
+    <section className={`print-section print-avoid ${withVolunteers ? 'py-2' : 'py-6'}`}>
+      <div className="text-center mb-4">
+        <div className="text-brand-gold-dark font-bold">מטבח החסד · ברכת שמואל</div>
+        <h2 className="text-2xl font-extrabold text-brand-burgundy">
+          {withVolunteers ? 'דוח עבודה מרוכז' : 'פירוט ללקוח'}
+        </h2>
+        <div className={`text-sm font-medium ${withVolunteers ? 'text-black' : 'text-brand-burgundy/70'}`}>
+          {formatShabbatTitle(sh)} · <span className="text-brand-gold-dark/90">{formatShabbatHebrewDate(sh)}</span>
+        </div>
+      </div>
+      <div className={boxCls}>
+        <div className={`flex justify-between pb-2 mb-3 ${withVolunteers ? 'border-b-2 border-black' : 'border-b border-brand-cream-dark'}`}>
+          <span className={`font-bold ${withVolunteers ? 'text-black text-2xl' : 'text-brand-burgundy text-lg'}`}>
+            {o.customer_name}
+            {withVolunteers && (
+              <span className="font-normal text-lg text-black mr-2">· {o.total_portions} מנות</span>
+            )}
+          </span>
+          <span className={`font-mono ${withVolunteers ? 'text-black text-lg' : 'text-brand-burgundy/60'}`}>#{o.order_number}</span>
+        </div>
+        <div className={`${withVolunteers ? 'text-black text-base' : 'text-sm text-brand-burgundy/70'} mb-3 space-y-0.5 bg-brand-cream/40 rounded-lg p-2.5`}>
+          {withVolunteers ? (
+            <div>איש קשר: {o.contact_name} {o.contact_phone && <span dir="ltr">({o.contact_phone})</span>}
+              {(o.venue_name || o.venue_address) && ` · ${[o.venue_name, o.venue_address].filter(Boolean).join(' · ')}`}</div>
+          ) : (
+            <>
+              <div>איש קשר: {o.contact_name} {o.contact_phone && <span dir="ltr">({o.contact_phone})</span>}</div>
+              <div>אספקה: {DELIVERY_LABELS[o.delivery_method] || o.delivery_method}
+                {(o.venue_name || o.venue_address) && ` · ${[o.venue_name, o.venue_address].filter(Boolean).join(' · ')}`}</div>
+            </>
+          )}
+          {!withVolunteers && <div>סך מנות: <span className="font-bold text-brand-burgundy">{o.total_portions}</span></div>}
+        </div>
+        <div className={withVolunteers ? '' : 'grid grid-cols-2 gap-x-4'}>
+          {o.slots.map((slot) => (
+            <div key={slot.slot_id} className={withVolunteers ? 'mb-4 print-avoid' : 'mb-2'}>
+              <div className={`font-bold ${withVolunteers ? 'text-black text-lg' : 'text-brand-burgundy'}`}>{slot.slot_name}
+                <span className={`font-normal ${withVolunteers ? 'text-black text-base' : 'text-sm text-brand-burgundy/60'}`}> · {slot.portions} מנות</span>
+              </div>
+              {withVolunteers ? (
+                <table className="w-full border-collapse text-black mt-1">
+                  <thead>
+                    <tr>
+                      <th className="border border-black p-1.5 w-10 bg-brand-cream"></th>
+                      <th className="border border-black p-1.5 text-right bg-brand-cream text-brand-burgundy font-bold">מאכל</th>
+                      <th className="border border-black p-1.5 text-right bg-brand-cream text-brand-burgundy font-bold">אריזה</th>
+                      <th className="border border-black p-1.5 text-right bg-brand-cream text-brand-burgundy font-bold">מבשל</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {slot.meals.map((meal) => {
+                      const cooks = cookByMeal?.[meal.meal_id]?.cooks || [];
+                      return (
+                        <tr key={meal.meal_id}>
+                          <td className="border border-black p-1.5 text-center align-middle">
+                            <span className="inline-block w-4 h-4 border border-black" />
+                          </td>
+                          <td className="border border-black p-1.5 align-middle font-bold text-base">{meal.name}</td>
+                          <td className="border border-black p-1.5 align-middle text-sm">
+                            {meal.packages?.length > 0
+                              ? meal.packages.map((p) => `${p.count} × ${p.packaging_label}`).join(', ')
+                              : '-'}
+                          </td>
+                          <td className={`border border-black p-1.5 align-middle text-sm ${cooks.length > 0 ? '' : 'text-red-700 font-semibold'}`}>
+                            {cooks.length > 0 ? cooks.map((c) => c.volunteer_name).join(', ') : 'ללא מבשל'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <ul className="pr-1 text-sm text-brand-burgundy/80 space-y-0.5">
+                  {slot.meals.map((meal) => (
+                    <li key={meal.meal_id} className="flex items-start gap-1.5">
+                      <span className={`mt-0.5 w-3 h-3 shrink-0 border rounded-sm ${checkboxCls}`} />
+                      <span>
+                        {meal.name}
+                        {meal.packages?.length > 0 && (
+                          <span className="text-brand-burgundy/50 text-xs mr-1">
+                            ({meal.packages.map((p) => `${p.count} × ${p.packaging_label}`).join(', ')})
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+        {o.extras?.length > 0 && (
+          <div className={withVolunteers ? 'mt-4 print-avoid' : 'mt-3 pt-2 border-t border-brand-cream-dark'}>
+            <div className={withVolunteers ? 'font-bold text-black text-lg' : 'font-bold text-sm mb-1 text-brand-burgundy'}>תוספות בתשלום</div>
+            {withVolunteers ? (
+              <table className="w-full border-collapse text-black mt-1">
+                <thead>
+                  <tr>
+                    <th className="border border-black p-1.5 w-10 bg-brand-cream"></th>
+                    <th className="border border-black p-1.5 text-right bg-brand-cream text-brand-burgundy font-bold">תוספת</th>
+                    <th className="border border-black p-1.5 text-right bg-brand-cream text-brand-burgundy font-bold">כמות</th>
+                    <th className="border border-black p-1.5 text-right bg-brand-cream text-brand-burgundy font-bold">מתנדב משובץ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {o.extras.map((e) => (
+                    <tr key={e.extra_id}>
+                      <td className="border border-black p-1.5 text-center align-middle">
+                        <span className="inline-block w-4 h-4 border border-black" />
+                      </td>
+                      <td className="border border-black p-1.5 align-middle font-bold text-base">{e.name}</td>
+                      <td className="border border-black p-1.5 align-middle text-sm">{e.quantity}</td>
+                      <td className="border border-black p-1.5 align-middle text-sm"></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <ul className="space-y-0.5 text-sm text-brand-burgundy/80">
+                {o.extras.map((e) => (
+                  <li key={e.extra_id} className="flex items-start gap-1.5">
+                    <span className={`mt-0.5 w-3 h-3 shrink-0 border rounded-sm ${checkboxCls}`} />
+                    <span>{e.name} × {e.quantity}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {withVolunteers && otherVolunteerTasks?.length > 0 && (
+          <div className="mt-4 print-avoid">
+            <div className="font-bold text-black text-lg">שאר משימות ההתנדבות</div>
+            <table className="w-full border-collapse text-black mt-1">
+              <thead>
+                <tr>
+                  <th className="border border-black p-1.5 w-10 bg-brand-cream"></th>
+                  <th className="border border-black p-1.5 text-right bg-brand-cream text-brand-burgundy font-bold">קטגוריה</th>
+                  <th className="border border-black p-1.5 text-right bg-brand-cream text-brand-burgundy font-bold">משימה</th>
+                  <th className="border border-black p-1.5 text-right bg-brand-cream text-brand-burgundy font-bold">מתנדב משובץ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {otherVolunteerTasks.map((t) => (
+                  <tr key={t.task_id}>
+                    <td className="border border-black p-1.5 text-center align-middle">
+                      <span className="inline-block w-4 h-4 border border-black" />
+                    </td>
+                    <td className="border border-black p-1.5 align-middle text-sm">{t.area_name}</td>
+                    <td className="border border-black p-1.5 align-middle font-bold text-base">{t.name}</td>
+                    <td className={`border border-black p-1.5 align-middle text-sm ${t.lead ? '' : 'text-red-700 font-semibold'}`}>
+                      {t.lead ? t.lead.volunteer_name : 'ללא שיבוץ'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
