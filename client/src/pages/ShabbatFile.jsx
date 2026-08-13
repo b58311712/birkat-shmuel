@@ -1607,9 +1607,10 @@ function PrintTab({ id, onAuthError }) {
 function OrderSlipSection({ sh, o, withVolunteers, cookByMeal, otherVolunteerTasks }) {
   // דוח העבודה הפנימי (withVolunteers) צריך להיות ברור וגדול ככל האפשר לצוות
   // המטבח: כיתוב רץ בשחור מלא (לא מוחלש/צבע מותג), בלי מסגרת חיצונית ובלי
-  // הגבלת רוחב, שוליים מצומצמים. דף הלקוח (הרגיל) נשאר בדיוק כמו שהיה.
+  // הגבלת רוחב, שוליים מצומצמים. דף הלקוח (הרגיל) שומר על העיצוב שלו אבל
+  // הטקסט הרץ גם בו בשחור מלא, כדי שיהיה קריא בהדפסת שחור-לבן.
   const boxCls = withVolunteers ? 'p-1' : 'border border-brand-cream-dark rounded-lg p-4 max-w-xl mx-auto';
-  const checkboxCls = withVolunteers ? 'border-black' : 'border-brand-burgundy/60';
+  const checkboxCls = 'border-black';
   return (
     <section className={`print-section print-avoid ${withVolunteers ? 'py-2' : 'py-6'}`}>
       <div className="text-center mb-4">
@@ -1617,7 +1618,7 @@ function OrderSlipSection({ sh, o, withVolunteers, cookByMeal, otherVolunteerTas
         <h2 className="text-2xl font-extrabold text-brand-burgundy">
           {withVolunteers ? 'דוח עבודה מרוכז' : 'פירוט ללקוח'}
         </h2>
-        <div className={`text-sm font-medium ${withVolunteers ? 'text-black' : 'text-brand-burgundy/70'}`}>
+        <div className="text-sm font-medium text-black">
           {formatShabbatTitle(sh)} · <span className="text-brand-gold-dark/90">{formatShabbatHebrewDate(sh)}</span>
         </div>
       </div>
@@ -1631,7 +1632,7 @@ function OrderSlipSection({ sh, o, withVolunteers, cookByMeal, otherVolunteerTas
           </span>
           <span className={`font-mono ${withVolunteers ? 'text-black text-lg' : 'text-brand-burgundy/60'}`}>#{o.order_number}</span>
         </div>
-        <div className={`${withVolunteers ? 'text-black text-base' : 'text-sm text-brand-burgundy/70'} mb-3 space-y-0.5 bg-brand-cream/40 rounded-lg p-2.5`}>
+        <div className={`text-black ${withVolunteers ? 'text-base' : 'text-sm'} mb-3 space-y-0.5 bg-brand-cream/40 rounded-lg p-2.5`}>
           {withVolunteers ? (
             <div>איש קשר: {o.contact_name} {o.contact_phone && <span dir="ltr">({o.contact_phone})</span>}
               {(o.venue_name || o.venue_address) && ` · ${[o.venue_name, o.venue_address].filter(Boolean).join(' · ')}`}</div>
@@ -1648,7 +1649,7 @@ function OrderSlipSection({ sh, o, withVolunteers, cookByMeal, otherVolunteerTas
           {o.slots.map((slot) => (
             <div key={slot.slot_id} className={withVolunteers ? 'mb-4 print-avoid' : 'mb-2'}>
               <div className={`font-bold ${withVolunteers ? 'text-black text-lg' : 'text-brand-burgundy'}`}>{slot.slot_name}
-                <span className={`font-normal ${withVolunteers ? 'text-black text-base' : 'text-sm text-brand-burgundy/60'}`}> · {slot.portions} מנות</span>
+                <span className={`font-normal text-black ${withVolunteers ? 'text-base' : 'text-sm'}`}> · {slot.portions} מנות</span>
               </div>
               {withVolunteers ? (
                 <table className="w-full border-collapse text-black mt-1">
@@ -1683,14 +1684,14 @@ function OrderSlipSection({ sh, o, withVolunteers, cookByMeal, otherVolunteerTas
                   </tbody>
                 </table>
               ) : (
-                <ul className="pr-1 text-sm text-brand-burgundy/80 space-y-0.5">
+                <ul className="pr-1 text-sm text-black space-y-0.5">
                   {slot.meals.map((meal) => (
                     <li key={meal.meal_id} className="flex items-start gap-1.5">
                       <span className={`mt-0.5 w-3 h-3 shrink-0 border rounded-sm ${checkboxCls}`} />
                       <span>
                         {meal.name}
                         {meal.packages?.length > 0 && (
-                          <span className="text-brand-burgundy/50 text-xs mr-1">
+                          <span className="text-black text-xs mr-1">
                             ({meal.packages.map((p) => `${p.count} × ${p.packaging_label}`).join(', ')})
                           </span>
                         )}
@@ -1729,7 +1730,7 @@ function OrderSlipSection({ sh, o, withVolunteers, cookByMeal, otherVolunteerTas
                 </tbody>
               </table>
             ) : (
-              <ul className="space-y-0.5 text-sm text-brand-burgundy/80">
+              <ul className="space-y-0.5 text-sm text-black">
                 {o.extras.map((e) => (
                   <li key={e.extra_id} className="flex items-start gap-1.5">
                     <span className={`mt-0.5 w-3 h-3 shrink-0 border rounded-sm ${checkboxCls}`} />
