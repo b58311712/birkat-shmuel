@@ -3,7 +3,7 @@ import { MealCategoryPicker } from './MealCategoryPicker.jsx';
 import { formatGregorianDate, formatShabbatTitle } from '../lib/dates.js';
 import { calcMealSurcharges, slotComboKey } from '../lib/pricing.js';
 import { splitPercentsFor } from '../lib/splitPercents.js';
-import { PAYMENT_METHOD } from '../lib/status.jsx';
+import { PAYMENT_METHOD, ORDER_PAYMENT_METHOD } from '../lib/status.jsx';
 
 // טווח מנות סטנדרטי. כמות מחוץ לטווח מותרת כ"בקשת חריג" הממתינה לאישור מנהל (סעיף 12.2).
 const MIN_PORTIONS = 50;
@@ -499,7 +499,7 @@ export function OrderBuilderForm({
               <span className="text-sm text-brand-burgundy/60">אמצעי תשלום *</span>
               <select className="input w-full" value={payMethod} onChange={(e) => setPayMethod(e.target.value)} required>
                 <option value="">- נא לבחור -</option>
-                {Object.entries(PAYMENT_METHOD).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                {Object.entries(ORDER_PAYMENT_METHOD).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
             <label className="block mt-3">

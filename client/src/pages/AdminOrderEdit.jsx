@@ -313,7 +313,6 @@ export default function AdminOrderEdit({ onAuthError }) {
               <option value="">- נא לבחור -</option>
               <option value="bank_transfer">העברה בנקאית</option>
               <option value="cash">מזומן</option>
-              <option value="check">צ׳ק</option>
             </select>
           </label>
           <LabeledInput label="איש קשר לקבלה" value={contactName} onChange={setContactName} />

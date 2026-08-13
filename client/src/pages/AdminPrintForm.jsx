@@ -13,11 +13,11 @@
 //   • חלוקה ידנית (split_mode='equal'): הערה + שדה "מנות" לכל סוג.
 //   • ירושת סלטים (inherit_from_slot_id): הקטגוריה מוצגת פעם אחת בלבד בסעודת-האב
 //     עם שני טורי סימון (לילה / בוקר). בסעודת היעד מוצגת הפניה לטור זה.
-//   • אמצעי תשלום: שדה סימון בגוש הפרטים (מ-PAYMENT_METHOD).
+//   • אמצעי תשלום: שדה סימון בגוש הפרטים (מ-ORDER_PAYMENT_METHOD).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
-import { PAYMENT_METHOD } from '../lib/status.jsx';
+import { ORDER_PAYMENT_METHOD } from '../lib/status.jsx';
 import { splitPercentsFor } from '../lib/splitPercents.js';
 
 // מידות עמוד A4 להדפסה (ב-CSS px @96dpi) בניכוי שוליים 1.4cm מכל צד.
@@ -310,10 +310,10 @@ function OrderMetaFields() {
         <BlankField label="מס׳ מנות יום שבת" small />
         <BlankField label="סה״כ מנות" small />
       </div>
-      {/* אמצעי תשלום - סימון (מקור: PAYMENT_METHOD) */}
+      {/* אמצעי תשלום - סימון (מקור: ORDER_PAYMENT_METHOD) */}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-brand-cream-dark pt-3">
         <span className="text-sm font-semibold text-brand-burgundy-dark">אמצעי תשלום:</span>
-        {Object.values(PAYMENT_METHOD).map((label) => (
+        {Object.values(ORDER_PAYMENT_METHOD).map((label) => (
           <span key={label} className="flex items-center gap-1.5 text-sm text-brand-burgundy-dark">
             <CheckBox />
             {label}

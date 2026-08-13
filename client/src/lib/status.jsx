@@ -49,6 +49,12 @@ export const PAYMENT_METHOD = {
   check: 'צ׳ק',
 };
 
+// אמצעי תשלום הניתנים לבחירה בטופס הזמנה (יצירה/עריכה - הלקוח והמנהל).
+// 'check' הוסר כאפשרות לבחירה; ה-map המלא PAYMENT_METHOD נשאר לתצוגת הזמנות ישנות.
+export const ORDER_PAYMENT_METHOD = Object.fromEntries(
+  Object.entries(PAYMENT_METHOD).filter(([key]) => key !== 'check')
+);
+
 // תווית מועד: שבת מזוהה בפרשה, אירוע מזוהה בשם (מיגרציה 52).
 // מקור אמת אחד לכל המסכים שמציגים "לאיזה מועד ההזמנה שייכת", כדי שאירוע לא
 // יופיע כמקף רק בגלל ש-parasha ריק אצלו.

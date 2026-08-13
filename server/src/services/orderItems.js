@@ -7,7 +7,8 @@ import { fetchSlotSplits, percentFor } from './categorySplits.js';
 import { roundUp } from '../lib/helpers.js';
 
 // אמצעי תשלום מותרים בטופס ההזמנה/עריכה - משותף ליצירה (הלקוח) ולעריכה (מנהל+לקוח).
-export const PAYMENT_METHODS = ['cash', 'bank_transfer', 'check'];
+// 'check' הוסר מהאפשרויות הזמינות; עדיין נתמך בקריאה/תצוגה של הזמנות ישנות שנוצרו לפני ההסרה.
+export const PAYMENT_METHODS = ['cash', 'bank_transfer'];
 
 // טווח המנות הסטנדרטי לסעודה. כמות מחוץ לטווח מותרת רק כ"בקשת חריג" (סעיף 12.2)
 // הדורשת אישור מודע של מנהל. אין תקרה/רצפה קשיחה - כל כמות חיובית שלמה מותרת בחריג.
