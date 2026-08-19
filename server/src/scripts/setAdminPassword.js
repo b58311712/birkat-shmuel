@@ -6,12 +6,12 @@
 // דוגמה:
 //   npm run set:admin -- manager@demo.local Sod1234! manager "מנהל המטבח"
 //
-// תפקידים אפשריים: manager | coordinator | developer
+// תפקידים אפשריים: manager | coordinator | developer | viewer (צפייה בלבד - הדגמה ללידים)
 import 'dotenv/config';
 import { supabase } from '../lib/supabase.js';
 import { hashPassword } from '../lib/auth.js';
 
-const VALID_ROLES = ['manager', 'coordinator', 'developer'];
+const VALID_ROLES = ['manager', 'coordinator', 'developer', 'viewer'];
 
 async function main() {
   const [, , emailArg, password, roleArg, nameArg] = process.argv;

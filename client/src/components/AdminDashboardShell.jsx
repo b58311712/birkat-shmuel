@@ -154,8 +154,19 @@ export default function AdminDashboardShell({ admin, onAdminLogout, children }) 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
 
       <div id="admin-main-content" className="pt-[60px] lg:pr-[236px]">
+        {admin?.role === 'viewer' && <ViewerModeBanner />}
         {children}
       </div>
+    </div>
+  );
+}
+
+/* פס עליון למשתמש בתפקיד viewer - מבהיר שמדובר בהתנסות בנתונים חיים בלי אפשרות לשמור שינויים */
+function ViewerModeBanner() {
+  return (
+    <div className="flex items-center gap-2 border-b border-brand-gold/40 bg-brand-cream/60 px-4 py-2 text-[13px] font-semibold text-brand-burgundy sm:px-6">
+      <EyeIcon />
+      מצב הדגמה - תצוגה בלבד. אפשר לעיין בכל המסכים, אך לא ניתן לשמור, ליצור או למחוק נתונים.
     </div>
   );
 }
@@ -370,6 +381,7 @@ function NavIcon({ route }) {
   );
 }
 
+function EyeIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0" aria-hidden="true"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z" /><circle cx="12" cy="12" r="3" /></svg>; }
 function MenuIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>; }
 function CloseIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>; }
 function CandleIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-[17px] w-[17px]" aria-hidden="true"><path d="M12 3c1.2 1 1.2 2.2.4 3.2M9 9h6v9a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1zM8 22h8" /></svg>; }

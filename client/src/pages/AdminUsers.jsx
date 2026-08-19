@@ -9,6 +9,7 @@ const ROLES = [
   { value: 'developer', label: 'מפתחת' },
   { value: 'manager', label: 'מנהל מערכת' },
   { value: 'coordinator', label: 'רכז תפעול' },
+  { value: 'viewer', label: 'צפייה בלבד (הדגמה)' },
 ];
 const ROLE_LABEL = Object.fromEntries(ROLES.map((r) => [r.value, r.label]));
 

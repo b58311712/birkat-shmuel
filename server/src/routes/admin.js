@@ -14,7 +14,7 @@ import { calcFinal } from '../services/pricing.js';
 const router = Router();
 
 const USER_SELECT = 'id, full_name, email, phone, role, is_active, notes, last_login_at, created_at, updated_at';
-const USER_ROLES = ['developer', 'manager', 'coordinator'];
+const USER_ROLES = ['developer', 'manager', 'coordinator', 'viewer'];
 const CUSTOMER_SELECT = 'id, first_name, last_name, full_name, phone, phone_normalized, email, address, status, internal_notes, is_organization, created_at, updated_at';
 const CUSTOMER_STATUSES = ['active', 'pending_approval', 'inactive', 'blocked'];
 

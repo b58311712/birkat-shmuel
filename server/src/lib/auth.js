@@ -64,3 +64,13 @@ export function requireRole(...roles) {
     next();
   };
 }
+
+// middleware: משתמש בתפקיד 'viewer' (הדגמה ללידים) חוסם על כל בקשת כתיבה,
+// גם אם נתיב ספציפי לא הציב requireRole משלו. חוסם ברמת ה-method ולא לפי
+// נתיב כדי שלא יהיה תלוי בכיסוי ידני של כל route חדש שיתווסף בעתיד.
+export function blockViewerWrites(req, res, next) {
+  if (req.appUser?.role === 'viewer' && req.method !== 'GET' && req.method !== 'HEAD') {
+    return fail(res, 403, 'משתמש בתצוגה בלבד - לא ניתן לשמור שינויים במצב הדגמה.');
+  }
+  next();
+}

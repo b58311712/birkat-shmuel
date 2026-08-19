@@ -31,7 +31,7 @@ import emailRoutes from './routes/email.js';
 import settingsRoutes from './routes/settings.js';
 import feedbackRoutes from './routes/feedback.js';
 import feedbackAdminRoutes from './routes/feedbackAdmin.js';
-import { requireAdmin } from './lib/auth.js';
+import { requireAdmin, blockViewerWrites } from './lib/auth.js';
 import { startScheduler } from './services/scheduler.js';
 
 const app = express();
@@ -51,21 +51,24 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/shabbatot', shabbatotRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/feedback', feedbackRoutes);
-// אזור הניהול - כל הקריאות מאחורי אימות מנהל (סעיף 5)
-app.use('/api/admin/shabbat-files', requireAdmin, shabbatFileRoutes);
-app.use('/api/admin/events', requireAdmin, eventsRoutes);
-app.use('/api/admin/sales', requireAdmin, salesRoutes);
-app.use('/api/admin/volunteers', requireAdmin, volunteersRoutes);
-app.use('/api/admin/inventory', requireAdmin, inventoryRoutes);
-app.use('/api/admin/suppliers', requireAdmin, suppliersRoutes);
-app.use('/api/admin/catalog', requireAdmin, catalogAdminRoutes);
-app.use('/api/admin/payments', requireAdmin, paymentsRoutes);
-app.use('/api/admin/finance', requireAdmin, financeRoutes);
-app.use('/api/admin/petty-cash', requireAdmin, pettyCashRoutes);
-app.use('/api/admin/recurring-expenses', requireAdmin, recurringExpensesRoutes);
-app.use('/api/admin/email', requireAdmin, emailRoutes);
-app.use('/api/admin/feedback', requireAdmin, feedbackAdminRoutes);
-app.use('/api/admin', requireAdmin, adminRoutes);
+// אזור הניהול - כל הקריאות מאחורי אימות מנהל (סעיף 5).
+// blockViewerWrites חוסם כתיבה למשתמש בתפקיד 'viewer' (הדגמה ללידים) בכל
+// הנתיבים באחת, בלי תלות בכיסוי ידני של כל route.
+const adminGuard = [requireAdmin, blockViewerWrites];
+app.use('/api/admin/shabbat-files', ...adminGuard, shabbatFileRoutes);
+app.use('/api/admin/events', ...adminGuard, eventsRoutes);
+app.use('/api/admin/sales', ...adminGuard, salesRoutes);
+app.use('/api/admin/volunteers', ...adminGuard, volunteersRoutes);
+app.use('/api/admin/inventory', ...adminGuard, inventoryRoutes);
+app.use('/api/admin/suppliers', ...adminGuard, suppliersRoutes);
+app.use('/api/admin/catalog', ...adminGuard, catalogAdminRoutes);
+app.use('/api/admin/payments', ...adminGuard, paymentsRoutes);
+app.use('/api/admin/finance', ...adminGuard, financeRoutes);
+app.use('/api/admin/petty-cash', ...adminGuard, pettyCashRoutes);
+app.use('/api/admin/recurring-expenses', ...adminGuard, recurringExpensesRoutes);
+app.use('/api/admin/email', ...adminGuard, emailRoutes);
+app.use('/api/admin/feedback', ...adminGuard, feedbackAdminRoutes);
+app.use('/api/admin', ...adminGuard, adminRoutes);
 
 // טיפול שגיאות אחיד (עברית)
 app.use((err, req, res, next) => {
