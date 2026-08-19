@@ -17,6 +17,7 @@ import {
   directProcurementMetrics,
   isDirectEventProcurement,
 } from './directProcurement.js';
+import { loadTemplate } from './email.js';
 
 // סטטוסי תשלום שמזכים הזמנה להיכנס לחישובים (סעיף 8.7)
 const OPERATIONAL_PAYMENT_STATUSES = ['paid', 'partially_paid', 'payment_override'];
@@ -884,7 +885,7 @@ export async function buildWorkFile(shabbatId) {
   const { shabbat } = await loadShabbatOrders(shabbatId);
   if (!shabbat) return null;
 
-  const [summary, kitchen, inventory, transport, volunteers, customerSlips] =
+  const [summary, kitchen, inventory, transport, volunteers, customerSlips, instructionsTpl] =
     await Promise.all([
       buildSummary(shabbatId),
       buildKitchenReport(shabbatId),
@@ -892,6 +893,7 @@ export async function buildWorkFile(shabbatId) {
       buildTransportReport(shabbatId),
       buildVolunteerReport(shabbatId),
       buildCustomerSlips(shabbatId),
+      loadTemplate('order_instructions_print'),
     ]);
 
   return {
@@ -903,6 +905,8 @@ export async function buildWorkFile(shabbatId) {
     transport,
     volunteers,
     customer_slips: customerSlips,
+    // עמוד "הוראות ללקוח" מודפס (לא נשלח כמייל) - טקסט קבוע, זהה לכל ההזמנות.
+    print_instructions_text: instructionsTpl?.is_active ? instructionsTpl.body : null,
   };
 }
 

@@ -1140,7 +1140,7 @@ function VolunteersTab({ id, onAuthError }) {
         t.lead ? (
           <VolunteerChip name={t.lead.volunteer_name} phone={t.lead.phone} hasVehicle={t.lead.has_vehicle}
             tail={
-              t.lead.source === 'override' ? <span className="text-[10px] text-brand-gold-dark" title="הוחלף לשבת זו">דריסה</span>
+              t.lead.source === 'override' ? <span className="text-[10px] text-brand-gold-dark" title="הוחלף לשבת זו">החלפה</span>
                 : t.lead.source === 'meal' ? <span className="text-[10px] text-brand-gold-dark" title="לפי שיוך מאכל">בישול</span>
                   : null
             } />
@@ -1422,7 +1422,7 @@ function PrintTab({ id, onAuthError }) {
                       : (
                         <span className="inline-block ml-3">
                           {t.lead.volunteer_name}{t.lead.phone && <span className="text-brand-burgundy/50 text-xs mr-1" dir="ltr">{t.lead.phone}</span>}{t.lead.has_vehicle ? ' 🚗' : ''}
-                          {t.is_override && <span className="text-[10px] text-brand-gold-dark mr-1">(דריסה)</span>}
+                          {t.is_override && <span className="text-[10px] text-brand-gold-dark mr-1">(החלפה)</span>}
                         </span>
                       )}
                   </td>
@@ -1434,8 +1434,9 @@ function PrintTab({ id, onAuthError }) {
         )}
 
         {/* 4. דפי פירוט ללקוח - כל הזמנה בעמוד נפרד, נשאר אצל הלקוח (סעיף 33.6, ללא מחירים, בלי מתנדבים) */}
+        {/* כולל דף ההוראות ללקוח (נוסח order_instructions_print) מתחת לפירוט ההזמנה */}
         {selected.customerSlips && slips?.orders?.length > 0 && slips.orders.map((o) => (
-          <OrderSlipSection key={`customer-${o.order_id}`} sh={sh} o={o} />
+          <OrderSlipSection key={`customer-${o.order_id}`} sh={sh} o={o} instructionsText={data.print_instructions_text} />
         ))}
 
         {/* 5. דוח עבודה למטבח + חומרי גלם (סעיף 33.3) */}
@@ -1604,7 +1605,7 @@ function PrintTab({ id, onAuthError }) {
 // כרטיס פירוט הזמנה - קלף אחד לכל הזמנה. משמש גם לדף הלקוח הנקי (withVolunteers
 // לא מסופק - נשאר אצל הלקוח עם האוכל, בלי מידע מתנדבים) וגם לדוח העבודה הפנימי
 // המרוכז (withVolunteers=true - כולל מבשל לכל מאכל, מתנדב שינוע ושאר משימות ההתנדבות).
-function OrderSlipSection({ sh, o, withVolunteers, cookByMeal, otherVolunteerTasks }) {
+function OrderSlipSection({ sh, o, withVolunteers, cookByMeal, otherVolunteerTasks, instructionsText }) {
   // דוח העבודה הפנימי (withVolunteers) צריך להיות ברור וגדול ככל האפשר לצוות
   // המטבח: כיתוב רץ בשחור מלא (לא מוחלש/צבע מותג), בלי מסגרת חיצונית ובלי
   // הגבלת רוחב, שוליים מצומצמים. דף הלקוח (הרגיל) שומר על העיצוב שלו אבל
@@ -1739,6 +1740,12 @@ function OrderSlipSection({ sh, o, withVolunteers, cookByMeal, otherVolunteerTas
                 ))}
               </ul>
             )}
+          </div>
+        )}
+        {!withVolunteers && instructionsText && (
+          <div className="mt-3 pt-2 border-t border-brand-cream-dark">
+            <div className="font-bold text-sm mb-1 text-brand-burgundy">הוראות</div>
+            <div className="text-sm text-black whitespace-pre-wrap">{instructionsText}</div>
           </div>
         )}
         {withVolunteers && otherVolunteerTasks?.length > 0 && (

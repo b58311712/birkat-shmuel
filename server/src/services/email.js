@@ -81,7 +81,9 @@ function fillTemplate(text, vars) {
 }
 
 // --- טעינת נוסח פעיל לפי code ---
-async function loadTemplate(code) {
+// מיוצאת גם לשימוש מחוץ למייל (למשל shabbatFile.js קורא נוסח שמודפס בלבד,
+// order_instructions_print, ולא נשלח כמייל בפועל).
+export async function loadTemplate(code) {
   const { data, error } = await supabase
     .from('email_templates')
     .select('code, subject, body, is_active')

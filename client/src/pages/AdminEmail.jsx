@@ -22,6 +22,7 @@ const TEMPLATE_LABELS = {
   new_order_manager_alert: 'התראת מנהל - הזמנה חדשה',
   payment_reminder: 'תזכורת תשלום ללקוח',
   feedback_request: 'בקשת משוב לאחר שבת',
+  order_instructions_print: 'הוראות ללקוח (בתוך "פירוט ללקוח" בתיק שבת - לא נשלח כמייל)',
 };
 
 // placeholders זמינים לשימוש בנוסחים.
