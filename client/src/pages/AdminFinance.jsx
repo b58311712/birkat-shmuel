@@ -53,13 +53,13 @@ export default function AdminFinance({ onAuthError }) {
         <div>
           <p className="text-xs font-bold text-brand-gold-dark">מקור הנתונים</p>
           <h2 id="expense-sources-title" className="mt-0.5 text-lg font-extrabold text-[#2b2024]">ממה מורכבות ההוצאות?</h2>
-          <p className="mt-1 text-sm text-[#7c7175]">הסכום הכולל מחבר תשלומים לספקים, הוצאות כלליות והוצאות מהקופה הקטנה.</p>
+          <p className="mt-1 text-sm text-[#7c7175]">הסכום הכולל מחבר הוצאות כלליות והוצאות מהקופה הקטנה. תשלומי ספקים דרך הזמנות רכש מושהים זמנית ואינם נכללים.</p>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <ExpenseSource label="תשלומים לספקים" value={expenses.supplier_paid} detail="לפי הסכום ששולם בפועל" />
-          <ExpenseSource label="הוצאות כלליות" value={expenses.general_expenses} detail="לפי ההוצאות שנרשמו במערכת" />
+          <ExpenseSource label="תשלומים לספקים" value={expenses.supplier_paid} detail="מושהה - לא נכלל בסה״כ" paused />
+          <ExpenseSource label="הוצאות כלליות" value={expenses.general_expenses} detail="לפי ההוצאות שנרשמו במערכת" link="/admin/expenses" />
           <ExpenseSource label="קופה קטנה" value={expenses.petty_cash} detail="הוצאות מזומן שוטפות" link="/admin/petty-cash" />
-          <ExpenseSource label="סה״כ הוצאות" value={expenses.total} detail="חיבור שלושת מקורות ההוצאה" total />
+          <ExpenseSource label="סה״כ הוצאות" value={expenses.total} detail="חיבור הוצאות כלליות + קופה קטנה" total />
         </div>
       </section>
 
@@ -170,15 +170,18 @@ export default function AdminFinance({ onAuthError }) {
 const round2 = (number) => Math.round((Number(number) + Number.EPSILON) * 100) / 100;
 const nis = (number) => `${Number(number || 0).toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`;
 
-function ExpenseSource({ label, value, detail, total = false, link }) {
+function ExpenseSource({ label, value, detail, total = false, paused = false, link }) {
   const body = (
     <>
-      <p className="text-sm font-bold text-[#655b5f]">{label}{link && <span className="mr-1 text-[#b4abad]">←</span>}</p>
-      <p className="mt-1 text-xl font-extrabold text-[#2b2024]" dir="ltr">{nis(value)}</p>
+      <p className="flex items-center gap-1.5 text-sm font-bold text-[#655b5f]">
+        {label}{link && <span className="text-[#b4abad]">←</span>}
+        {paused && <span className="rounded-full bg-black/5 px-2 py-0.5 text-[10px] font-bold text-[#8a7f82]">מושהה</span>}
+      </p>
+      <p className={`mt-1 text-xl font-extrabold ${paused ? 'text-[#a39a9d]' : 'text-[#2b2024]'}`} dir="ltr">{nis(value)}</p>
       <p className="mt-1 text-xs font-medium text-[#91878a]">{detail}</p>
     </>
   );
-  const cls = `block rounded-2xl border p-4 ${total ? 'border-brand-gold/30 bg-brand-gold/[0.08]' : 'border-black/[0.06] bg-white'} ${link ? 'transition-colors hover:border-surface-line-strong' : ''}`;
+  const cls = `block rounded-2xl border p-4 ${total ? 'border-brand-gold/30 bg-brand-gold/[0.08]' : paused ? 'border-black/[0.05] bg-black/[0.015]' : 'border-black/[0.06] bg-white'} ${link ? 'transition-colors hover:border-surface-line-strong' : ''}`;
   return link ? <Link to={link} className={cls}>{body}</Link> : <div className={cls}>{body}</div>;
 }
 

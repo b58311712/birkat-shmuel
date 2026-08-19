@@ -39,6 +39,7 @@ export const adminMenuGroups = [
     label: 'כספים',
     items: [
       { to: '/admin/finance', label: 'מודול כספי' },
+      { to: '/admin/expenses', label: 'הוצאות' },
       { to: '/admin/petty-cash', label: 'קופה קטנה' },
       { to: '/admin/recurring-expenses', label: 'הוצאות קבועות' },
     ],

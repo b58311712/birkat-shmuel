@@ -3,9 +3,14 @@
 //
 // מקורות אמת:
 //   הכנסות  - orders.final_amount (צפוי) מול customer_payments.amount (שולם).
-//   הוצאות  - supplier_payments.amount_paid + general_expenses.amount
-//             + petty_cash_transactions (kind='expense') - הוצאות הקופה הקטנה.
+//   הוצאות  - general_expenses.amount + petty_cash_transactions (kind='expense').
 // הזמנות מבוטלות אינן נספרות בצפוי (final_amount לא רלוונטי לגבייה).
+//
+// הושהה זמנית (19.08.2026, לבקשת המשתמשת): תשלומי ספקים (supplier_payments,
+// שמקורם בהזמנות רכש) אינם נכללים יותר בסה"כ ההוצאות / בפילוחים לפי ספק וחודש.
+// הנתון עדיין מחושב ומוחזר תחת expenses.supplier_paid לתצוגת מידע בלבד
+// (AdminFinance.jsx מסמן אותו כ"מושהה"). הוצאות חופשיות מוזנות כעת דרך
+// general_expenses הידניות (routes/expenses.js, /admin/expenses).
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { asyncHandler } from '../lib/helpers.js';
@@ -149,7 +154,8 @@ router.get('/summary', asyncHandler(async (req, res) => {
   const pettyCashTotal = round2(
     pettyExpenses.reduce((s, t) => s + Number(t.amount || 0), 0),
   );
-  const expensesTotal = round2(supplierPaidTotal + generalExpensesTotal + pettyCashTotal);
+  // supplierPaidTotal מוחרג בכוונה מהסכום - ראו הערת ההשהיה בראש הקובץ.
+  const expensesTotal = round2(generalExpensesTotal + pettyCashTotal);
 
   // חשבוניות פתוחות = תשלומי ספק/הוצאות שטרם שולמו במלואם
   const openSupplierInvoices = supPayments.filter(
@@ -159,14 +165,8 @@ router.get('/summary', asyncHandler(async (req, res) => {
     (e) => ['unpaid', 'partially_paid', 'awaiting_invoice'].includes(e.payment_status),
   ).length;
 
-  // הוצאות לפי ספק (מאחד תשלומי ספק + הוצאות כלליות)
+  // הוצאות לפי ספק (הוצאות כלליות + קופה קטנה - תשלומי רכש מושהים, ראו למעלה)
   const bySupplier = new Map(); // supplier_id -> { name, amount }
-  for (const p of supPayments) {
-    if (!p.supplier_id) continue;
-    const cur = bySupplier.get(p.supplier_id) || { supplier_id: p.supplier_id, name: p.suppliers?.name || '-', amount: 0 };
-    cur.amount = round2(cur.amount + Number(p.amount_paid || 0));
-    bySupplier.set(p.supplier_id, cur);
-  }
   for (const e of expenses) {
     if (!e.supplier_id) continue;
     const cur = bySupplier.get(e.supplier_id) || { supplier_id: e.supplier_id, name: e.suppliers?.name || '-', amount: 0 };
@@ -181,15 +181,8 @@ router.get('/summary', asyncHandler(async (req, res) => {
   }
   const expensesBySupplier = [...bySupplier.values()].sort((a, b) => b.amount - a.amount);
 
-  // הוצאות לפי חודש (לפי תאריך תשלום/הוצאה)
+  // הוצאות לפי חודש (הוצאות כלליות + קופה קטנה - תשלומי רכש מושהים, ראו למעלה)
   const expByMonth = new Map();
-  for (const p of supPayments) {
-    const mKey = monthKey(p.paid_at);
-    if (!mKey) continue;
-    const cur = expByMonth.get(mKey) || { month: mKey, amount: 0 };
-    cur.amount = round2(cur.amount + Number(p.amount_paid || 0));
-    expByMonth.set(mKey, cur);
-  }
   for (const e of expenses) {
     const mKey = monthKey(e.expense_date);
     if (!mKey) continue;

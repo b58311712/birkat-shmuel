@@ -369,6 +369,7 @@ function NavIcon({ route }) {
     '/admin/suppliers': <><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7" /><circle cx="7" cy="18" r="1.6" /><circle cx="17" cy="18" r="1.6" /></>,
     '/admin/purchase-orders': <><circle cx="9" cy="20" r="1.5" /><circle cx="17" cy="20" r="1.5" /><path d="M3 4h2l2.5 12h11L21 8H6" /></>,
     '/admin/finance': <path d="M4 18V8M9 18V4M14 18v-7M19 18V7" />,
+    '/admin/expenses': <><path d="M4 4h16v16H4z" /><path d="M8 9h8M8 13h8M8 17h5" /></>,
     '/admin/petty-cash': <><rect x="3" y="7" width="18" height="12" rx="2" /><path d="M3 11h18M16 15h2" /></>,
     '/admin/recurring-expenses': <><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 3v5h-5" /></>,
     '/admin/email': <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>,

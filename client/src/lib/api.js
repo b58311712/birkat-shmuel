@@ -111,6 +111,12 @@ export const api = {
   addPettyCashTx: (payload) => request('/admin/petty-cash', { method: 'POST', body: JSON.stringify(payload) }),
   deletePettyCashTx: (id) => request(`/admin/petty-cash/${id}`, { method: 'DELETE' }),
 
+  // הוצאות כלליות - הזנה חופשית
+  expenses: () => request('/admin/expenses'),
+  createExpense: (payload) => request('/admin/expenses', { method: 'POST', body: JSON.stringify(payload) }),
+  updateExpense: (id, payload) => request(`/admin/expenses/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteExpense: (id) => request(`/admin/expenses/${id}`, { method: 'DELETE' }),
+
   // הוצאות קבועות חודשיות (תבניות תקורה חוזרת + הפקה חודשית)
   recurringExpenses: () => request('/admin/recurring-expenses'),
   createRecurringExpense: (payload) => request('/admin/recurring-expenses', { method: 'POST', body: JSON.stringify(payload) }),
