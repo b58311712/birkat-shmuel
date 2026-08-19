@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
-import { Badge, SUPPLIER_PAYMENT_STATUS } from '../lib/status.jsx';
+import { Badge, SUPPLIER_PAYMENT_STATUS, EXPENSE_PAYMENT_METHOD } from '../lib/status.jsx';
 
 const nis = (n) => `${Number(n || 0).toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`;
 const thisMonth = () => new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -78,6 +78,7 @@ export default function AdminRecurringExpenses({ onAuthError }) {
     if (!Number.isFinite(amount) || amount <= 0) { setFormError('יש להזין סכום חיובי.'); return; }
     const day = Number(form.day_of_month);
     if (!Number.isInteger(day) || day < 1 || day > 28) { setFormError('יום בחודש חייב להיות מספר שלם בין 1 ל-28.'); return; }
+    if (!form.payment_method) { setFormError('יש לבחור אמצעי תשלום.'); return; }
 
     const payload = {
       name: form.name.trim(),
@@ -85,7 +86,7 @@ export default function AdminRecurringExpenses({ onAuthError }) {
       day_of_month: day,
       category: form.category || undefined,
       supplier_id: form.supplier_id || undefined,
-      payment_method: form.payment_method || undefined,
+      payment_method: form.payment_method,
       note: form.note || undefined,
     };
 
@@ -285,7 +286,7 @@ export default function AdminRecurringExpenses({ onAuthError }) {
                     <td className="px-4 py-4 text-sm tabular-nums text-[#655b5f]" dir="ltr">{t.day_of_month}</td>
                     <td className="px-4 py-4 text-sm text-[#655b5f]">{t.category || '-'}</td>
                     <td className="px-4 py-4 text-sm text-[#655b5f]">{t.supplier_name || '-'}</td>
-                    <td className="px-4 py-4 text-sm text-[#655b5f]">{t.payment_method || '-'}</td>
+                    <td className="px-4 py-4 text-sm text-[#655b5f]">{EXPENSE_PAYMENT_METHOD[t.payment_method] || t.payment_method || '-'}</td>
                     <td className="px-4 py-4">
                       {t.is_active
                         ? <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">פעילה</span>
@@ -355,10 +356,13 @@ function RecurringExpenseForm({ form, setForm, suppliers, onSubmit, onCancel, bu
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </Field>
-        <Field label="אמצעי תשלום (אופציונלי)">
-          <input type="text" value={form.payment_method}
+        <Field label="אמצעי תשלום">
+          <select required value={form.payment_method}
             onChange={(e) => setForm((f) => ({ ...f, payment_method: e.target.value }))}
-            className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-gold" placeholder="למשל: הוראת קבע, העברה" />
+            className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-gold">
+            <option value="">- נא לבחור -</option>
+            {Object.entries(EXPENSE_PAYMENT_METHOD).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
         </Field>
         <Field label="הערה (אופציונלי)" className="sm:col-span-2 lg:col-span-3">
           <input type="text" value={form.note}

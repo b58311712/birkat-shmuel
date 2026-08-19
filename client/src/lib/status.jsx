@@ -49,6 +49,16 @@ export const PAYMENT_METHOD = {
   check: 'צ׳ק',
 };
 
+// אמצעי תשלום עבור מסכי הוצאות (הוצאות חופשיות/קבועות, תשלום לספק) - רשימה
+// סגורה, שדה חובה. סדר התצוגה כפי שנקבע: מזומן, צ'ק, אשראי, העברה בנקאית, אחר.
+export const EXPENSE_PAYMENT_METHOD = {
+  cash: 'מזומן',
+  check: 'צ׳ק',
+  credit: 'אשראי',
+  bank_transfer: 'העברה בנקאית',
+  other: 'אחר',
+};
+
 // אמצעי תשלום הניתנים לבחירה בטופס הזמנה (יצירה/עריכה - הלקוח והמנהל).
 // 'check' הוסר כאפשרות לבחירה; ה-map המלא PAYMENT_METHOD נשאר לתצוגת הזמנות ישנות.
 export const ORDER_PAYMENT_METHOD = Object.fromEntries(

@@ -14,6 +14,9 @@ const router = Router();
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
+// אמצעי תשלום - רשימה סגורה, שדה חובה (ראו client/src/lib/status.jsx EXPENSE_PAYMENT_METHOD).
+const PAYMENT_METHODS = ['cash', 'check', 'credit', 'bank_transfer', 'other'];
+
 // מנקה/מנרמל שדות תבנית מגוף הבקשה. מחזיר { row, error }.
 function buildTemplate(body) {
   const { name, amount, day_of_month, category, supplier_id, payment_method, note, is_active } = body || {};
@@ -27,6 +30,8 @@ function buildTemplate(body) {
   if (!Number.isInteger(day)) day = 1;
   if (day < 1 || day > 28) return { error: 'יום בחודש חייב להיות בין 1 ל-28.' };
 
+  if (!PAYMENT_METHODS.includes(payment_method)) return { error: 'יש לבחור אמצעי תשלום.' };
+
   return {
     row: {
       name: String(name).trim(),
@@ -34,7 +39,7 @@ function buildTemplate(body) {
       day_of_month: day,
       category: category?.trim() || null,
       supplier_id: supplier_id || null,
-      payment_method: payment_method?.trim() || null,
+      payment_method,
       note: note?.trim() || null,
       is_active: is_active === undefined ? true : !!is_active,
     },

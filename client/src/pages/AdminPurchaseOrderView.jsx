@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
-import { Badge, PO_STATUS, SUPPLIER_PAYMENT_STATUS, SUPPLIER_CHANNEL } from '../lib/status.jsx';
+import { Badge, PO_STATUS, SUPPLIER_PAYMENT_STATUS, SUPPLIER_CHANNEL, EXPENSE_PAYMENT_METHOD } from '../lib/status.jsx';
 import PriceInput from '../components/PriceInput.jsx';
 import { formatWithVat } from '../lib/vat.js';
 import {
@@ -363,6 +363,7 @@ function PaymentPanel({ po, payment, onCancel, onDone, onErr }) {
 
   async function submit(e) {
     e.preventDefault();
+    if (!f.payment_method) { alert('יש לבחור אמצעי תשלום.'); return; }
     setBusy(true);
     try {
       await api.setPurchaseOrderPayment(po.id, {
@@ -401,7 +402,10 @@ function PaymentPanel({ po, payment, onCancel, onDone, onErr }) {
           <input type="date" value={f.paid_at} onChange={(e) => set('paid_at', e.target.value)} className={inputCls} dir="ltr" />
         </Field>
         <Field label="אמצעי תשלום">
-          <input value={f.payment_method} onChange={(e) => set('payment_method', e.target.value)} className={inputCls} placeholder="העברה בנקאית / מזומן / צ׳ק" />
+          <select required value={f.payment_method} onChange={(e) => set('payment_method', e.target.value)} className={inputCls}>
+            <option value="">- נא לבחור -</option>
+            {Object.entries(EXPENSE_PAYMENT_METHOD).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
         </Field>
       </div>
       <Field label="הערות">

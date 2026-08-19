@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
-import { Badge, SUPPLIER_PAYMENT_STATUS } from '../lib/status.jsx';
+import { Badge, SUPPLIER_PAYMENT_STATUS, EXPENSE_PAYMENT_METHOD } from '../lib/status.jsx';
 
 const nis = (n) => `${Number(n || 0).toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪`;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -57,12 +57,13 @@ export default function AdminExpenses({ onAuthError }) {
     setFormError('');
     const amount = Number(form.amount);
     if (!Number.isFinite(amount) || amount <= 0) { setFormError('יש להזין סכום חיובי.'); return; }
+    if (!form.payment_method) { setFormError('יש לבחור אמצעי תשלום.'); return; }
 
     const payload = {
       expense_date: form.expense_date || undefined,
       amount,
       supplier_id: form.supplier_id || undefined,
-      payment_method: form.payment_method || undefined,
+      payment_method: form.payment_method,
       payment_status: form.payment_status || undefined,
       invoice_number: form.invoice_number || undefined,
       note: form.note || undefined,
@@ -172,7 +173,7 @@ function ExpenseRow({ expense: e, editing, form, setForm, suppliers, onSubmit, o
       <tr className={editing ? 'bg-brand-gold/[0.06]' : ''}>
         <td className="whitespace-nowrap px-5 py-4 text-sm text-[#82777b]" dir="ltr">{e.expense_date}</td>
         <td className="px-4 py-4 text-sm text-[#655b5f]">{e.supplier_name || '-'}</td>
-        <td className="px-4 py-4 text-sm text-[#655b5f]">{e.payment_method || '-'}</td>
+        <td className="px-4 py-4 text-sm text-[#655b5f]">{EXPENSE_PAYMENT_METHOD[e.payment_method] || e.payment_method || '-'}</td>
         <td className="px-4 py-4 text-sm text-[#82777b]" dir="ltr">{e.invoice_number || '-'}</td>
         <td className="px-4 py-4 font-medium text-[#3d3135]">{e.note || '-'}</td>
         <td className="whitespace-nowrap px-4 py-4 font-bold tabular-nums text-[#3d3135]" dir="ltr">{nis(e.amount)}</td>
@@ -230,10 +231,13 @@ function ExpenseForm({ form, setForm, suppliers, onSubmit, onCancel, busy, error
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </Field>
-        <Field label="אמצעי תשלום (אופציונלי)">
-          <input type="text" value={form.payment_method}
+        <Field label="אמצעי תשלום">
+          <select required value={form.payment_method}
             onChange={(e) => setForm((f) => ({ ...f, payment_method: e.target.value }))}
-            className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-gold" placeholder="למשל: העברה, מזומן" />
+            className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm outline-none focus:border-brand-gold">
+            <option value="">- נא לבחור -</option>
+            {Object.entries(EXPENSE_PAYMENT_METHOD).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
         </Field>
         <Field label="מספר חשבונית (אופציונלי)">
           <input type="text" value={form.invoice_number}

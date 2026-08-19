@@ -14,6 +14,9 @@ const router = Router();
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const SELECT = 'id, expense_date, amount, payment_method, payment_status, invoice_number, supplier_id, note, created_at, suppliers(name)';
 
+// אמצעי תשלום - רשימה סגורה, שדה חובה (ראו client/src/lib/status.jsx EXPENSE_PAYMENT_METHOD).
+const PAYMENT_METHODS = ['cash', 'check', 'credit', 'bank_transfer', 'other'];
+
 // מנקה/מנרמל שדות הוצאה מגוף הבקשה. מחזיר { row, error }.
 function buildExpense(body) {
   const { expense_date, amount, payment_method, payment_status, invoice_number, supplier_id, note } = body || {};
@@ -21,11 +24,13 @@ function buildExpense(body) {
   const amt = Number(amount);
   if (!Number.isFinite(amt) || amt <= 0) return { error: 'יש להזין סכום חיובי.' };
 
+  if (!PAYMENT_METHODS.includes(payment_method)) return { error: 'יש לבחור אמצעי תשלום.' };
+
   return {
     row: {
       expense_date: expense_date || new Date().toISOString().slice(0, 10),
       amount: round2(amt),
-      payment_method: payment_method?.trim() || null,
+      payment_method,
       payment_status: payment_status || 'unpaid',
       invoice_number: invoice_number?.trim() || null,
       supplier_id: supplier_id || null,

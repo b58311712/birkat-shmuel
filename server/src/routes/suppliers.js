@@ -21,6 +21,8 @@ const router = Router();
 const CHANNELS = ['phone', 'email', 'whatsapp', 'other'];
 const PO_STATUSES = ['draft', 'sent', 'partially_received', 'received', 'cancelled'];
 const PAYMENT_STATUSES = ['unpaid', 'partially_paid', 'paid', 'awaiting_invoice', 'cancelled'];
+// אמצעי תשלום - רשימה סגורה, שדה חובה (ראו client/src/lib/status.jsx EXPENSE_PAYMENT_METHOD).
+const PAYMENT_METHODS = ['cash', 'check', 'credit', 'bank_transfer', 'other'];
 
 async function auditDelete(req, entityType, entityId, details = null) {
   const { error } = await supabase.from('audit_log').insert({
@@ -594,6 +596,8 @@ router.put('/purchase-orders/:id/payment', asyncHandler(async (req, res) => {
   const b = req.body || {};
   if (b.status && !PAYMENT_STATUSES.includes(b.status))
     return fail(res, 400, 'סטטוס תשלום לא תקין.');
+  if (!PAYMENT_METHODS.includes(b.payment_method))
+    return fail(res, 400, 'יש לבחור אמצעי תשלום.');
 
   const fields = {
     supplier_id: po.supplier_id,
@@ -603,7 +607,7 @@ router.put('/purchase-orders/:id/payment', asyncHandler(async (req, res) => {
     invoice_number: b.invoice_number?.trim() || null,
     invoice_date: b.invoice_date || null,
     paid_at: b.paid_at || null,
-    payment_method: b.payment_method?.trim() || null,
+    payment_method: b.payment_method,
     amount_paid: num(b.amount_paid),
     notes: b.notes?.trim() || null,
   };
