@@ -96,6 +96,12 @@ export default function AdminEvents({ onAuthError, currentAdmin }) {
     } catch (e) { handleErr(e); }
   }
 
+  // אחרי קישור אירוע קיים לשבת - המזהה שאיתו פותחים אותו מתחלף למזהה ההזמנה.
+  const afterLink = useCallback((newId) => {
+    load();
+    openDetail({ id: newId });
+  }, [load, openDetail]);
+
   const nav = useRecordNav(openDetail, detail?.id || null);
 
   const columns = [
@@ -220,7 +226,7 @@ export default function AdminEvents({ onAuthError, currentAdmin }) {
         {creating ? (
           <EventCreateForm onSave={create} onCancel={() => setCreating(false)} onErr={handleErr} />
         ) : detail ? (
-          <EventDetailBody data={detail} onErr={handleErr} onChanged={refresh} />
+          <EventDetailBody data={detail} onErr={handleErr} onChanged={refresh} onLinked={afterLink} />
         ) : (
           <p className="text-sm text-surface-muted">טוען...</p>
         )}
@@ -446,7 +452,7 @@ function PayerPicker({ value, onChange, onErr }) {
 // ---------------------------------------------------------------------------
 // כרטיס אירוע: תפריט, תמחור, גבייה ומלאי
 // ---------------------------------------------------------------------------
-function EventDetailBody({ data, onErr, onChanged }) {
+function EventDetailBody({ data, onErr, onChanged, onLinked }) {
   const [tab, setTab] = useState('menu');
   const tabs = [
     { id: 'menu', label: 'תפריט' },
@@ -480,7 +486,7 @@ function EventDetailBody({ data, onErr, onChanged }) {
       {tab === 'pricing' && <EventPricingTab data={data} onErr={onErr} onChanged={onChanged} />}
       {tab === 'payments' && <EventPaymentsTab data={data} onErr={onErr} onChanged={onChanged} />}
       {tab === 'inventory' && <EventInventoryTab data={data} onErr={onErr} onChanged={onChanged} />}
-      {tab === 'details' && <EventDetailsTab data={data} onErr={onErr} onChanged={onChanged} />}
+      {tab === 'details' && <EventDetailsTab data={data} onErr={onErr} onChanged={onChanged} onLinked={onLinked} />}
     </div>
   );
 }
@@ -1092,7 +1098,7 @@ function EventInventoryTab({ data, onErr, onChanged }) {
 // ---------------------------------------------------------------------------
 // לשונית פרטים
 // ---------------------------------------------------------------------------
-function EventDetailsTab({ data, onErr, onChanged }) {
+function EventDetailsTab({ data, onErr, onChanged, onLinked }) {
   const { event, order, linked } = data;
   const [f, setF] = useState({
     title: event.title || '',
@@ -1194,6 +1200,69 @@ function EventDetailsTab({ data, onErr, onChanged }) {
       </Field>
 
       <button type="submit" disabled={busy} className="btn-primary">{busy ? 'שומר...' : 'שמירה'}</button>
+
+      {!linked && event.event_type === 'private' && (
+        <LinkToShabbatPanel data={data} onErr={onErr} onLinked={onLinked} />
+      )}
     </form>
+  );
+}
+
+// קישור אירוע עצמאי קיים לשבת קיימת: הופך אותו לאירוע מקושר בלי לאבד את
+// התפריט/התמחור/התשלומים שכבר הוזנו (הם תלויים ב-order_id ולא נוגעים בשינוי).
+function LinkToShabbatPanel({ data, onErr, onLinked }) {
+  const [open, setOpen] = useState(false);
+  const [shabbatot, setShabbatot] = useState(null);
+  const [shabbatId, setShabbatId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const deducted = data.shabbat_file?.is_inventory_deducted;
+
+  useEffect(() => {
+    if (open && !shabbatot) api.allShabbatot().then(setShabbatot).catch(onErr);
+  }, [open, shabbatot, onErr]);
+
+  async function link() {
+    if (!shabbatId) return alert('יש לבחור שבת לקישור.');
+    if (!confirm('לקשר את האירוע לשבת הנבחרת? המועד ותיק העבודה העצמאיים של האירוע יימחקו, והתפריט/התמחור/התשלומים יעברו לתיק העבודה של השבת.')) return;
+    setBusy(true);
+    try {
+      const { id } = await api.linkEventToShabbat(data.id, shabbatId);
+      onLinked(id);
+    } catch (e) { onErr(e); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="rounded-lg border border-brand-cream-dark p-3">
+      {deducted ? (
+        <p className="text-xs text-surface-muted">
+          לא ניתן לקשר את האירוע לשבת קיימת אחרי שהמלאי שלו כבר נוכה.
+        </p>
+      ) : !open ? (
+        <button type="button" onClick={() => setOpen(true)} className="btn-ghost text-sm">
+          קישור לשבת קיימת
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <Field
+            label="קישור לשבת קיימת"
+            hint="האירוע ייכנס לתיק העבודה, ניכוי המלאי והמטבח של השבת שתיבחר, במקום לתיק העצמאי שלו."
+          >
+            <select value={shabbatId} onChange={(e) => setShabbatId(e.target.value)} className={inputCls}>
+              <option value="">- בחירת שבת -</option>
+              {(shabbatot || []).map((s) => (
+                <option key={s.id} value={s.id}>{s.gregorian_date} · {s.parasha}</option>
+              ))}
+            </select>
+          </Field>
+          <div className="flex gap-2">
+            <button type="button" onClick={link} disabled={busy} className="btn-primary text-sm">
+              {busy ? 'מקשר...' : 'קישור'}
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="btn-ghost text-sm">ביטול</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

@@ -631,6 +631,60 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------------------
+// POST /:id/link-to-shabbat - קישור אירוע עצמאי קיים לשבת קיימת (מיגרציה 60)
+// ---------------------------------------------------------------------------
+// הופך אירוע עצמאי (עם מועד+תיק עבודה משלו) לאירוע פרטי מקושר: ההזמנה עוברת
+// להצביע על shabbat_id של השבת הנבחרת, והמועד/תיק העבודה העצמאיים נמחקים.
+// התפריט, התמחור והתשלומים נשארים כמות שהם - הם תלויים ב-order_id ולא נוגעים
+// בשינוי. חסום אחרי ניכוי מלאי: התנועות כבר נרשמו על shabbat_id הישן, וניוד
+// ההזמנה אחריו לא היה מתקן אותן (deduct_shabbat_inventory הוא RPC ברמת שבת).
+router.post('/:id/link-to-shabbat', asyncHandler(async (req, res) => {
+  const loaded = await loadEvent(res, req.params.id);
+  if (!loaded) return;
+  const { occasion, order, linked } = loaded;
+
+  if (linked) return fail(res, 400, 'האירוע כבר מקושר לשבת.');
+  if (occasion.event_type !== 'private') {
+    return fail(res, 400, 'ניתן לקשר לשבת קיימת רק אירוע פרטי.');
+  }
+
+  const { data: file, error: fileErr } = await supabase
+    .from('shabbat_files').select('is_inventory_deducted').eq('shabbat_id', occasion.id).maybeSingle();
+  if (fileErr) throw fileErr;
+  if (file?.is_inventory_deducted) {
+    return fail(res, 400, 'לא ניתן לקשר אירוע שהמלאי שלו כבר נוכה. יש לפנות לתמיכה.');
+  }
+
+  const targetShabbatId = String(req.body?.shabbat_id || '').trim();
+  if (!targetShabbatId) return fail(res, 400, 'יש לבחור שבת לקישור.');
+
+  const { data: targetShabbat, error: shErr } = await supabase
+    .from('shabbatot').select('id').eq('id', targetShabbatId).eq('kind', 'shabbat').maybeSingle();
+  if (shErr) throw shErr;
+  if (!targetShabbat) return fail(res, 400, 'השבת שנבחרה לקישור לא נמצאה.');
+
+  await ensureShabbatFile(targetShabbat.id);
+
+  const { error: updErr } = await supabase.from('orders').update({
+    shabbat_id: targetShabbat.id,
+    event_title: occasion.title,
+    event_time: occasion.event_time,
+    notes: occasion.notes,
+  }).eq('id', order.id);
+  if (updErr) throw updErr;
+
+  // המועד ותיק העבודה העצמאיים התייתמו - ההזמנה כבר לא מצביעה עליהם.
+  const { error: delFileErr } = await supabase.from('shabbat_files').delete().eq('shabbat_id', occasion.id);
+  if (delFileErr) throw delFileErr;
+  const { error: delOccErr } = await supabase.from('shabbatot').delete().eq('id', occasion.id);
+  if (delOccErr) throw delOccErr;
+
+  await logHistory(order.id, 'האירוע קושר לשבת קיימת', { shabbat_id: targetShabbat.id }, req.appUser?.sub);
+
+  res.json({ ok: true, id: order.id });
+}));
+
+// ---------------------------------------------------------------------------
 // PUT /:id/menu - החלפת התפריט המלא
 // ---------------------------------------------------------------------------
 // החלפה מלאה ולא עדכון הפרשי: הממשק שולח את התפריט כפי שהוא אחרי העריכה.

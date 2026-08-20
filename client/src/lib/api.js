@@ -237,6 +237,7 @@ export const api = {
   setEventMenu: (id, payload) => request(`/admin/events/${id}/menu`, { method: 'PUT', body: JSON.stringify(payload) }),
   setEventPricing: (id, payload) => request(`/admin/events/${id}/pricing`, { method: 'PATCH', body: JSON.stringify(payload) }),
   recalcEventPrice: (id) => request(`/admin/events/${id}/recalc-price`, { method: 'POST' }),
+  linkEventToShabbat: (id, shabbatId) => request(`/admin/events/${id}/link-to-shabbat`, { method: 'POST', body: JSON.stringify({ shabbat_id: shabbatId }) }),
   promoteEvent: (id) => request(`/admin/events/${id}/promote`, { method: 'POST' }),
   deleteEvent: (id) => request(`/admin/events/${id}`, { method: 'DELETE' }),
 
