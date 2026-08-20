@@ -62,40 +62,41 @@ export default function AdminEvents({ onAuthError, currentAdmin }) {
 
   // רענון הפאנל אחרי פעולה שמשנה את האירוע, יחד עם רענון הרשימה מאחוריו.
   const refresh = useCallback(async () => {
-    if (detail?.event?.id) {
-      try { setDetail(await api.event(detail.event.id)); }
+    if (detail?.id) {
+      try { setDetail(await api.event(detail.id)); }
       catch (e) { handleErr(e); }
     }
     load();
-  }, [detail?.event?.id, handleErr, load]);
+  }, [detail?.id, handleErr, load]);
 
   async function create(form) {
     try {
-      const { event } = await api.createEvent(form);
+      const { id } = await api.createEvent(form);
       setCreating(false);
       load();
-      openDetail({ id: event.id });
+      openDetail({ id });
     } catch (e) { handleErr(e); }
   }
 
-  async function removeEvent(ev) {
-    if (!confirm(`למחוק לצמיתות את האירוע "${ev.title}"? הפעולה תמחק גם את ההזמנה והתשלומים שלו.`)) return;
+  async function removeEvent(d) {
+    const title = d.event?.title || '';
+    if (!confirm(`למחוק לצמיתות את האירוע "${title}"? הפעולה תמחק גם את ההזמנה והתשלומים שלו.`)) return;
     try {
-      await api.deleteEvent(ev.id);
+      await api.deleteEvent(d.id);
       setDetail(null);
       load();
     } catch (e) { handleErr(e); }
   }
 
-  async function promote(ev) {
+  async function promote(d) {
     if (!confirm('להפוך את האירוע לתיק עבודה מלא? האירוע יופיע ברשימת תיקי השבת עם כל הלשוניות.')) return;
     try {
-      const { shabbat_file_path } = await api.promoteEvent(ev.id);
+      const { shabbat_file_path } = await api.promoteEvent(d.id);
       navigate(shabbat_file_path);
     } catch (e) { handleErr(e); }
   }
 
-  const nav = useRecordNav(openDetail, detail?.event?.id || null);
+  const nav = useRecordNav(openDetail, detail?.id || null);
 
   const columns = [
     {
@@ -114,7 +115,16 @@ export default function AdminEvents({ onAuthError, currentAdmin }) {
       label: 'שם האירוע',
       type: 'text',
       className: 'font-medium',
-      render: (r) => <span className="text-brand-burgundy">{r.title}</span>,
+      render: (r) => (
+        <span className="text-brand-burgundy">
+          {r.title}
+          {r.linked && (
+            <span className="ms-1.5 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-800">
+              משויך לשבת
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: 'event_type',
@@ -175,7 +185,7 @@ export default function AdminEvents({ onAuthError, currentAdmin }) {
         columns={columns}
         rows={list}
         empty="אין אירועים עדיין."
-        rowClassName={(r) => (ev?.id === r.id ? 'bg-brand-cream/40' : '')}
+        rowClassName={(r) => (detail?.id === r.id ? 'bg-brand-cream/40' : '')}
         onRowClick={openDetail}
         onVisibleRowsChange={nav.setVisibleRows}
       />
@@ -186,21 +196,23 @@ export default function AdminEvents({ onAuthError, currentAdmin }) {
         onPrev={creating ? null : nav.onPrev}
         onNext={creating ? null : nav.onNext}
         position={creating ? null : nav.position}
-        contentKey={creating ? 'new' : `v${ev?.id ?? ''}`}
+        contentKey={creating ? 'new' : `v${detail?.id ?? ''}`}
         width="5xl"
         eyebrow={creating ? 'אירוע חדש' : 'כרטיס אירוע'}
         title={creating ? 'אירוע חדש' : (ev?.title || 'טוען...')}
-        subtitle={!creating && ev ? `${ev.gregorian_date} · ${EVENT_TYPE[ev.event_type]?.label || ''}` : undefined}
+        subtitle={!creating && ev ? (
+          `${ev.gregorian_date} · ${EVENT_TYPE[ev.event_type]?.label || ''}${detail.linked ? ` · משויך לשבת פרשת ${ev.parasha || ''}` : ''}`
+        ) : undefined}
         footer={!creating && detail ? (
           <div className="flex flex-wrap gap-2">
             {!ev.use_full_workfile && (
-              <button onClick={() => promote(ev)} className="btn-ghost">הפוך למועד מלא</button>
+              <button onClick={() => promote(detail)} className="btn-ghost">הפוך למועד מלא</button>
             )}
             {ev.use_full_workfile && (
               <button onClick={() => navigate(`/admin/shabbat/${ev.id}`)} className="btn-ghost">פתיחת תיק העבודה ←</button>
             )}
             {canDelete && (
-              <button onClick={() => removeEvent(ev)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
+              <button onClick={() => removeEvent(detail)} className="btn-ghost text-red-600 hover:bg-red-50">מחיקה</button>
             )}
           </div>
         ) : undefined}
@@ -226,6 +238,7 @@ function EventCreateForm({ onSave, onCancel, onErr }) {
     gregorian_date: new Date().toISOString().slice(0, 10),
     event_time: '',
     event_type: 'community',
+    link_to_shabbat_id: '',
     customer_id: '',
     venue_name: '',
     venue_address: '',
@@ -236,11 +249,25 @@ function EventCreateForm({ onSave, onCancel, onErr }) {
     delivery_method: 'self_pickup',
     notes: '',
   });
+  const [shabbatot, setShabbatot] = useState(null);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const linked = f.event_type === 'private' && !!f.link_to_shabbat_id;
+
+  useEffect(() => {
+    if (f.event_type === 'private' && !shabbatot) {
+      api.allShabbatot().then(setShabbatot).catch(onErr);
+    }
+  }, [f.event_type, shabbatot, onErr]);
+
+  function changeEventType(value) {
+    set('event_type', value);
+    if (value !== 'private') set('link_to_shabbat_id', '');
+  }
 
   function submit(e) {
     e.preventDefault();
     if (!f.title.trim()) return alert('יש להזין שם לאירוע.');
+    if (!linked && !f.gregorian_date) return alert('יש לבחור תאריך.');
     if (!f.customer_id) return alert('יש לבחור גורם משלם.');
     if (!f.venue_name.trim()) return alert('יש להזין את מקום האירוע.');
     if (!f.venue_address.trim()) return alert('יש להזין את כתובת האירוע.');
@@ -254,13 +281,30 @@ function EventCreateForm({ onSave, onCancel, onErr }) {
           <input value={f.title} onChange={(e) => set('title', e.target.value)} className={inputCls} placeholder="למשל: קידוש לרגל הולדת הבן" />
         </Field>
         <Field label="סוג האירוע *">
-          <select value={f.event_type} onChange={(e) => set('event_type', e.target.value)} className={inputCls}>
+          <select value={f.event_type} onChange={(e) => changeEventType(e.target.value)} className={inputCls}>
             {EVENT_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
-        <Field label="תאריך *">
-          <input type="date" value={f.gregorian_date} onChange={(e) => set('gregorian_date', e.target.value)} className={inputCls} />
-        </Field>
+
+        {f.event_type === 'private' && (
+          <Field
+            label="קישור לשבת קיימת"
+            hint="לאירוע פרטי שחל בזמן שבת קהילתית - למשל קידוש בר מצווה. האירוע ייכנס לאותו תיק עבודה, אותו ניכוי מלאי ואותו מטבח של השבת שנבחרה, בלי תיק נפרד משלו."
+          >
+            <select value={f.link_to_shabbat_id} onChange={(e) => set('link_to_shabbat_id', e.target.value)} className={inputCls}>
+              <option value="">- אירוע עצמאי, בלי קישור -</option>
+              {(shabbatot || []).map((s) => (
+                <option key={s.id} value={s.id}>{s.gregorian_date} · {s.parasha}</option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        {!linked && (
+          <Field label="תאריך *">
+            <input type="date" value={f.gregorian_date} onChange={(e) => set('gregorian_date', e.target.value)} className={inputCls} />
+          </Field>
+        )}
         <Field label="שעה">
           <input type="time" value={f.event_time} onChange={(e) => set('event_time', e.target.value)} className={inputCls} />
         </Field>
@@ -286,9 +330,11 @@ function EventCreateForm({ onSave, onCancel, onErr }) {
             {Object.entries(PAYMENT_METHOD).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </Field>
-        <Field label="מועד אחרון לתשלום">
-          <input type="date" value={f.payment_deadline} onChange={(e) => set('payment_deadline', e.target.value)} className={inputCls} />
-        </Field>
+        {!linked && (
+          <Field label="מועד אחרון לתשלום">
+            <input type="date" value={f.payment_deadline} onChange={(e) => set('payment_deadline', e.target.value)} className={inputCls} />
+          </Field>
+        )}
         <Field label="אופן מסירה">
           <select value={f.delivery_method} onChange={(e) => set('delivery_method', e.target.value)} className={inputCls}>
             <option value="self_pickup">איסוף עצמי מהמטבח</option>
@@ -440,7 +486,7 @@ function EventDetailBody({ data, onErr, onChanged }) {
 }
 
 function EventSummaryStrip({ data }) {
-  const { summary, event, order, payer } = data;
+  const { summary, event, order, payer, linked } = data;
   const cells = [
     { label: 'סכום סופי', value: shekel(summary.final) },
     { label: 'שולם', value: shekel(summary.paid) },
@@ -463,7 +509,11 @@ function EventSummaryStrip({ data }) {
         <Badge map={OCCASION_STATUS} value={event.status} />
         <Badge map={PAYMENT_STATUS} value={order.payment_status} />
         <span className="text-xs text-surface-muted">הזמנה {order.order_number}</span>
-        {event.use_full_workfile && (
+        {linked ? (
+          <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-800">
+            משויך לשבת פרשת {event.parasha}
+          </span>
+        ) : event.use_full_workfile && (
           <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-800">מועד מלא</span>
         )}
       </div>
@@ -531,7 +581,7 @@ function EventMenuTab({ data, onErr, onChanged }) {
   async function save() {
     setSaving(true);
     try {
-      await api.setEventMenu(data.event.id, { slots, meals, inventory_lines: lines });
+      await api.setEventMenu(data.id, { slots, meals, inventory_lines: lines });
       onChanged();
     } catch (e) { onErr(e); }
     finally { setSaving(false); }
@@ -706,14 +756,14 @@ function EventPricingTab({ data, onErr, onChanged }) {
 
   async function recalc() {
     setBusy(true);
-    try { await api.recalcEventPrice(data.event.id); onChanged(); }
+    try { await api.recalcEventPrice(data.id); onChanged(); }
     catch (e) { onErr(e); }
     finally { setBusy(false); }
   }
 
   async function saveOverride(value) {
     setBusy(true);
-    try { await api.setEventPricing(data.event.id, { base_amount_override: value }); onChanged(); }
+    try { await api.setEventPricing(data.id, { base_amount_override: value }); onChanged(); }
     catch (e) { onErr(e); }
     finally { setBusy(false); }
   }
@@ -948,6 +998,7 @@ function EventPaymentsTab({ data, onErr, onChanged }) {
 // לשונית מלאי - תצוגה מקדימה וניכוי, דרך נתיבי המלאי של תיק השבת
 // ---------------------------------------------------------------------------
 function EventInventoryTab({ data, onErr, onChanged }) {
+  const navigate = useNavigate();
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const deducted = data.shabbat_file?.is_inventory_deducted;
@@ -978,11 +1029,20 @@ function EventInventoryTab({ data, onErr, onChanged }) {
 
   return (
     <div className="space-y-3">
+      {data.linked && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+          <p>האירוע מקושר לתיק העבודה של השבת - הדוח כאן הוא דוח המלאי המלא של כל השבת, וניכוי המלאי מתבצע יחד עם כל הזמנות השבת, לא בנפרד מכאן.</p>
+          <button onClick={() => navigate(`/admin/shabbat/${data.event.id}`)} className="btn-ghost mt-2 text-sm">
+            מעבר לתיק השבת ←
+          </button>
+        </div>
+      )}
+
       {deducted ? (
         <div className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-900">
-          המלאי של האירוע כבר נוכה.
+          המלאי {data.linked ? 'של השבת המקושרת' : 'של האירוע'} כבר נוכה.
         </div>
-      ) : (
+      ) : !data.linked && (
         <button onClick={deduct} disabled={busy} className="btn-primary text-sm">
           {busy ? 'מנכה...' : 'ניכוי מלאי לאירוע'}
         </button>
@@ -1033,7 +1093,7 @@ function EventInventoryTab({ data, onErr, onChanged }) {
 // לשונית פרטים
 // ---------------------------------------------------------------------------
 function EventDetailsTab({ data, onErr, onChanged }) {
-  const { event, order } = data;
+  const { event, order, linked } = data;
   const [f, setF] = useState({
     title: event.title || '',
     gregorian_date: event.gregorian_date || '',
@@ -1041,7 +1101,7 @@ function EventDetailsTab({ data, onErr, onChanged }) {
     event_type: event.event_type || 'community',
     status: event.status || 'open',
     payment_deadline: event.payment_deadline || '',
-    notes: event.notes || '',
+    notes: (linked ? order.notes : event.notes) || '',
     customer_id: order.customer_id || '',
     venue_name: order.venue_name || '',
     venue_address: order.venue_address || '',
@@ -1056,36 +1116,49 @@ function EventDetailsTab({ data, onErr, onChanged }) {
   async function save(e) {
     e.preventDefault();
     setBusy(true);
-    try { await api.updateEvent(event.id, f); onChanged(); }
+    try { await api.updateEvent(data.id, f); onChanged(); }
     catch (e2) { onErr(e2); }
     finally { setBusy(false); }
   }
 
   return (
     <form onSubmit={save} className="space-y-3">
+      {linked && (
+        <p className="rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-xs text-blue-900">
+          האירוע מקושר לשבת פרשת {event.parasha}. תאריך, סטטוס ומועד תשלום נקבעים לפי השבת ואינם ניתנים לעריכה מכאן.
+        </p>
+      )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="שם האירוע *">
           <input value={f.title} onChange={(e) => set('title', e.target.value)} className={inputCls} />
         </Field>
-        <Field label="סוג האירוע">
-          <select value={f.event_type} onChange={(e) => set('event_type', e.target.value)} className={inputCls}>
-            {EVENT_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </Field>
-        <Field label="תאריך">
-          <input type="date" value={f.gregorian_date} onChange={(e) => set('gregorian_date', e.target.value)} className={inputCls} />
-        </Field>
+        {!linked && (
+          <Field label="סוג האירוע">
+            <select value={f.event_type} onChange={(e) => set('event_type', e.target.value)} className={inputCls}>
+              {EVENT_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </Field>
+        )}
+        {!linked && (
+          <Field label="תאריך">
+            <input type="date" value={f.gregorian_date} onChange={(e) => set('gregorian_date', e.target.value)} className={inputCls} />
+          </Field>
+        )}
         <Field label="שעה">
           <input type="time" value={f.event_time} onChange={(e) => set('event_time', e.target.value)} className={inputCls} />
         </Field>
-        <Field label="סטטוס">
-          <select value={f.status} onChange={(e) => set('status', e.target.value)} className={inputCls}>
-            {Object.entries(OCCASION_STATUS).map(([v, o]) => <option key={v} value={v}>{o.label}</option>)}
-          </select>
-        </Field>
-        <Field label="מועד אחרון לתשלום">
-          <input type="date" value={f.payment_deadline} onChange={(e) => set('payment_deadline', e.target.value)} className={inputCls} />
-        </Field>
+        {!linked && (
+          <Field label="סטטוס">
+            <select value={f.status} onChange={(e) => set('status', e.target.value)} className={inputCls}>
+              {Object.entries(OCCASION_STATUS).map(([v, o]) => <option key={v} value={v}>{o.label}</option>)}
+            </select>
+          </Field>
+        )}
+        {!linked && (
+          <Field label="מועד אחרון לתשלום">
+            <input type="date" value={f.payment_deadline} onChange={(e) => set('payment_deadline', e.target.value)} className={inputCls} />
+          </Field>
+        )}
       </div>
 
       <PayerPicker value={f.customer_id} onChange={(id) => set('customer_id', id)} onErr={onErr} />

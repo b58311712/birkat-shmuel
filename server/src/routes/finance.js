@@ -20,6 +20,25 @@ const router = Router();
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const ACTIVE = ['pending_approval', 'approved', 'needs_correction', 'delivered'];
 
+// סוג האירוע של הזמנה: מ-shabbatot לאירוע עצמאי, מההזמנה עצמה לאירוע פרטי
+// שמקושר לשבת קיימת (pricing_mode='cost_based' על shabbatot.kind='shabbat',
+// מיגרציה 60). null = הזמנת שבת רגילה, לא אירוע.
+function orderEventType(o) {
+  if (o.shabbatot?.kind === 'event') return o.shabbatot?.event_type || 'community';
+  if (o.pricing_mode === 'cost_based') return 'private';
+  return null;
+}
+
+// תווית ההקשר של הזמנה, לתצוגה בדוחות: שם האירוע העצמאי, שם האירוע הפרטי
+// המקושר לצד פרשת השבת, או פרשת השבת בלבד.
+function orderOccasionLabel(o) {
+  const occ = o.shabbatot;
+  if (!occ) return null;
+  if (occ.kind === 'event') return occ.title;
+  if (o.pricing_mode === 'cost_based' && o.event_title) return `${occ.parasha} · ${o.event_title}`;
+  return occ.parasha;
+}
+
 // מפתח חודש YYYY-MM מתוך תאריך (date/ISO). מחזיר null אם אין תאריך.
 function monthKey(dateStr) {
   return dateStr ? String(dateStr).slice(0, 7) : null;
@@ -38,7 +57,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
     // מ-title לאירוע ומ-parasha לשבת (מיגרציה 52), ו-kind מאפשר את הפילוח.
     // למכירת מוצרים אין מועד, ולכן sale_date הוא מקור התאריך שלה (מיגרציה 55).
     supabase.from('orders')
-      .select('id, order_number, order_kind, sale_date, final_amount, payment_status, order_status, shabbat_id, shabbatot(kind, title, event_type, parasha, gregorian_date)')
+      .select('id, order_number, order_kind, sale_date, final_amount, payment_status, order_status, shabbat_id, pricing_mode, event_title, shabbatot(kind, title, event_type, parasha, gregorian_date)')
       .in('order_status', ACTIVE),
     supabase.from('customer_payments').select('order_id, amount, paid_at'),
     supabase.from('supplier_payments').select('supplier_id, amount_paid, invoice_amount, status, paid_at, suppliers(name)'),
@@ -96,9 +115,9 @@ router.get('/summary', asyncHandler(async (req, res) => {
     const gdate = o.shabbatot?.gregorian_date || o.sale_date || null;
     const expected = Number(o.final_amount || 0);
     const paid = paidByOrder.get(o.id) || 0;
-    const isEvent = o.shabbatot?.kind === 'event';
+    const eventType = orderEventType(o);
 
-    const kindKey = isSale ? 'sale' : (isEvent ? (o.shabbatot?.event_type || 'community') : 'shabbat');
+    const kindKey = isSale ? 'sale' : (eventType || 'shabbat');
     if (byKind[kindKey]) {
       byKind[kindKey].expected = round2(byKind[kindKey].expected + expected);
       byKind[kindKey].paid = round2(byKind[kindKey].paid + paid);
@@ -109,7 +128,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
     if (sKey) {
       const cur = byShabbat.get(sKey) || {
         shabbat_id: sKey,
-        label: (isEvent ? o.shabbatot?.title : o.shabbatot?.parasha) || '-',
+        label: (o.shabbatot?.kind === 'event' ? o.shabbatot?.title : o.shabbatot?.parasha) || '-',
         kind: o.shabbatot?.kind || 'shabbat',
         event_type: o.shabbatot?.event_type || null,
         date: gdate,
@@ -206,9 +225,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
       id: o.id,
       order_number: o.order_number,
       order_kind: o.order_kind,
-      shabbat: o.order_kind === 'product_sale'
-        ? 'מכירת מוצרים'
-        : ((o.shabbatot?.kind === 'event' ? o.shabbatot?.title : o.shabbatot?.parasha) || null),
+      shabbat: o.order_kind === 'product_sale' ? 'מכירת מוצרים' : orderOccasionLabel(o),
       final_amount: round2(Number(o.final_amount || 0)),
       paid: round2(paidByOrder.get(o.id) || 0),
       balance: round2(Number(o.final_amount || 0) - (paidByOrder.get(o.id) || 0)),
