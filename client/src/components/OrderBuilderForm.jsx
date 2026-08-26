@@ -145,16 +145,23 @@ export function OrderBuilderForm({
   }, [catalog]);
 
   // קטגוריות שיורשות מאכלים מסעודת-אב (למשל סלטים: הבוקר יורש מליל שבת).
-  // מפה: category_id -> { parentSlotId, extraAllowed }.
+  // מפה: category_id -> { parentSlotId, extraAllowed, parentInOrder }.
+  // parentInOrder=false כשסעודת-האב כלל לא נבחרה בהזמנה זו - אז אין ממה לרשת,
+  // והקטגוריה נבחרת כאן מכל הקטלוג עד המינימום המומלץ (ולא עד המקסימום).
   const inheritByCategory = useMemo(() => {
     const map = {};
+    const slotIdsInOrder = new Set(selectedSlots.map((s) => s.meal_slot_id));
     for (const c of catalog?.categories || []) {
       if (c.inherit_from_slot_id) {
-        map[c.id] = { parentSlotId: c.inherit_from_slot_id, extraAllowed: c.extra_allowed ?? 0 };
+        map[c.id] = {
+          parentSlotId: c.inherit_from_slot_id,
+          extraAllowed: c.extra_allowed ?? 0,
+          parentInOrder: slotIdsInOrder.has(c.inherit_from_slot_id),
+        };
       }
     }
     return map;
-  }, [catalog]);
+  }, [catalog, selectedSlots]);
 
   // גיזום: מאכל שנבחר בסעודת-יעד של קטגוריה יורשת אך בוטל בסעודת-האב - מוסר
   // אוטומטית, כי מאגר המועמדים המותרים בסעודת-היעד הוא בדיוק מה שנבחר בסעודת-האב.
@@ -169,6 +176,8 @@ export function OrderBuilderForm({
         if (!meal) continue;
         const inh = inheritByCategory[meal.category_id];
         if (!inh || inh.parentSlotId === slotId) continue;
+        // סעודת-האב אינה בהזמנה: אין ממה לרשת, הבחירה כאן עצמאית - לא מגזמים.
+        if (!inh.parentInOrder) continue;
         if (!Object.prototype.hasOwnProperty.call(prev, `${inh.parentSlotId}:${mealId}`)) {
           delete next[key];
           changed = true;

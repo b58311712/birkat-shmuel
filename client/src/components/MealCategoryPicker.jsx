@@ -37,9 +37,11 @@ function categoryGroups(catalog, mealSlotId, selectedMeals = {}, inheritByCatego
 
   // קטגוריה יורשת, בסעודה שאינה סעודת-האב: מאגר המועמדים מצטמצם למה שנבחר
   // בפועל בסעודת-האב - לא לכל הקטלוג. הלקוח בוחר מתוכם בלבד, לא מוסיף חדשים.
+  // חריג: כשסעודת-האב כלל אינה בהזמנה, אין ממה לרשת - מציגים את כל מאכלי הקטגוריה.
   const parentPicksByCategory = {};
   for (const [categoryId, info] of Object.entries(inheritByCategory)) {
     if (info.parentSlotId === mealSlotId) continue;
+    if (info.parentInOrder === false) continue;
     const picks = new Set();
     for (const key of Object.keys(selectedMeals)) {
       const [slotId, mealId] = key.split(':');
@@ -100,12 +102,20 @@ function primarySelectedInGroup(group, mealSlotId, selectedMeals) {
 }
 
 // מצב ירושה של קבוצה בסעודה הנוכחית, או null אם אינה קטגוריה יורשת/זו סעודת-האב.
-// extraAllowed - כמה מהמאכלים שנבחרו בסעודת-האב מותר לבחור גם כאן.
+// limit - תקרת הבחירה בסעודה זו:
+//   ירושה רגילה (סעודת-האב בהזמנה) - extra_allowed, מתוך מה שנבחר בסעודת-האב.
+//   standalone (סעודת-האב אינה בהזמנה) - המינימום המומלץ של הקטגוריה, מתוך כל
+//   הקטלוג. אין כאן מכסת מקסימום: בלי סעודת-אב הקטגוריה נבחרת בהיקף המומלץ בלבד
+//   (אם לא הוגדר מינימום מומלץ נופלים למקסימום, ככלל הקטגוריה הרגיל).
 function inheritStateOfGroup(group, mealSlotId, selectedMeals, inheritByCategory) {
   const info = group.category ? inheritByCategory[group.category.id] : undefined;
   if (!info || info.parentSlotId === mealSlotId) return null;
+  const standalone = info.parentInOrder === false;
   return {
-    extraAllowed: info.extraAllowed,
+    standalone,
+    limit: standalone
+      ? group.category.recommended_min ?? group.category.max_allowed ?? null
+      : info.extraAllowed,
     selectedCount: selectedInGroup(group, mealSlotId, selectedMeals),
     parentSlotId: info.parentSlotId,
   };
@@ -115,7 +125,9 @@ function isGroupComplete(group, mealSlotId, selectedMeals, slotPortions, inherit
   const selectedCount = selectedInGroup(group, mealSlotId, selectedMeals);
   // סעודה יורשת: מושלמת כשמכסת הבחירה המותרת נוצלה במלואה.
   if (inherit) {
-    return inherit.extraAllowed == null || inherit.selectedCount >= inherit.extraAllowed;
+    // standalone בלי תקרה מוגדרת - כמו קטגוריה רגילה ללא מקסימום: לעולם לא "הושלם".
+    if (inherit.standalone) return inherit.limit != null && inherit.selectedCount >= inherit.limit;
+    return inherit.limit == null || inherit.selectedCount >= inherit.limit;
   }
   const mode = splitModeOf(group.category);
   // additive מושלם כשנבחר לפחות מאכל אחד ולא נבחר יותר ממאכל עיקרי אחד.
@@ -133,8 +145,8 @@ function isGroupComplete(group, mealSlotId, selectedMeals, slotPortions, inherit
 
 function shortLimitText(category, selectedCount, inherit) {
   if (inherit) {
-    return inherit.extraAllowed != null
-      ? `${inherit.selectedCount}/${inherit.extraAllowed}`
+    return inherit.limit != null
+      ? `${inherit.selectedCount}/${inherit.limit}`
       : String(inherit.selectedCount);
   }
   if (category?.max_allowed != null) return `${selectedCount}/${category.max_allowed}`;
@@ -164,11 +176,12 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
     groups[0];
   const activeSelectedCount = selectedInGroup(activeGroup, mealSlotId, selectedMeals);
   // ירושה: בקטגוריה יורשת (וכשהסעודה הנוכחית איננה סעודת-האב), הלקוח בוחר ידנית
-  // מתוך מה שנבחר בסעודת-האב בלבד, עד המכסה (extra_allowed).
+  // מתוך מה שנבחר בסעודת-האב בלבד, עד המכסה (extra_allowed). כשסעודת-האב אינה
+  // בהזמנה כלל, הבחירה כאן עצמאית מכל הקטלוג עד המינימום המומלץ.
   const activeInherit = inheritStateOfGroup(activeGroup, mealSlotId, selectedMeals, inheritByCategory);
   const isInheritingSlot = !!activeInherit;
   const activeComplete = isGroupComplete(activeGroup, mealSlotId, selectedMeals, slotPortions, activeInherit);
-  const maxAllowed = isInheritingSlot ? activeInherit.extraAllowed : activeGroup.category?.max_allowed;
+  const maxAllowed = isInheritingSlot ? activeInherit.limit : activeGroup.category?.max_allowed;
   const atOrOverMax = maxAllowed != null && activeSelectedCount >= maxAllowed;
   // בזרימת המנהל (allowOverMax) לא חוסמים את המקסימום - רק מתריעים על החריגה.
   const reachedLimit = atOrOverMax && !allowOverMax;
@@ -265,7 +278,9 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
         </div>
         <span className={`text-xs font-medium ${activeComplete ? 'text-green-800' : 'text-brand-burgundy/60'}`}>
           {isInheritingSlot
-            ? `נבחרו ${activeSelectedCount}${maxAllowed != null ? ` מתוך עד ${maxAllowed}` : ''} מתוך מה שנבחר ב${parentSlotName}`
+            ? activeInherit.standalone
+              ? `נבחרו ${activeSelectedCount}${maxAllowed != null ? ` מתוך ${maxAllowed} המומלצים` : ''}`
+              : `נבחרו ${activeSelectedCount}${maxAllowed != null ? ` מתוך עד ${maxAllowed}` : ''} מתוך מה שנבחר ב${parentSlotName}`
             : fullLimitText(activeGroup.category, activeSelectedCount)}
         </span>
       </div>
@@ -274,6 +289,15 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
       {overMax && (
         <div className="mx-3 mt-1 mb-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800">
           חריגה ממקסימום הקטגוריה: נבחרו {activeSelectedCount} מתוך {maxAllowed} המותרים. הבחירה תישמר כחריג.
+        </div>
+      )}
+
+      {/* קטגוריה יורשת שסעודת-האב שלה אינה בהזמנה - הבחירה כאן עצמאית ומלאה */}
+      {isInheritingSlot && activeInherit.standalone && (
+        <div className="mx-3 mt-1 mb-1 rounded-lg bg-brand-cream/50 px-3 py-1.5 text-sm font-medium text-brand-burgundy/70">
+          {`${parentSlotName} לא נבחרה בהזמנה זו, ולכן אין ממה לרשת: ניתן לבחור מכל מאכלי הקטגוריה${
+            maxAllowed != null ? `, עד ${maxAllowed} (הכמות המומלצת)` : ''
+          }.`}
         </div>
       )}
 
