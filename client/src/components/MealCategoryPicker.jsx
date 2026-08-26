@@ -292,15 +292,6 @@ export function MealCategoryPicker({ catalog, mealSlotId, slotPortions = 0, sele
         </div>
       )}
 
-      {/* קטגוריה יורשת שסעודת-האב שלה אינה בהזמנה - הבחירה כאן עצמאית ומלאה */}
-      {isInheritingSlot && activeInherit.standalone && (
-        <div className="mx-3 mt-1 mb-1 rounded-lg bg-brand-cream/50 px-3 py-1.5 text-sm font-medium text-brand-burgundy/70">
-          {`${parentSlotName} לא נבחרה בהזמנה זו, ולכן אין ממה לרשת: ניתן לבחור מכל מאכלי הקטגוריה${
-            maxAllowed != null ? `, עד ${maxAllowed} (הכמות המומלצת)` : ''
-          }.`}
-        </div>
-      )}
-
       {/* equal: סרגל התאמה בין סך הכמויות למנות הסעודה */}
       {isEqualSplit && activeSelectedCount > 0 && (
         <SplitPortionsBar sum={splitSum} target={slotPortions} count={activeSelectedCount} />
