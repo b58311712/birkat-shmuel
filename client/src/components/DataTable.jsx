@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { DragHandle } from './DragHandle.jsx';
 
 // טבלה גנרית עם סינון פר-עמודה לפי טיפוס השדה. הסינון בזיכרון על השורות שנטענו.
@@ -133,6 +133,21 @@ export function DataTable({
   const [showFilters, setShowFilters] = useState(!!initialFilters && Object.keys(initialFilters).length > 0);
   const [draggingId, setDraggingId] = useState(null);
   const [sort, setSort] = useState(null); // { key, dir: 'asc' | 'desc' } או null
+
+  // שורת הכותרת ושורת הסינון דביקות (CSS ב-index.css). שורת הסינון צריכה
+  // להידבק בדיוק מתחת לכותרת, ולכן גובה הכותרת נמדד ונמסר כמשתנה CSS.
+  const headRowRef = useRef(null);
+  const [headHeight, setHeadHeight] = useState(0);
+  useLayoutEffect(() => {
+    const el = headRowRef.current;
+    if (!el) return undefined;
+    const measure = () => setHeadHeight(el.getBoundingClientRect().height);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const leadCols = reorderable ? 1 : 0;
   const colSpan = leadCols + columns.length + (actions ? 1 : 0);
@@ -287,10 +302,10 @@ export function DataTable({
         )}
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
+      <div className="overflow-x-auto rounded-2xl bg-white shadow-card">
+        <table className="w-full" style={{ '--table-head-h': `${headHeight}px` }}>
           <thead className="bg-brand-burgundy text-brand-cream text-sm">
-            <tr>
+            <tr ref={headRowRef}>
               {reorderable && <th className="p-3 text-right w-10" aria-label="סדר" />}
               {columns.map((col, i) => {
                 const sortable = isSortable(col);

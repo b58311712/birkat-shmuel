@@ -4,6 +4,7 @@ import { Page } from '../components/Layout.jsx';
 import { DataTable } from '../components/DataTable.jsx';
 import { Drawer, useRecordNav } from '../components/Drawer.jsx';
 import OrderPaymentsPanel from '../components/OrderPaymentsPanel.jsx';
+import CustomerPicker from '../components/CustomerPicker.jsx';
 import { Badge, PAYMENT_STATUS, PAYMENT_METHOD, ORDER_STATUS } from '../lib/status.jsx';
 import { formatInventoryQuantity } from '../lib/inventoryPackages.js';
 
@@ -203,7 +204,7 @@ function SaleCreateForm({ onSave, onCancel, onErr }) {
     contact_name: '', contact_phone: '', notes: '',
   });
   const [lines, setLines] = useState([]);
-  const [customers, setCustomers] = useState([]);
+  const [customers, setCustomers] = useState(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -225,10 +226,13 @@ function SaleCreateForm({ onSave, onCancel, onErr }) {
     <form onSubmit={submit} className="space-y-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="לקוח *">
-          <select value={f.customer_id} onChange={(e) => set({ customer_id: e.target.value })} className={inputCls}>
-            <option value="">- בחירה -</option>
-            {customers.map((c) => <option key={c.id} value={c.id}>{c.full_name} ({c.phone})</option>)}
-          </select>
+          <CustomerPicker
+            customers={customers}
+            value={f.customer_id}
+            onChange={(id) => set({ customer_id: id })}
+            ariaLabel="לקוח"
+            inputClassName={inputCls}
+          />
         </Field>
         <Field label="תאריך המכירה *">
           <input type="date" value={f.sale_date} onChange={(e) => set({ sale_date: e.target.value })} className={inputCls} />

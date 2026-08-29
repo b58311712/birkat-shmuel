@@ -23,6 +23,7 @@ const TEMPLATE_LABELS = {
   payment_reminder: 'תזכורת תשלום ללקוח',
   feedback_request: 'בקשת משוב לאחר שבת',
   order_instructions_print: 'הוראות ללקוח (בתוך "פירוט ללקוח" בתיק שבת - לא נשלח כמייל)',
+  purchase_order_supplier: 'הזמנת רכש לספק (נשלח ממסך הזמנת הרכש)',
 };
 
 // placeholders זמינים לשימוש בנוסחים.
@@ -40,6 +41,14 @@ const PLACEHOLDERS = [
   ['{email}', 'אימייל (בקשת רישום)'],
   ['{address}', 'כתובת (בקשת רישום)'],
   ['{reject_reason}', 'סיבת דחיית רישום'],
+  // נוסח הזמנת רכש לספק (סעיף 27.2)
+  ['{supplier_name}', 'שם הספק'],
+  ['{contact_name}', 'איש קשר אצל הספק'],
+  ['{po_number}', 'מספר הזמנת רכש'],
+  ['{po_date}', 'תאריך יצירת הזמנת הרכש'],
+  ['{expected_delivery_date}', 'תאריך אספקה מבוקש'],
+  ['{po_lines}', 'פירוט הפריטים והכמויות'],
+  ['{po_notes}', 'הערות ההזמנה (כולל הקידומת "הערות:", ריק אם אין)'],
 ];
 
 const LOG_STATUS = {

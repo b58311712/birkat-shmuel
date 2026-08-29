@@ -490,6 +490,9 @@ router.delete('/users/:id', requireRole('developer'), asyncHandler(async (req, r
 //
 // מכירות מוצרים מוסתרות כברירת מחדל: אין להן מועד, והמסך שלהן הוא /admin/sales.
 // include_sales=1 מאפשר להציג את כולן יחד למי שרוצה תמונה כספית מלאה.
+//
+// לכל שורה מצורפים amount_paid ו-balance_due: מאז שהתשלום אינו מעכב את הביצוע
+// (כלל 8.7), היתרה הפתוחה היא המידע התפעולי החשוב ברשימה - לא רק תג הסטטוס.
 router.get('/orders', asyncHandler(async (req, res) => {
   let q = supabase
     .from('orders')
@@ -502,7 +505,27 @@ router.get('/orders', asyncHandler(async (req, res) => {
 
   const { data, error } = await q;
   if (error) throw error;
-  res.json(data);
+
+  const orders = data || [];
+  const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
+  // התשלומים נשלפים במנות: הרשימה הזו מחזירה את כל ההזמנות אי פעם, ורשימת
+  // מזהים אחת ארוכה הופכת את שאילתת ה-REST לכתובת ארוכה מדי.
+  const paidByOrder = {};
+  const ids = orders.map((o) => o.id);
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data: payments, error: pErr } = await supabase
+      .from('customer_payments').select('order_id, amount').in('order_id', ids.slice(i, i + 200));
+    if (pErr) throw pErr;
+    for (const pay of payments || []) {
+      paidByOrder[pay.order_id] = round2((paidByOrder[pay.order_id] || 0) + Number(pay.amount || 0));
+    }
+  }
+
+  res.json(orders.map((o) => {
+    const paid = paidByOrder[o.id] || 0;
+    return { ...o, amount_paid: paid, balance_due: round2(Number(o.final_amount || 0) - paid) };
+  }));
 }));
 
 // GET /api/admin/orders/:id - הזמנה מלאה לניהול, כולל כל שדות הטופס וההיסטוריה
@@ -832,7 +855,7 @@ router.post('/orders/:id/cancel', asyncHandler(async (req, res) => {
 // POST /api/admin/orders/:id/payment - עדכון סטטוס תשלום (סעיף 17.2)
 router.post('/orders/:id/payment', asyncHandler(async (req, res) => {
   const { payment_status, amount, payment_method, paid_at } = req.body;
-  const valid = ['unpaid', 'partially_paid', 'paid', 'payment_override'];
+  const valid = ['unpaid', 'partially_paid', 'paid'];
   if (!valid.includes(payment_status)) return fail(res, 400, 'סטטוס תשלום לא תקין.');
 
   const { data, error } = await supabase
@@ -873,7 +896,7 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
 
   const [
     pendingOrders, cancelledRecent,
-    unpaidActive, partiallyPaid, overrideCount, openRefunds,
+    unpaidActive, partiallyPaid, openRefunds,
     lowStock, openPOs, supplierPayments,
     invItems, transportOrders,
   ] = await Promise.all([
@@ -887,8 +910,6 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
       .in('order_status', ACTIVE).eq('payment_status', 'unpaid'),
     supabase.from('orders').select('id', { count: 'exact', head: true })
       .in('order_status', ACTIVE).eq('payment_status', 'partially_paid'),
-    supabase.from('orders').select('id', { count: 'exact', head: true })
-      .eq('payment_status', 'payment_override'),
     supabase.from('order_refunds').select('id', { count: 'exact', head: true })
       .eq('status', 'pending'),
     // 30.3/30.5 - מלאי + רכש
@@ -971,7 +992,6 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
     payments: {
       unpaid: unpaidActive.count || 0,
       partially_paid: partiallyPaid.count || 0,
-      overrides: overrideCount.count || 0,
       open_refunds: openRefunds.count || 0,
     },
     inventory: {

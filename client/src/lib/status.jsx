@@ -11,7 +11,6 @@ export const PAYMENT_STATUS = {
   unpaid: { label: 'לא שולם', cls: 'bg-red-100 text-red-700' },
   partially_paid: { label: 'שולם חלקית', cls: 'bg-amber-100 text-amber-800' },
   paid: { label: 'שולם', cls: 'bg-green-100 text-green-800' },
-  payment_override: { label: 'אושרה חריגה', cls: 'bg-purple-100 text-purple-800' },
 };
 
 // סטטוס החזר כספי (סעיף 19.4)
@@ -132,6 +131,14 @@ export const SUPPLIER_CHANNEL = {
   email: 'מייל',
   whatsapp: 'וואטסאפ',
   other: 'אחר',
+};
+
+// תוצאת שליחת מייל (יומן המיילים ושליחת הזמנת רכש לספק - מיגרציה 61).
+// dry_run = אין מסלול שליחה מוגדר בסביבה, המייל נשמר ביומן ולא יצא בפועל.
+export const EMAIL_SEND_STATUS = {
+  sent: { label: 'נשלח', cls: 'bg-green-100 text-green-800' },
+  dry_run: { label: 'מצב יבש', cls: 'bg-amber-100 text-amber-800' },
+  failed: { label: 'נכשל', cls: 'bg-red-100 text-red-700' },
 };
 
 export function Badge({ map, value }) {

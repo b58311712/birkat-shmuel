@@ -74,7 +74,9 @@ export function officeEmail() {
 
 // --- מילוי placeholders ---
 // מחליף {key} בערך מהמפה. מפתח חסר נשאר ריק (ולא משאיר "{key}" מבלבל בגוף).
-function fillTemplate(text, vars) {
+// מיוצא כדי שקורא שבונה תצוגה מקדימה לעריכה (הזמנת רכש לספק) ימלא בדיוק את
+// אותם placeholders שהשליחה הייתה ממלאת.
+export function fillTemplate(text, vars) {
   return String(text || '').replace(/\{(\w+)\}/g, (_, key) =>
     vars[key] != null ? String(vars[key]) : ''
   );
@@ -100,6 +102,68 @@ async function logEmail(row) {
 }
 
 // =============================================================================
+// deliverEmail - השליחה בפועל + התיעוד ביומן. הנוסח שמגיע לכאן כבר סופי
+// (placeholders מולאו, ואולי גם נערך ידנית לפני השליחה - ראו sendCustomEmail).
+// מחזיר { status, error } ולעולם לא זורק.
+// =============================================================================
+async function deliverEmail({ code, to, cc = null, subject, body, orderId = null, purchaseOrderId = null }) {
+  const logRow = {
+    template_code: code,
+    to_email: to,
+    cc_email: cc || null,
+    subject,
+    body,
+    order_id: orderId,
+    purchase_order_id: purchaseOrderId,
+  };
+
+  if (isDryRun()) {
+    // מצב יבש - מתעדים ולא שולחים.
+    await logEmail({ ...logRow, status: 'dry_run' });
+    return { status: 'dry_run', error: null };
+  }
+
+  // עוטפים את גוף הטקסט של המנהל במעטפת HTML רשמית; הטקסט נשמר כגיבוי.
+  const html = renderBrandedEmail({ subject, body });
+
+  try {
+    if (isGmailApiConfigured()) {
+      // מסלול מועדף - Gmail API על HTTPS/443 (עובד ב-Render, שחוסמת SMTP).
+      await sendViaGmailApi({ from: fromAddress(), to, cc, subject, text: body, html });
+    } else {
+      // fallback - SMTP דרך nodemailer (עובד מקומית; ב-Render נחסם).
+      await getTransporter().sendMail({
+        from: fromAddress(),
+        to,
+        ...(cc ? { cc } : {}),
+        subject,
+        text: body,
+        html,
+      });
+    }
+    await logEmail({ ...logRow, status: 'sent' });
+    return { status: 'sent', error: null };
+  } catch (sendErr) {
+    await logEmail({ ...logRow, status: 'failed', error: sendErr.message });
+    return { status: 'failed', error: sendErr.message };
+  }
+}
+
+// =============================================================================
+// sendCustomEmail - שליחת נוסח סופי שכבר נערך ידנית (הזמנת רכש לספק: המנהלת
+// רואה תצוגה מקדימה, מתקנת נמען/נושא/גוף, ורק אז שולחת). בניגוד ל-
+// sendTemplateEmail כאן *לא* נטען נוסח מ-email_templates ולא ממולאים
+// placeholders - הקורא אחראי לנוסח הסופי. code נשמר ליומן לצורך סיווג בלבד.
+// מחזיר { status, error }; זורק רק על קלט חסר (באג של הקורא, לא כשל שליחה).
+// =============================================================================
+export async function sendCustomEmail({ code, to, cc = null, subject, body, orderId = null, purchaseOrderId = null }) {
+  if (!to) throw new Error('חסר נמען.');
+  if (!String(subject || '').trim()) throw new Error('חסר נושא המייל.');
+  if (!String(body || '').trim()) throw new Error('חסר גוף המייל.');
+  return deliverEmail({ code, to, cc, subject, body, orderId, purchaseOrderId });
+}
+
+// =============================================================================
 // sendTemplateEmail - הפונקציה המרכזית.
 //   code      - מזהה הנוסח ב-email_templates
 //   to        - כתובת נמען (אם ריקה, מדלגים בשקט; לקוח ללא מייל, סעיף 18.4)
@@ -120,38 +184,8 @@ export async function sendTemplateEmail({ code, to, vars = {}, orderId = null })
     const subject = fillTemplate(tpl.subject, vars);
     const body = fillTemplate(tpl.body, vars);
 
-    if (isDryRun()) {
-      // מצב יבש - מתעדים ולא שולחים.
-      await logEmail({ template_code: code, to_email: to, subject, body, status: 'dry_run', order_id: orderId });
-      return { status: 'dry_run' };
-    }
-
-    // עוטפים את גוף הטקסט של המנהל במעטפת HTML רשמית; הטקסט נשמר כגיבוי.
-    const html = renderBrandedEmail({ subject, body });
-
-    try {
-      if (isGmailApiConfigured()) {
-        // מסלול מועדף - Gmail API על HTTPS/443 (עובד ב-Render, שחוסמת SMTP).
-        await sendViaGmailApi({ from: fromAddress(), to, subject, text: body, html });
-      } else {
-        // fallback - SMTP דרך nodemailer (עובד מקומית; ב-Render נחסם).
-        await getTransporter().sendMail({
-          from: fromAddress(),
-          to,
-          subject,
-          text: body,
-          html,
-        });
-      }
-      await logEmail({ template_code: code, to_email: to, subject, body, status: 'sent', order_id: orderId });
-      return { status: 'sent' };
-    } catch (sendErr) {
-      await logEmail({
-        template_code: code, to_email: to, subject, body,
-        status: 'failed', error: sendErr.message, order_id: orderId,
-      });
-      return { status: 'failed' };
-    }
+    const { status } = await deliverEmail({ code, to, subject, body, orderId });
+    return { status };
   } catch (e) {
     // כל כשל לא-צפוי לא מפיל את הבקשה שקראה לשירות.
     console.warn(`sendTemplateEmail(${code}) failed:`, e.message);

@@ -318,8 +318,8 @@ function GuideBlock({ block, idPrefix }) {
 
     case 'table':
       return (
-        <div className="overflow-x-auto">
-          <table className="w-full overflow-hidden rounded-2xl bg-white text-right shadow-card">
+        <div className="overflow-x-auto rounded-2xl bg-white shadow-card">
+          <table className="w-full text-right">
             <thead className="bg-brand-burgundy text-sm text-brand-cream">
               <tr>
                 {block.head.map((cell, index) => (

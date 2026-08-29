@@ -3,8 +3,9 @@
 // עיקרון מרכזי (סעיף 8.7): רק הזמנות שנכנסות ל"הכנות" משתתפות בחישובים
 // תפעוליים (כמויות, מטבח, מלאי, אריזה, שינוע):
 //   order_status = 'approved'
-//   וגם payment_status ∈ { paid, partially_paid, payment_override }
-// הזמנה שבוטלה או שלא שולמה (ואין חריגה) - לא נכנסת לחישוב.
+// אישור המנהל הוא השער היחיד לביצוע. סטטוס התשלום אינו מעכב עוד את ההכנות -
+// הגבייה רצה במקביל, והיתרה הפתוחה מוצגת בעמודה "יתרה לתשלום" ברשימת ההזמנות.
+// הזמנה שבוטלה או שטרם אושרה - לא נכנסת לחישוב.
 import { supabase } from '../lib/supabase.js';
 import { roundUp } from '../lib/helpers.js';
 import {
@@ -19,15 +20,9 @@ import {
 } from './directProcurement.js';
 import { loadTemplate } from './email.js';
 
-// סטטוסי תשלום שמזכים הזמנה להיכנס לחישובים (סעיף 8.7)
-const OPERATIONAL_PAYMENT_STATUSES = ['paid', 'partially_paid', 'payment_override'];
-
 // בודק אם הזמנה בודדת נכנסת לחישובי הכנה (סעיף 8.7)
 export function isOperational(order) {
-  return (
-    order.order_status === 'approved' &&
-    OPERATIONAL_PAYMENT_STATUSES.includes(order.payment_status)
-  );
+  return order.order_status === 'approved';
 }
 
 // שולף שבת + כל ההזמנות שלה, כולל סעודות/מנות/מאכלים. משמש את כל הלשוניות.

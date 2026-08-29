@@ -72,13 +72,15 @@ function encodeFrom(from) {
 // =============================================================================
 // buildMimeMessage - בונה הודעת RFC 822 מלאה: multipart/alternative (text + html).
 // =============================================================================
-function buildMimeMessage({ from, to, subject, text, html }) {
+function buildMimeMessage({ from, to, cc, subject, text, html }) {
   const altBoundary = 'alt_' + Math.random().toString(36).slice(2);
   const nl = '\r\n';
 
   const headers = [
     `From: ${encodeFrom(from)}`,
     `To: ${to}`,
+    // Cc אופציונלי - נשלח רק כשהוזנו נמעני עותק (שליחת הזמנת רכש לספק).
+    ...(cc ? [`Cc: ${cc}`] : []),
     `Subject: ${encodeHeader(subject)}`,
     'MIME-Version: 1.0',
   ];
@@ -102,11 +104,11 @@ function buildMimeMessage({ from, to, subject, text, html }) {
 // =============================================================================
 // sendViaGmailApi - שולח מייל אחד דרך Gmail API. זורק בכשל (הקורא תופס ומתעד).
 // =============================================================================
-export async function sendViaGmailApi({ from, to, subject, text, html }) {
+export async function sendViaGmailApi({ from, to, cc = null, subject, text, html }) {
   const gmail = getGmailClient();
   if (!gmail) throw new Error('Gmail API not configured');
 
-  const mime = buildMimeMessage({ from, to, subject, text, html });
+  const mime = buildMimeMessage({ from, to, cc, subject, text, html });
   await gmail.users.messages.send({
     userId: 'me',
     requestBody: { raw: toBase64Url(mime) },

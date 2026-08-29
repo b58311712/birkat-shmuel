@@ -3,6 +3,7 @@ import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { DataTable } from '../components/DataTable.jsx';
 import { FormDrawer, useRecordNav } from '../components/Drawer.jsx';
+import CustomerPicker from '../components/CustomerPicker.jsx';
 import { ACTIVE_STATUS, Badge } from '../lib/status.jsx';
 
 // ניהול מתנדבים ומשימות קבועות (סעיף 24). מסך ניהול גלובלי.
@@ -195,7 +196,6 @@ function VolunteersManager({ meals, areas, onErr, canDelete }) {
 
 function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, embedded = false }) {
   const activeAreas = areas.filter((a) => a.is_active);
-  const [customerSearch, setCustomerSearch] = useState('');
   const [f, setF] = useState({
     id: initial.id,
     customer_id: initial.customer_id || '',
@@ -231,12 +231,6 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, emb
   const visibleMeals = normalizedMealSearch
     ? meals.filter((meal) => meal.name.toLocaleLowerCase('he-IL').includes(normalizedMealSearch))
     : meals;
-  const normalizedCustomerSearch = customerSearch.trim().toLocaleLowerCase('he-IL');
-  const visibleCustomers = normalizedCustomerSearch
-    ? customers.filter((customer) => [customer.full_name, customer.phone, customer.email]
-      .filter(Boolean)
-      .some((value) => String(value).toLocaleLowerCase('he-IL').includes(normalizedCustomerSearch)))
-    : customers;
   const linkedCustomer = customers.find((customer) => customer.id === f.customer_id);
   const set = (k, v) => setF((s) => {
     if (k !== 'customer_id') return { ...s, [k]: v };
@@ -272,27 +266,14 @@ function VolunteerForm({ meals, areas, customers, initial, onSave, onCancel, emb
       {!embedded && <h3 className="font-bold text-brand-burgundy">{f.id ? 'עריכת מתנדב' : 'מתנדב חדש'}</h3>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="קישור ללקוח קיים">
-          <div className="space-y-2">
-            <input
-              type="search"
-              value={customerSearch}
-              onChange={(e) => setCustomerSearch(e.target.value)}
-              className={inputCls}
-              placeholder="חיפוש לפי שם, טלפון או אימייל..."
-              aria-label="חיפוש לקוח קיים"
-            />
-            <select value={f.customer_id} onChange={(e) => set('customer_id', e.target.value)} className={inputCls}>
-              <option value="">- מתנדב עצמאי -</option>
-              {visibleCustomers.map((customer) => (
-                <option key={customer.id} value={customer.id}>
-                  {customer.full_name} {customer.phone ? `(${customer.phone})` : ''}
-                </option>
-              ))}
-              {visibleCustomers.length === 0 && (
-                <option disabled>לא נמצאו לקוחות מתאימים</option>
-              )}
-            </select>
-          </div>
+          <CustomerPicker
+            customers={customers}
+            value={f.customer_id}
+            onChange={(id) => set('customer_id', id)}
+            emptyLabel="- מתנדב עצמאי -"
+            ariaLabel="קישור ללקוח קיים"
+            inputClassName={inputCls}
+          />
         </Field>
         <Field label="שם פרטי *">
           <input

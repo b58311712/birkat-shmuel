@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { DataTable } from '../components/DataTable.jsx';
 import { Drawer, useRecordNav } from '../components/Drawer.jsx';
+import CustomerPicker from '../components/CustomerPicker.jsx';
 import {
   Badge, EVENT_TYPE, OCCASION_STATUS, PAYMENT_STATUS, PAYMENT_METHOD,
 } from '../lib/status.jsx';
@@ -400,26 +401,21 @@ function PayerPicker({ value, onChange, onErr }) {
     } catch (e2) { onErr(e2); }
   }
 
-  const sorted = useMemo(() => {
-    if (!customers) return [];
-    // ארגונים ראשונים - הם הבחירה השכיחה באירוע פנימי.
-    return [...customers].sort((a, b) => {
-      if (!!a.is_organization !== !!b.is_organization) return a.is_organization ? -1 : 1;
-      return String(a.full_name || '').localeCompare(String(b.full_name || ''), 'he');
-    });
-  }, [customers]);
-
   return (
     <div className="rounded-lg border border-brand-cream-dark p-3">
       <Field label="גורם משלם *" hint="חבר קהילה, או גורם משלם כמו ועד הקהילה / גבאי / קרן">
-        <select value={value || ''} onChange={(e) => onChange(e.target.value)} className={inputCls}>
-          <option value="">- בחירה -</option>
-          {sorted.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.is_organization ? `${c.full_name} (גורם משלם)` : `${c.full_name} · ${c.phone}`}
-            </option>
-          ))}
-        </select>
+        {/* priority מקבץ ארגונים בראש הרשימה - הבחירה השכיחה באירוע פנימי;
+            בתוך כל קבוצה המיון הוא א"ב לפי שם משפחה. */}
+        <CustomerPicker
+          customers={customers}
+          value={value}
+          onChange={onChange}
+          ariaLabel="גורם משלם"
+          inputClassName={inputCls}
+          placeholder="חיפוש לפי שם משפחה, שם או טלפון..."
+          priority={(c) => (c.is_organization ? 0 : 1)}
+          meta={(c) => (c.is_organization ? 'גורם משלם' : c.phone || '')}
+        />
       </Field>
 
       {!addingOrg ? (
@@ -924,20 +920,12 @@ function EventPaymentsTab({ data, onErr, onChanged }) {
     catch (e) { onErr(e); }
   }
 
-  async function toggleOverride() {
-    const enable = order.payment_status !== 'payment_override';
-    if (!confirm(enable
-      ? 'לאשר חריגת תשלום? האירוע ייכנס לחישובים התפעוליים גם בלי תשלום מלא.'
-      : 'לבטל את אישור חריגת התשלום?')) return;
-    try { await api.setPaymentOverride(order.id, enable); onChanged(); }
-    catch (e) { onErr(e); }
-  }
-
   return (
     <div className="space-y-4">
-      {summary.balance > 0.001 && order.payment_status !== 'payment_override' && (
+      {summary.balance > 0.001 && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          האירוע לא ייכנס לניכוי המלאי ולדוח החוסרים עד שיתועד תשלום או תאושר חריגת תשלום (כלל 8.7).
+          נותרה יתרה לתשלום של {shekel(summary.balance)}. האירוע נכנס לחישובים התפעוליים ממילא (כלל 8.7),
+          והיתרה ממשיכה להופיע כאן וברשימת ההזמנות עד שתיסגר.
         </div>
       )}
 
@@ -962,9 +950,6 @@ function EventPaymentsTab({ data, onErr, onChanged }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="submit" disabled={busy} className="btn-primary text-sm">רישום תשלום</button>
-          <button type="button" onClick={toggleOverride} className="btn-ghost text-sm">
-            {order.payment_status === 'payment_override' ? 'ביטול אישור חריגה' : 'אישור חריגת תשלום'}
-          </button>
         </div>
       </form>
 
@@ -1063,7 +1048,7 @@ function EventInventoryTab({ data, onErr, onChanged }) {
 
       {rows.length === 0 ? (
         <p className="text-sm text-surface-muted">
-          אין צריכת מלאי מחושבת לאירוע. אם תועד תפריט, ייתכן שהאירוע טרם נכנס לחישובים התפעוליים (ראו לשונית גבייה).
+          אין צריכת מלאי מחושבת לאירוע. ודאו שתועד תפריט ושלמאכלים מוגדרים מרכיבים מהמלאי.
         </p>
       ) : (
         <div className="overflow-x-auto">

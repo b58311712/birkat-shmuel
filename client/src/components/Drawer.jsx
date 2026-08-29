@@ -117,7 +117,7 @@ export function Drawer({
           </div>
         </header>
 
-        <div key={contentKey} className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div key={contentKey} className="drawer-body flex-1 overflow-y-auto px-5 py-4">{children}</div>
 
         {footer && (
           <footer className="border-t border-surface-line bg-surface-canvas/60 px-5 py-3">{footer}</footer>

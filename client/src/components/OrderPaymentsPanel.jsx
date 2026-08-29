@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api.js';
 import { Badge, PAYMENT_STATUS, PAYMENT_METHOD } from '../lib/status.jsx';
 
-// פאנל גבייה מלקוח (סעיף 17) - תיעוד תשלומים, סיכום יתרה, אישור חריגה.
+// פאנל גבייה מלקוח (סעיף 17) - תיעוד תשלומים וסיכום יתרה.
 //
 // הפאנל עובד על order_id בלבד ואינו יודע דבר על מועד, סעודות או מוצרים, ולכן
 // הוא משרת הזמנת שבת, אירוע ומכירת מוצרים באותה מידה. זו בדיוק הסיבה שמכירה
@@ -44,7 +44,6 @@ export default function OrderPaymentsPanel({ order, onError, onChanged }) {
 
   const s = data?.summary;
   const payments = data?.payments || [];
-  const override = order.payment_status === 'payment_override';
 
   return (
     <div className="card mt-4">
@@ -107,18 +106,6 @@ export default function OrderPaymentsPanel({ order, onError, onChanged }) {
         <button disabled={busy} className="btn-secondary">תיעוד תשלום</button>
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="הערה פנימית (לא חובה)" className="input w-full sm:col-span-4" />
       </form>
-
-      {/* אישור חריגת תשלום (סעיף 17.4) */}
-      <div className="mt-3 pt-3 border-t border-brand-cream-dark flex items-center gap-3">
-        <span className="text-sm text-brand-burgundy/70">
-          {override ? 'מסומן כחריגת תשלום מאושרת.' : 'לאשר חריגת תשלום (סכום מאושר על אף יתרה)?'}
-        </span>
-        <button disabled={busy}
-          onClick={() => run(() => api.setPaymentOverride(order.id, !override))}
-          className="px-3 py-1 rounded-lg bg-purple-100 text-purple-800 hover:bg-purple-200 text-sm font-medium">
-          {override ? 'ביטול חריגה' : 'אישור חריגה'}
-        </button>
-      </div>
     </div>
   );
 }

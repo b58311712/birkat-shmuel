@@ -1,6 +1,6 @@
 // ניהול ספקים והזמנות רכש (סעיף 27-28). מאחורי אימות מנהל.
 //   - כרטיס ספק מלא: יצירה, עריכה, השבתה (מחיקה רכה - סעיף 32), מוצרים שהספק מספק (סעיף 25.3, 27.1)
-//   - הזמנות רכש: יצירה, עריכה, שליחה, ביטול, קבלת סחורה → הוספה למלאי (סעיף 27.2-27.3)
+//   - הזמנות רכש: יצירה, עריכה, שליחה לספק במייל, ביטול, קבלת סחורה → מלאי (סעיף 27.2-27.3)
 //   - תשלומים לספק לפי הזמנת רכש (סעיף 28.1)
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
@@ -15,6 +15,11 @@ import {
   isDirectEventProcurement,
   purchaseReceiptAffectsStock,
 } from '../services/directProcurement.js';
+import { isDryRun, sendCustomEmail } from '../services/email.js';
+import {
+  buildPurchaseOrderEmail,
+  PURCHASE_ORDER_TEMPLATE_CODE,
+} from '../services/purchaseOrderEmail.js';
 
 const router = Router();
 
@@ -33,6 +38,20 @@ async function auditDelete(req, entityType, entityId, details = null) {
     details,
   });
   if (error) throw error;
+}
+
+// בדיקת כתובת מייל בסיסית - מספיקה כדי לתפוס שגיאות הקלדה לפני שליחה לספק.
+const EMAIL_RE = /^[^s@,]+@[^s@,]+.[^s@,]+$/;
+
+// רשימת נמענים מופרדת בפסיק → מחרוזת מנורמלת, או שגיאה על כתובת לא תקינה.
+function normalizeRecipients(value) {
+  const parts = String(value || '')
+    .split(/[,;]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const invalid = parts.find((part) => !EMAIL_RE.test(part));
+  if (invalid) return { error: `כתובת מייל לא תקינה: ${invalid}` };
+  return { value: parts.join(', ') };
 }
 
 // המרה בטוחה למספר; מחזיר null אם לא מספר תקין
@@ -436,6 +455,97 @@ router.post('/purchase-orders/:id/status', asyncHandler(async (req, res) => {
     .update({ status }).eq('id', po.id).select('*').single();
   if (uErr) throw uErr;
   res.json({ ok: true, purchase_order: data });
+}));
+
+// ===========================================================================
+// שליחת ההזמנה לספק במייל (מיגרציה 61)
+// ===========================================================================
+// עד כה שליחה לספק הייתה סימון ידני בלבד. כאן: תצוגה מקדימה → עריכה → שליחה,
+// עם היסטוריית שליחות מלאה ב-email_log ואפשרות לשלוח שוב.
+
+// GET /api/admin/suppliers/purchase-orders/:id/email-preview - הנוסח המוצע לספק
+router.get('/purchase-orders/:id/email-preview', asyncHandler(async (req, res) => {
+  let preview;
+  try {
+    preview = await buildPurchaseOrderEmail(req.params.id);
+  } catch (e) {
+    if (e.notFound) return fail(res, 404, e.message);
+    throw e;
+  }
+  res.json({
+    to: preview.to,
+    subject: preview.subject,
+    body: preview.body,
+    supplier: preview.supplier,
+    status: preview.purchase_order.status,
+    template_active: preview.template_active,
+    dry_run: isDryRun(),
+  });
+}));
+
+// GET /api/admin/suppliers/purchase-orders/:id/email-log - היסטוריית השליחות
+router.get('/purchase-orders/:id/email-log', asyncHandler(async (req, res) => {
+  const { data, error } = await supabase
+    .from('email_log')
+    .select('id, to_email, cc_email, subject, status, error, created_at')
+    .eq('purchase_order_id', req.params.id)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  res.json({ log: data || [], dry_run: isDryRun() });
+}));
+
+// POST /api/admin/suppliers/purchase-orders/:id/send-email - שליחה לספק
+// body: { to, cc, subject, body } - הנוסח שהמנהלת אישרה בתצוגה המקדימה.
+// כשל שליחה אינו משנה סטטוס ואינו מחזיר שגיאת HTTP: הוא מתועד ומוחזר כתוצאה,
+// כדי שהמסך יציג "נכשל" עם הסיבה ויאפשר שליחה חוזרת.
+router.post('/purchase-orders/:id/send-email', asyncHandler(async (req, res) => {
+  const { data: po, error } = await supabase
+    .from('purchase_orders')
+    .select('id, status, email_send_count')
+    .eq('id', req.params.id).maybeSingle();
+  if (error) throw error;
+  if (!po) return fail(res, 404, 'הזמנת רכש לא נמצאה.');
+  if (po.status === 'cancelled')
+    return fail(res, 400, 'לא ניתן לשלוח לספק הזמנה שבוטלה.');
+
+  const { to, cc, subject, body } = req.body || {};
+  const toResult = normalizeRecipients(to);
+  if (toResult.error) return fail(res, 400, toResult.error);
+  if (!toResult.value) return fail(res, 400, 'יש להזין כתובת מייל של הספק.');
+  const ccResult = normalizeRecipients(cc);
+  if (ccResult.error) return fail(res, 400, ccResult.error);
+  if (!String(subject || '').trim()) return fail(res, 400, 'נושא המייל אינו יכול להיות ריק.');
+  if (!String(body || '').trim()) return fail(res, 400, 'גוף המייל אינו יכול להיות ריק.');
+
+  const result = await sendCustomEmail({
+    code: PURCHASE_ORDER_TEMPLATE_CODE,
+    to: toResult.value,
+    cc: ccResult.value || null,
+    subject: subject.trim(),
+    body,
+    purchaseOrderId: po.id,
+  });
+
+  // סיכום המצב האחרון על ההזמנה (לתצוגה מהירה ברשימה ובכרטיס).
+  const patch = {
+    email_sent_at: new Date().toISOString(),
+    email_sent_to: [toResult.value, ccResult.value].filter(Boolean).join(', '),
+    email_status: result.status,
+    email_send_count: Number(po.email_send_count || 0) + 1,
+  };
+  // טיוטה שנשלחה בפועל עוברת ל"נשלחה לספק"; כשל משאיר אותה בטיוטה.
+  if (result.status !== 'failed' && po.status === 'draft') patch.status = 'sent';
+
+  const { data: updated, error: uErr } = await supabase
+    .from('purchase_orders').update(patch).eq('id', po.id).select('*').single();
+  if (uErr) throw uErr;
+
+  res.json({
+    ok: result.status !== 'failed',
+    status: result.status,
+    error: result.error || null,
+    purchase_order: updated,
+  });
 }));
 
 // POST /api/admin/suppliers/purchase-orders/:id/receive - קבלת סחורה → הוספה למלאי (סעיף 27.3)

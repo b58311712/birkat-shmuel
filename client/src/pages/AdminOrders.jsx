@@ -4,6 +4,18 @@ import { api } from '../lib/api.js';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
 import { Badge, ORDER_STATUS, PAYMENT_STATUS, occasionLabel } from '../lib/status.jsx';
 
+// יתרה לתשלום = הסכום הסופי פחות מה שנגבה בפועל (השרת מחזיר balance_due מוכן).
+// מאז שהתשלום אינו תנאי לכניסה להכנות, זו העמודה שמחליפה את "אישור החריגה":
+// ההזמנה מבוצעת ממילא, והיתרה הפתוחה היא מה שדורש מעקב.
+function orderBalance(order) {
+  if (order.balance_due != null) return Number(order.balance_due);
+  return Number(order.final_amount || 0) - Number(order.amount_paid || 0);
+}
+
+const shekel = (n) => Number(n || 0).toLocaleString('he-IL', { maximumFractionDigits: 0 }) + ' ₪';
+// ליתרה מציגים גם אגורות: יתרה של 0.40 ש"ח שמעוגלת ל-"0 ₪" נראית כמו חוב סגור.
+const shekelExact = (n) => Number(n || 0).toLocaleString('he-IL', { maximumFractionDigits: 2 }) + ' ₪';
+
 const filters = [
   { key: '', label: 'כל ההזמנות' },
   { key: 'pending_approval', label: 'ממתינות' },
@@ -12,7 +24,7 @@ const filters = [
 ];
 
 // סינון פר-שדה בזיכרון (בנוסף לחיפוש החופשי ולטאבי הסטטוס). כל שדה לפי טיפוסו.
-const EMPTY_COL_FILTERS = { order_number: '', customer: '', shabbat: '', amountMin: '', amountMax: '', order_status: '', payment_status: '' };
+const EMPTY_COL_FILTERS = { order_number: '', customer: '', shabbat: '', amountMin: '', amountMax: '', balanceMin: '', balanceMax: '', order_status: '', payment_status: '' };
 
 function matchesColFilters(order, f) {
   const has = (v, term) => String(v ?? '').toLocaleLowerCase('he-IL').includes(term.toLocaleLowerCase('he-IL'));
@@ -24,6 +36,9 @@ function matchesColFilters(order, f) {
   const amount = Number(order.final_amount || 0);
   if (f.amountMin !== '' && amount < Number(f.amountMin)) return false;
   if (f.amountMax !== '' && amount > Number(f.amountMax)) return false;
+  const balance = orderBalance(order);
+  if (f.balanceMin !== '' && balance < Number(f.balanceMin)) return false;
+  if (f.balanceMax !== '' && balance > Number(f.balanceMax)) return false;
   return true;
 }
 
@@ -35,6 +50,7 @@ function countActiveColFilters(f) {
   if (f.order_status) n += 1;
   if (f.payment_status) n += 1;
   if (f.amountMin !== '' || f.amountMax !== '') n += 1;
+  if (f.balanceMin !== '' || f.balanceMax !== '') n += 1;
   return n;
 }
 
@@ -98,7 +114,10 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
   }, [orders, normalizedSearch, colFilters, activeColFilters]);
   const totalAmount = visibleOrders.reduce((sum, order) => sum + Number(order.final_amount || 0), 0);
   const pendingCount = visibleOrders.filter((order) => order.order_status === 'pending_approval').length;
-  const unpaidCount = visibleOrders.filter((order) => order.payment_status !== 'paid' && order.order_status !== 'cancelled').length;
+  // יתרה נספרת רק על הזמנות פעילות - בהזמנה מבוטלת "היתרה" היא שארית חשבונאית
+  // שמטופלת בהחזרים, ולא כסף שממתין לגבייה.
+  const openBalanceOrders = visibleOrders.filter((order) => order.order_status !== 'cancelled' && orderBalance(order) > 0.001);
+  const openBalanceTotal = openBalanceOrders.reduce((sum, order) => sum + orderBalance(order), 0);
 
   function renderActions(order) {
     return (
@@ -181,7 +200,7 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
             {!loading && (
               <div className="mr-auto flex items-center gap-3 text-xs font-semibold text-[#91878a]">
                 <span>{visibleOrders.length} תוצאות</span>
-                <span>{unpaidCount > 0 ? `${unpaidCount} הזמנות עם תשלום פתוח` : 'אין תשלומים פתוחים בתצוגה'}</span>
+                <span>{openBalanceOrders.length > 0 ? `${openBalanceOrders.length} הזמנות עם יתרה פתוחה · ${shekelExact(openBalanceTotal)}` : 'אין יתרות פתוחות בתצוגה'}</span>
               </div>
             )}
           </div>
@@ -201,6 +220,12 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
                 <div className="flex gap-1" dir="ltr">
                   <input type="number" step="any" value={colFilters.amountMin} onChange={(e) => setCol('amountMin', e.target.value)} className={colInputCls} placeholder="מ־" />
                   <input type="number" step="any" value={colFilters.amountMax} onChange={(e) => setCol('amountMax', e.target.value)} className={colInputCls} placeholder="עד" />
+                </div>
+              </ColField>
+              <ColField label="יתרה לתשלום (₪)">
+                <div className="flex gap-1" dir="ltr">
+                  <input type="number" step="any" value={colFilters.balanceMin} onChange={(e) => setCol('balanceMin', e.target.value)} className={colInputCls} placeholder="מ־" />
+                  <input type="number" step="any" value={colFilters.balanceMax} onChange={(e) => setCol('balanceMax', e.target.value)} className={colInputCls} placeholder="עד" />
                 </div>
               </ColField>
               <ColField label="סטטוס">
@@ -229,6 +254,7 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
                     <th className="px-4 py-3.5 text-right">לקוח</th>
                     <th className="px-4 py-3.5 text-right">שבת</th>
                     <th className="px-4 py-3.5 text-right">סכום</th>
+                    <th className="px-4 py-3.5 text-right">יתרה לתשלום</th>
                     <th className="px-4 py-3.5 text-right">סטטוס</th>
                     <th className="px-4 py-3.5 text-right">תשלום</th>
                     <th className="px-5 py-3.5 text-right">פעולות</th>
@@ -240,7 +266,8 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
                       <td className="px-5 py-4"><span className="font-mono text-xs font-bold tabular-nums text-brand-burgundy">{order.order_number}</span>{order.portions_exception_requested && <span className="mr-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">חריג</span>}</td>
                       <td className="px-4 py-4"><div className="flex flex-col items-start"><div className="font-bold text-[#3c3034]">{order.customers?.full_name || '-'}</div><div className="mt-0.5 text-xs text-[#948a8d]" dir="ltr">{order.customers?.phone || '-'}</div></div></td>
                       <td className="px-4 py-4 text-sm font-medium text-[#63585c]">{occasionLabel(order.shabbatot)}</td>
-                      <td className="px-4 py-4 font-extrabold tabular-nums text-[#3c3034]">{Number(order.final_amount || 0).toLocaleString('he-IL', { maximumFractionDigits: 0 })} ₪</td>
+                      <td className="px-4 py-4 font-extrabold tabular-nums text-[#3c3034]">{shekel(order.final_amount)}</td>
+                      <td className="px-4 py-4"><BalanceCell order={order} /></td>
                       <td className="px-4 py-4"><Badge map={ORDER_STATUS} value={order.order_status} /></td>
                       <td className="px-4 py-4"><Badge map={PAYMENT_STATUS} value={order.payment_status} /></td>
                       <td className="px-5 py-4" onClick={(event) => event.stopPropagation()}>{renderActions(order)}</td>
@@ -256,7 +283,7 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
                   <button type="button" onClick={() => nav(`/admin/orders/${order.id}`)} className="w-full text-right focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-gold">
                     <div className="flex items-start justify-between gap-3">
                       <div><p className="font-extrabold text-[#35292d]">{order.customers?.full_name || 'ללא שם'}</p><p className="mt-0.5 text-xs text-[#948a8d]" dir="ltr">{order.customers?.phone || '-'}</p><p className="mt-1 font-mono text-xs font-bold text-brand-burgundy/55">#{order.order_number}</p></div>
-                      <p className="shrink-0 text-base font-extrabold tabular-nums text-[#35292d]">{Number(order.final_amount || 0).toLocaleString('he-IL', { maximumFractionDigits: 0 })} ₪</p>
+                      <div className="shrink-0 text-left"><p className="text-base font-extrabold tabular-nums text-[#35292d]">{shekel(order.final_amount)}</p><p className="mt-0.5 text-[11px] font-bold"><span className="text-[#948a8d]">יתרה: </span><BalanceCell order={order} /></p></div>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2"><Badge map={ORDER_STATUS} value={order.order_status} /><Badge map={PAYMENT_STATUS} value={order.payment_status} />{order.portions_exception_requested && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">חריג מנות</span>}{order.shabbatot && <span className="text-xs font-semibold text-[#8a7f82]">{order.shabbatot.kind === 'event' ? occasionLabel(order.shabbatot) : `פרשת ${order.shabbatot.parasha || ''}`}</span>}</div>
                   </button>
@@ -269,6 +296,16 @@ export default function AdminOrders({ onAuthError, currentAdmin }) {
       </section>
     </main>
   );
+}
+
+// תא "יתרה לתשלום": יתרה חיובית = כסף שממתין לגבייה (בולט באדום), אפס = סגור,
+// יתרה שלילית = נגבה יתר על הנדרש ולכן זו יתרת זכות ללקוח.
+function BalanceCell({ order }) {
+  const balance = orderBalance(order);
+  if (order.order_status === 'cancelled') return <span className="tabular-nums text-[#a49b9e]">-</span>;
+  if (balance > 0.001) return <span className="font-extrabold tabular-nums text-red-700">{shekelExact(balance)}</span>;
+  if (balance < -0.001) return <span className="font-bold tabular-nums text-amber-700">{shekelExact(Math.abs(balance))} זכות</span>;
+  return <span className="font-semibold tabular-nums text-green-700">שולם</span>;
 }
 
 function SummaryCard({ label, value, warning }) {

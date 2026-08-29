@@ -206,14 +206,20 @@
   background: #faf9f8;
 }
 
-/* כותרות טבלה נשארות גלויות בזמן גלילת השורות. הגבלה רק על מיכלי גלילה
-   ישירים של טבלה משמרת גלילה אופקית במסכים צרים ונותנת לתאים דביקים
-   מיכל גלילה אנכי אמין. */
+/* כותרת הטבלה - ושורת הסינון מתחתיה, כשהיא פתוחה - נשארות גלויות בזמן גלילת
+   השורות. הגבלה רק על מיכלי גלילה ישירים של טבלה משמרת גלילה אופקית במסכים
+   צרים ונותנת לתאים דביקים מיכל גלילה אנכי אמין. */
 @media screen {
   .admin-pilot .overflow-x-auto:has(> table) {
     max-height: calc(100dvh - 7rem);
     overflow: auto;
     overscroll-behavior: contain;
+  }
+
+  /* overflow על ה-table עצמו (שימש לקיטום פינות) הופך אותו למיכל גלילה משלו
+     ומנטרל את ההידבקות של הכותרת - הקיטום עובר למיכל החיצוני. */
+  .admin-pilot .overflow-x-auto:has(> table) > table {
+    overflow: visible;
   }
 
   .admin-pilot .overflow-x-auto:has(> table) > table > thead {
@@ -225,9 +231,36 @@
   .admin-pilot .overflow-x-auto:has(> table) > table > thead > tr > th {
     position: sticky;
     top: 0;
-    z-index: 21;
+    z-index: 22;
     background-color: #faf9f8;
     box-shadow: inset 0 -1px 0 #e7e2e0;
+  }
+
+  /* השורה השנייה ב-thead היא שורת הסינון של DataTable: היא נדבקת מתחת לשורת
+     הכותרת. --table-head-h נמדד ב-DataTable ומתעדכן עם גובה הכותרת בפועל. */
+  .admin-pilot .overflow-x-auto:has(> table) > table > thead > tr + tr > th {
+    top: var(--table-head-h, 2.5rem);
+    z-index: 21;
+  }
+
+  /* בפאנל צידי אזור הגלילה הוא גוף הפאנל עצמו, ולכן טבלה בתוכו לא מקבלת מיכל
+     גלילה נפרד (מיכל שלא נגלל מנטרל את ההידבקות) - הכותרת נדבקת לראש הפאנל. */
+  .admin-pilot .drawer-body .overflow-x-auto:has(> table) {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .admin-pilot .drawer-body table > thead > tr > th {
+    position: sticky;
+    top: 0;
+    z-index: 22;
+    background-color: #faf9f8;
+    box-shadow: inset 0 -1px 0 #e7e2e0;
+  }
+
+  .admin-pilot .drawer-body table > thead > tr + tr > th {
+    top: var(--table-head-h, 2.5rem);
+    z-index: 21;
   }
 }
 
@@ -325,8 +358,10 @@
     background: #faf9f8;
   }
 
+  /* מעטפת טבלה מעוגלת: גלילה בשני הצירים, כדי שכותרת דביקה וגלילה
+     אופקית במסכים צרים יעבדו יחד. */
   .admin-pilot .overflow-x-auto.rounded-2xl {
-    overflow: hidden auto;
+    overflow: auto;
     border-color: #e7e2e0;
     border-radius: 10px;
     background: #fff;

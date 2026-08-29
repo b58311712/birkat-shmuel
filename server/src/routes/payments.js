@@ -22,7 +22,7 @@ async function sumPaid(orderId) {
 }
 
 // גוזר סטטוס תשלום מתוך הסכום ששולם מול הסכום הסופי, ומעדכן את ראש ההזמנה.
-// לא דורס 'payment_override' - חריגה שאושרה ידנית נשארת עד שמנהל משנה אותה (סעיף 17.4).
+// הסטטוס נגזר תמיד מהסכומים בפועל - אין יותר סימון ידני שדורס אותו.
 async function recomputePaymentStatus(orderId) {
   const { data: order, error } = await supabase
     .from('orders').select('final_amount, payment_status').eq('id', orderId).single();
@@ -31,12 +31,10 @@ async function recomputePaymentStatus(orderId) {
   const paid = await sumPaid(orderId);
   const final = round2(Number(order.final_amount || 0));
 
-  let status = order.payment_status;
-  if (status !== 'payment_override') {
-    if (paid <= 0) status = 'unpaid';
-    else if (paid >= final) status = 'paid';
-    else status = 'partially_paid';
-  }
+  let status;
+  if (paid <= 0) status = 'unpaid';
+  else if (paid >= final) status = 'paid';
+  else status = 'partially_paid';
 
   if (status !== order.payment_status) {
     await supabase.from('orders').update({ payment_status: status }).eq('id', orderId);
@@ -120,25 +118,6 @@ router.delete('/orders/:id/payments/:pid', asyncHandler(async (req, res) => {
 
   const summary = await recomputePaymentStatus(order.id);
   await logHistory(order.id, 'נמחק תיעוד תשלום', { amount: Number(data.amount) }, req.appUser?.sub);
-  res.json({ ok: true, summary });
-}));
-
-// POST /orders/:id/payment-override - אישור חריגת תשלום ידני (סעיף 17.4 / 11.2)
-// מנהל מסמן שהסכום מאושר על אף שלא נגבה במלואו (או להיפך - מבטל את החריגה).
-router.post('/orders/:id/payment-override', asyncHandler(async (req, res) => {
-  const order = await loadOrder(res, req.params.id);
-  if (!order) return;
-
-  const enable = req.body.enable !== false;
-  if (enable) {
-    await supabase.from('orders').update({ payment_status: 'payment_override' }).eq('id', order.id);
-    await logHistory(order.id, 'אושרה חריגת תשלום', null, req.appUser?.sub);
-    return res.json({ ok: true, summary: { payment_status: 'payment_override' } });
-  }
-  // ביטול החריגה - גוזרים מחדש מהסכומים בפועל
-  await supabase.from('orders').update({ payment_status: 'unpaid' }).eq('id', order.id);
-  const summary = await recomputePaymentStatus(order.id);
-  await logHistory(order.id, 'בוטלה חריגת תשלום', null, req.appUser?.sub);
   res.json({ ok: true, summary });
 }));
 

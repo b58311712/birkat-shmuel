@@ -141,7 +141,6 @@ export const api = {
   orderPayments: (id) => request(`/admin/payments/orders/${id}/payments`),
   addOrderPayment: (id, payload) => request(`/admin/payments/orders/${id}/payments`, { method: 'POST', body: JSON.stringify(payload) }),
   removeOrderPayment: (id, pid) => request(`/admin/payments/orders/${id}/payments/${pid}`, { method: 'DELETE' }),
-  setPaymentOverride: (id, enable) => request(`/admin/payments/orders/${id}/payment-override`, { method: 'POST', body: JSON.stringify({ enable }) }),
 
   // החזרים כספיים (סעיף 19)
   orderRefunds: (id) => request(`/admin/payments/orders/${id}/refunds`),
@@ -321,4 +320,8 @@ export const api = {
   setPurchaseOrderStatus: (id, status) => request(`/admin/suppliers/purchase-orders/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
   receivePurchaseOrder: (id, lines) => request(`/admin/suppliers/purchase-orders/${id}/receive`, { method: 'POST', body: JSON.stringify({ lines }) }),
   setPurchaseOrderPayment: (id, payload) => request(`/admin/suppliers/purchase-orders/${id}/payment`, { method: 'PUT', body: JSON.stringify(payload) }),
+  // שליחת הזמנת רכש לספק במייל (מיגרציה 61): תצוגה מקדימה, שליחה והיסטוריה.
+  purchaseOrderEmailPreview: (id) => request(`/admin/suppliers/purchase-orders/${id}/email-preview`),
+  purchaseOrderEmailLog: (id) => request(`/admin/suppliers/purchase-orders/${id}/email-log`),
+  sendPurchaseOrderEmail: (id, payload) => request(`/admin/suppliers/purchase-orders/${id}/send-email`, { method: 'POST', body: JSON.stringify(payload) }),
 };

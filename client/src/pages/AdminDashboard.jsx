@@ -55,7 +55,6 @@ export default function AdminDashboard({ onAuthError }) {
     { title: 'תשלומים', icon: ICONS.payments, rows: [
       { n: data?.payments?.unpaid, label: 'לא שולמו', to: '/admin/orders', tone: 'red' },
       { n: data?.payments?.partially_paid, label: 'שולמו חלקית', to: '/admin/orders', tone: 'amber' },
-      { n: data?.payments?.overrides, label: 'חריגות תשלום', to: '/admin/orders', tone: 'neutral' },
       { n: data?.payments?.open_refunds, label: 'החזרים פתוחים', to: '/admin/orders', tone: 'amber' },
     ]},
     { title: 'מלאי ורכש', icon: ICONS.inventory, rows: [

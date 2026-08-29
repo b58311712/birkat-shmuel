@@ -4,7 +4,7 @@ import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { ActionIconButton } from '../components/ActionIcon.jsx';
 import { DataTable } from '../components/DataTable.jsx';
-import { Badge, PO_STATUS } from '../lib/status.jsx';
+import { Badge, PO_STATUS, EMAIL_SEND_STATUS } from '../lib/status.jsx';
 import PriceInput from '../components/PriceInput.jsx';
 import { withVat } from '../lib/vat.js';
 import {
@@ -81,6 +81,16 @@ export default function AdminPurchaseOrders({ onAuthError, currentAdmin }) {
       render: (po) => po.shabbat
         ? `${po.shabbat.parasha} · ${po.shabbat.gregorian_date}`
         : '-',
+    },
+    {
+      key: 'email_status',
+      label: 'מייל לספק',
+      type: 'enum',
+      map: EMAIL_SEND_STATUS,
+      value: (po) => po.email_status || '',
+      render: (po) => (po.email_status
+        ? <Badge map={EMAIL_SEND_STATUS} value={po.email_status} />
+        : <span className="text-brand-burgundy/40">לא נשלח</span>),
     },
     { key: 'expected_delivery_date', label: 'אספקה צפויה', type: 'date', dir: 'ltr', render: (po) => po.expected_delivery_date || '-' },
     { key: 'estimated_amount', label: 'משוער (לפני מע"מ)', type: 'number', dir: 'ltr', render: (po) => (po.estimated_amount != null ? `₪${po.estimated_amount}` : '-') },

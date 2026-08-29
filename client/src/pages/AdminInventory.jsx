@@ -1053,8 +1053,8 @@ function CategoriesManager({ onErr, canDelete }) {
         </span>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
+      <div className="overflow-x-auto rounded-2xl bg-white shadow-card">
+        <table className="w-full">
           <thead className="bg-brand-burgundy text-brand-cream text-sm">
             <tr>
               <th className="p-3 text-right">סדר</th>

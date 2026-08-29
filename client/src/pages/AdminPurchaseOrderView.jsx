@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
-import { Badge, PO_STATUS, SUPPLIER_PAYMENT_STATUS, SUPPLIER_CHANNEL, EXPENSE_PAYMENT_METHOD } from '../lib/status.jsx';
+import { Badge, PO_STATUS, SUPPLIER_PAYMENT_STATUS, SUPPLIER_CHANNEL, EXPENSE_PAYMENT_METHOD, EMAIL_SEND_STATUS } from '../lib/status.jsx';
 import PriceInput from '../components/PriceInput.jsx';
 import { formatWithVat } from '../lib/vat.js';
 import {
@@ -10,7 +10,8 @@ import {
   splitPackageQuantity,
 } from '../lib/inventoryPackages.js';
 
-// פירוט הזמנת רכש (סעיף 27.2): שורות, קבלת סחורה למלאי (27.3) ותשלום לספק (28.1).
+// פירוט הזמנת רכש (סעיף 27.2): שורות, שליחת ההזמנה לספק במייל (מיגרציה 61),
+// קבלת סחורה למלאי (27.3) ותשלום לספק (28.1).
 
 export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
   const { id } = useParams();
@@ -18,7 +19,8 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState(null); // null | 'receive' | 'payment'
+  const [mode, setMode] = useState(null); // null | 'receive' | 'payment' | 'email'
+  const [emailLog, setEmailLog] = useState([]);
   const canDelete = currentAdmin?.role === 'developer';
 
   const handleErr = useCallback((e) => {
@@ -29,6 +31,8 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
   const load = useCallback(() => {
     setLoading(true);
     api.purchaseOrder(id).then(setData).catch((e) => { if (!handleErr(e)) alert(e.message); }).finally(() => setLoading(false));
+    // היסטוריית השליחות נטענת בנפרד; כישלון בה לא צריך למנוע צפייה בהזמנה.
+    api.purchaseOrderEmailLog(id).then((r) => setEmailLog(r.log || [])).catch(() => {});
   }, [id, handleErr]);
 
   useEffect(() => { load(); }, [load]);
@@ -87,6 +91,12 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
                 value={po.shabbat ? `${po.shabbat.parasha} · ${po.shabbat.gregorian_date}` : null}
               />
               <Info label="נוצר ע״י" value={po.creator?.full_name} />
+              <Info
+                label="נשלח לספק במייל"
+                value={po.email_sent_at
+                  ? `${new Date(po.email_sent_at).toLocaleString('he-IL')} · ${EMAIL_SEND_STATUS[po.email_status]?.label || po.email_status}`
+                  : null}
+              />
               <Info label='מחיר משוער (לפני מע"מ)' value={po.estimated_amount != null ? `₪${po.estimated_amount}` : null} ltr />
               <Info label='מחיר בפועל (לפני מע"מ)' value={po.actual_amount != null ? `₪${po.actual_amount}` : null} ltr />
             </div>
@@ -153,14 +163,22 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
           {mode === 'payment' && (
             <PaymentPanel po={po} payment={payment} onCancel={() => setMode(null)} onDone={() => { setMode(null); load(); }} onErr={handleErr} />
           )}
+          {mode === 'email' && (
+            <SupplierEmailPanel poId={id} onCancel={() => setMode(null)} onDone={() => { setMode(null); load(); }} onErr={handleErr} />
+          )}
         </div>
 
         {/* צד: פעולות + תשלום */}
         <div className="space-y-4">
           <div className="card space-y-2">
             <h3 className="font-bold text-brand-burgundy">פעולות</h3>
+            {!isCancelled && (
+              <button onClick={() => setMode(mode === 'email' ? null : 'email')} className="btn-primary w-full">
+                {po.email_sent_at ? 'שליחה חוזרת לספק במייל' : 'שליחת ההזמנה לספק במייל'}
+              </button>
+            )}
             {isDraft && (
-              <button onClick={() => changeStatus('sent')} disabled={busy} className="btn-primary w-full disabled:opacity-50">סימון כנשלחה לספק</button>
+              <button onClick={() => changeStatus('sent', 'לסמן את ההזמנה כנשלחה לספק בלי לשלוח מייל (נמסרה בטלפון או בוואטסאפ)?')} disabled={busy} className="btn-ghost w-full disabled:opacity-50">סימון ידני כנשלחה</button>
             )}
             {canReceive && (
               <button onClick={() => setMode(mode === 'receive' ? null : 'receive')} className="btn-primary w-full">אישור קבלת סחורה</button>
@@ -173,6 +191,34 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
             )}
             {isReceived && <p className="text-sm text-green-700">✓ ההזמנה התקבלה במלואה; המלאי עודכן רק עבור מוצרי מלאי.</p>}
             {isCancelled && <p className="text-sm text-brand-burgundy/50">ההזמנה בוטלה.</p>}
+          </div>
+
+          {/* היסטוריית שליחות המייל לספק (מיגרציה 61) */}
+          <div className="card space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-brand-burgundy">שליחות לספק</h3>
+              {po.email_status && <Badge map={EMAIL_SEND_STATUS} value={po.email_status} />}
+            </div>
+            {emailLog.length === 0 ? (
+              <p className="text-sm text-brand-burgundy/50">
+                ההזמנה טרם נשלחה לספק במייל.
+                {po.status === 'sent' && !po.email_sent_at && ' (סומנה כנשלחה ידנית)'}
+              </p>
+            ) : (
+              <ul className="text-sm space-y-2">
+                {emailLog.map((row) => (
+                  <li key={row.id} className="border-b border-brand-cream-dark/50 pb-2 last:border-0 last:pb-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span dir="ltr" className="text-brand-burgundy/50 text-xs">{new Date(row.created_at).toLocaleString('he-IL')}</span>
+                      <Badge map={EMAIL_SEND_STATUS} value={row.status} />
+                    </div>
+                    <div dir="ltr" className="text-right text-brand-burgundy/80 break-all">{row.to_email}</div>
+                    {row.cc_email && <div dir="ltr" className="text-right text-brand-burgundy/50 text-xs break-all">עותק: {row.cc_email}</div>}
+                    {row.error && <div className="text-xs text-red-600">{row.error}</div>}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* תשלום לספק (סעיף 28.1) */}
@@ -330,6 +376,104 @@ function ReceivePanel({ lines, supplierIncludesVat, poId, onCancel, onDone, onEr
       </div>
       <div className="flex gap-2">
         <button type="submit" disabled={busy} className="btn-primary disabled:opacity-50">{busy ? 'קולט...' : 'אישור קבלה'}</button>
+        <button type="button" onClick={onCancel} className="btn-ghost">ביטול</button>
+      </div>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// שליחת ההזמנה לספק במייל (מיגרציה 61)
+// הנוסח מגיע מהשרת אחרי מילוי ה-placeholders (נוסח purchase_order_supplier
+// ב-/admin/email) וניתן לעריכה כאן - מה שנשלח הוא בדיוק מה שמוצג במסך.
+// ---------------------------------------------------------------------------
+function SupplierEmailPanel({ poId, onCancel, onDone, onErr }) {
+  const [preview, setPreview] = useState(null);
+  const [f, setF] = useState({ to: '', cc: '', subject: '', body: '' });
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+
+  useEffect(() => {
+    let alive = true;
+    api.purchaseOrderEmailPreview(poId)
+      .then((p) => {
+        if (!alive) return;
+        setPreview(p);
+        setF({ to: p.to || '', cc: '', subject: p.subject || '', body: p.body || '' });
+      })
+      .catch((e) => { if (!onErr(e)) alert(e.message); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [poId, onErr]);
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setResult(null);
+    try {
+      const r = await api.sendPurchaseOrderEmail(poId, f);
+      // כשל שליחה מוחזר כתוצאה ולא כשגיאה: הפאנל נשאר פתוח עם הנוסח, כדי
+      // שאפשר יהיה לתקן כתובת ולנסות שוב בלי להקליד הכל מחדש.
+      if (r.status === 'failed') setResult({ status: 'failed', error: r.error });
+      else onDone();
+    } catch (err) { if (!onErr(err)) alert(err.message); }
+    finally { setBusy(false); }
+  }
+
+  if (loading) return <div className="card">טוען נוסח...</div>;
+  if (!preview) return null;
+
+  return (
+    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
+      <h3 className="font-bold text-brand-burgundy">שליחת ההזמנה לספק במייל</h3>
+
+      {!preview.template_active && (
+        <p className="text-sm text-red-600">
+          נוסח "הזמנת רכש לספק" אינו פעיל בניהול המיילים. אפשר לערוך את הנוסח כאן ולשלוח, או להפעיל אותו במסך ניהול המיילים.
+        </p>
+      )}
+      {preview.dry_run && (
+        <p className="text-sm text-amber-700">
+          המערכת במצב יבש (אין חשבון שליחה מוגדר) - המייל יתועד ביומן אך לא יישלח בפועל.
+        </p>
+      )}
+      {!preview.supplier?.email && (
+        <p className="text-sm text-amber-700">
+          לספק אין כתובת מייל בכרטיס הספק. יש להזין כתובת ידנית כאן, או להשלים אותה בכרטיס הספק.
+        </p>
+      )}
+      {preview.supplier?.preferred_channel && preview.supplier.preferred_channel !== 'email' && (
+        <p className="text-sm text-brand-burgundy/60">
+          אמצעי ההזמנה המועדף של הספק הוא {SUPPLIER_CHANNEL[preview.supplier.preferred_channel]}.
+        </p>
+      )}
+      {preview.supplier?.order_notes && (
+        <p className="text-sm text-brand-burgundy/60">הערות הזמנה לספק: {preview.supplier.order_notes}</p>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="אל">
+          <input required value={f.to} onChange={(e) => set('to', e.target.value)} className={inputCls} dir="ltr" placeholder="supplier@example.com" />
+        </Field>
+        <Field label="עותק (אופציונלי, מופרד בפסיק)">
+          <input value={f.cc} onChange={(e) => set('cc', e.target.value)} className={inputCls} dir="ltr" />
+        </Field>
+      </div>
+      <Field label="נושא">
+        <input required value={f.subject} onChange={(e) => set('subject', e.target.value)} className={inputCls} />
+      </Field>
+      <Field label="גוף המייל">
+        <textarea required rows={16} value={f.body} onChange={(e) => set('body', e.target.value)} className={`${inputCls} text-sm leading-6`} />
+      </Field>
+
+      {result?.status === 'failed' && (
+        <p className="text-sm text-red-600">השליחה נכשלה: {result.error || 'שגיאה לא ידועה'}. אפשר לתקן ולנסות שוב.</p>
+      )}
+
+      <div className="flex gap-2">
+        <button type="submit" disabled={busy} className="btn-primary disabled:opacity-50">{busy ? 'שולח...' : 'שליחה לספק'}</button>
         <button type="button" onClick={onCancel} className="btn-ghost">ביטול</button>
       </div>
     </form>

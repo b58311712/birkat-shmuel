@@ -352,7 +352,7 @@ export default function ShabbatFiles({ onAuthError, currentAdmin }) {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-brand-cream-dark shadow-card">
-          <table className="w-full overflow-hidden rounded-2xl bg-white">
+          <table className="w-full bg-white">
             <thead className="bg-brand-burgundy text-sm">
               <tr>
                 <th className="p-3 text-right">פרשת השבוע</th>

@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { DataTable } from '../components/DataTable.jsx';
+import CustomerPicker from '../components/CustomerPicker.jsx';
 import { Badge, ORDER_STATUS, PAYMENT_STATUS } from '../lib/status.jsx';
 import { formatGregorianDate, formatShabbatHebrewDate, formatShabbatTitle } from '../lib/dates.js';
 import {
@@ -215,8 +216,8 @@ function OrdersTab({ id, onAuthError }) {
   if (orders.length === 0) return <div className="card text-center py-8 text-brand-burgundy/60">אין הזמנות לשבת זו.</div>;
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
+    <div className="overflow-x-auto rounded-2xl bg-white shadow-card">
+      <table className="w-full">
         <thead className="bg-brand-burgundy text-brand-cream text-sm">
           <tr>
             <th className="p-3 text-right">מס׳</th>
@@ -255,7 +256,7 @@ function KitchenTab({ id, onAuthError }) {
   if (!data) return <p>טוען...</p>;
   if (!data.categories.length) {
     return <div className="card text-center py-8 text-brand-burgundy/60">
-      אין הזמנות שנכנסות להכנות עדיין. הזמנה נכנסת רק כשהיא מאושרת ושולמה (או אושרה חריגה).
+      אין הזמנות שנכנסות להכנות עדיין. הזמנה נכנסת ברגע שמנהל אישר אותה, בלי קשר לתשלום.
     </div>;
   }
 
@@ -499,24 +500,26 @@ function InventoryTab({ id, onAuthError }) {
           <p className="text-xs text-brand-burgundy/50 mb-2">
             שורות מתכון שאינן מקושרות לפריט מלאי - לא ניתן לחשב חוסר או קנייה. שייך אותן לפריט מלאי כדי שייכנסו לדוח.
           </p>
-          <table className="w-full text-sm">
-            <thead className="text-brand-burgundy/60 text-xs">
-              <tr>
-                <th className="p-2 text-right">חומר גלם</th>
-                <th className="p-2 text-right">כמות נדרשת</th>
-                <th className="p-2 text-right">יחידה</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.unlinked.map((u, i) => (
-                <tr key={i} className="border-t border-brand-cream-dark/50">
-                  <td className="p-2">{u.name}</td>
-                  <td className="p-2 font-bold">{u.quantity}</td>
-                  <td className="p-2 text-brand-burgundy/60">{u.unit}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-brand-burgundy/60 text-xs">
+                <tr>
+                  <th className="p-2 text-right">חומר גלם</th>
+                  <th className="p-2 text-right">כמות נדרשת</th>
+                  <th className="p-2 text-right">יחידה</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.unlinked.map((u, i) => (
+                  <tr key={i} className="border-t border-brand-cream-dark/50">
+                    <td className="p-2">{u.name}</td>
+                    <td className="p-2 font-bold">{u.quantity}</td>
+                    <td className="p-2 text-brand-burgundy/60">{u.unit}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
@@ -707,8 +710,8 @@ function TransportTab({ id, onAuthError }) {
   if (!data.orders.length) return <div className="card text-center py-8 text-brand-burgundy/60">אין הזמנות לשינוע (כולן באיסוף עצמי).</div>;
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full bg-white rounded-2xl shadow-card overflow-hidden">
+    <div className="overflow-x-auto rounded-2xl bg-white shadow-card">
+      <table className="w-full">
         <thead className="bg-brand-burgundy text-brand-cream text-sm">
           <tr>
             <th className="p-3 text-right">מס׳</th>
@@ -794,13 +797,6 @@ function NewVolunteerForm({ areas, customers, busy, defaultAreaId = '', onCreate
   const areaList = areas || [];
   const customerList = customers || [];
   const [form, setForm] = useState({ customer_id: '', first_name: '', last_name: '', phone: '', has_vehicle: false, area_id: defaultAreaId });
-  const [customerSearch, setCustomerSearch] = useState('');
-
-  const normalizedSearch = customerSearch.trim().toLocaleLowerCase('he-IL');
-  const visibleCustomers = normalizedSearch
-    ? customerList.filter((c) => [c.full_name, c.phone, c.email].filter(Boolean)
-      .some((v) => String(v).toLocaleLowerCase('he-IL').includes(normalizedSearch)))
-    : customerList;
   const linkedCustomer = customerList.find((c) => c.id === form.customer_id);
 
   // בחירת לקוח קיים משלימה שם/טלפון מכרטיס הלקוח (בדומה לטופס המתנדב המלא)
@@ -821,17 +817,15 @@ function NewVolunteerForm({ areas, customers, busy, defaultAreaId = '', onCreate
       {/* קישור ללקוח קיים - השם והטלפון מושלמים מכרטיס הלקוח */}
       <div className="space-y-1.5">
         <div className="text-xs text-brand-burgundy/60">קישור ללקוח קיים (לא חובה)</div>
-        <div className="flex flex-wrap gap-2">
-          <input type="search" value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)}
-            placeholder="חיפוש לקוח לפי שם / טלפון / מייל..." aria-label="חיפוש לקוח קיים" className={pickerSelectCls} />
-          <select value={form.customer_id} onChange={(e) => setCustomer(e.target.value)} className={pickerSelectCls}>
-            <option value="">- מתנדב עצמאי -</option>
-            {visibleCustomers.map((c) => (
-              <option key={c.id} value={c.id}>{c.full_name}{c.phone ? ` (${c.phone})` : ''}</option>
-            ))}
-            {visibleCustomers.length === 0 && <option disabled>לא נמצאו לקוחות מתאימים</option>}
-          </select>
-        </div>
+        <CustomerPicker
+          customers={customerList}
+          value={form.customer_id}
+          onChange={setCustomer}
+          emptyLabel="- מתנדב עצמאי -"
+          ariaLabel="קישור ללקוח קיים"
+          className="max-w-sm"
+          inputClassName={`${pickerSelectCls} w-full`}
+        />
       </div>
       <div className="flex flex-wrap gap-2">
         <input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
@@ -1345,8 +1339,8 @@ function PrintTab({ id, onAuthError }) {
 
       {!hasOperational && (
         <div className="no-print card border-r-4 border-brand-gold mb-4 text-sm text-brand-burgundy/70">
-          אין עדיין הזמנות שנכנסות להכנות (מאושרות ושולמו). תיק העבודה יכיל את השער בלבד.
-          דוחות המטבח, האריזה, השינוע והמלאי מתמלאים כשההזמנות נכנסות להכנות (כלל 8.7).
+          אין עדיין הזמנות שנכנסות להכנות (מאושרות ע"י מנהל). תיק העבודה יכיל את השער בלבד.
+          דוחות המטבח, האריזה, השינוע והמלאי מתמלאים כשההזמנות מאושרות (כלל 8.7).
         </div>
       )}
 
