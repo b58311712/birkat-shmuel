@@ -4,6 +4,11 @@
 // ושורה ריקה לפסקה חדשה, כך שטקסט פשוט עם \n מספיק - אין צורך ב-HTML כאן.
 import { PAYMENT_METHOD_HE } from './email.js';
 
+// הזחה לקינון השורות תחת כותרת הסעודה/הקטגוריה. ב-NBSP ולא ברווח רגיל,
+// כי בגרסת ה-HTML של המייל (renderBrandedEmail) רווחים בתחילת שורה מתכווצים.
+const IND1 = '\u00a0\u00a0';
+const IND2 = '\u00a0\u00a0\u00a0\u00a0';
+
 // input: { order, slots, meals, extras } - אותה צורה שמחזיר loadOrderItems (orderItems.js).
 export function formatOrderDetailsText({ order, slots = [], meals = [], extras = [] }) {
   const mealsBySlot = {};
@@ -16,15 +21,19 @@ export function formatOrderDetailsText({ order, slots = [], meals = [], extras =
     lines.push(`${slotName} - ${Number(s.portions)} מנות`);
     const slotMeals = mealsBySlot[s.meal_slot_id] || [];
     if (slotMeals.length) {
-      for (const m of slotMeals) {
-        const qty = m.portions != null ? ` × ${Number(m.portions)}` : '';
-        const charge = Number(m.extra_charge_amount) > 0
-          ? ` (תוספת תשלום: ${Number(m.extra_charge_amount).toFixed(2)} ש"ח למנה)`
-          : '';
-        lines.push(`  • ${m.meal_name_snapshot}${qty}${charge}`);
+      // כותרת קטגוריה ומתחתיה רק המאכלים שלה, במקום רשימה שטוחה אחת.
+      for (const g of groupMealsByCategory(slotMeals)) {
+        lines.push(`${IND1}${g.name}:`);
+        for (const m of g.meals) {
+          const qty = m.portions != null ? ` × ${Number(m.portions)}` : '';
+          const charge = Number(m.extra_charge_amount) > 0
+            ? ` (תוספת תשלום: ${Number(m.extra_charge_amount).toFixed(2)} ש"ח למנה)`
+            : '';
+          lines.push(`${IND2}• ${m.meal_name_snapshot}${qty}${charge}`);
+        }
       }
     } else {
-      lines.push('  לא נבחרו מאכלים');
+      lines.push(`${IND1}לא נבחרו מאכלים`);
     }
   }
 
@@ -56,4 +65,29 @@ export function formatOrderDetailsText({ order, slots = [], meals = [], extras =
   lines.push(`סה"כ לתשלום: ${Number(order.final_amount).toFixed(2)} ש"ח`);
 
   return lines.join('\n');
+}
+
+// קיבוץ מאכלי סעודה לפי קטגוריה, לפי סדר התצוגה של הקטלוג (display_order).
+// הקטגוריה מגיעה מקוננת על שורת order_meals מ-loadOrderItems (orderItems.js):
+//   m.meals = { display_order, categories: { id, name, display_order } }
+// מאכל שהקטגוריה שלו לא נטענה נופל לקבוצה "ללא קטגוריה" בסוף.
+function groupMealsByCategory(slotMeals) {
+  const groups = new Map();
+  for (const m of slotMeals) {
+    const cat = m.meals?.categories;
+    const key = cat?.id || '_uncat';
+    if (!groups.has(key)) {
+      groups.set(key, { key, name: cat?.name || 'ללא קטגוריה', order: cat?.display_order ?? 9999, meals: [] });
+    }
+    groups.get(key).meals.push(m);
+  }
+  const byName = (a, b) => String(a).localeCompare(String(b), 'he');
+  return [...groups.values()]
+    .sort((a, b) => a.order - b.order || byName(a.name, b.name))
+    .map((g) => ({
+      ...g,
+      meals: g.meals.sort((a, b) =>
+        (a.meals?.display_order ?? 9999) - (b.meals?.display_order ?? 9999) ||
+        byName(a.meal_name_snapshot, b.meal_name_snapshot)),
+    }));
 }

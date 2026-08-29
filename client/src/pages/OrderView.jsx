@@ -4,6 +4,7 @@ import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { Badge, ORDER_STATUS, PAYMENT_STATUS, PAYMENT_METHOD, orderContextLabel, orderContextDate } from '../lib/status.jsx';
 import { canEditOrder } from '../lib/orderEdit.js';
+import { groupMealsByCategory } from '../lib/orderMeals.js';
 
 // צפייה בהזמנה בודדת + מסך סיכום לאחר יצירה (סעיף 18.1)
 export default function OrderView() {
@@ -94,12 +95,19 @@ export default function OrderView() {
                 <span>{s.meal_slots?.name}</span>
                 <span>{s.portions} מנות</span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {(mealsBySlot[s.meal_slot_id] || []).map((m) => (
-                  <span key={m.id} className="badge bg-brand-cream text-brand-burgundy">
-                    {m.meal_name_snapshot}
-                    {m.portions != null && <span className="font-bold"> × {Number(m.portions)}</span>}
-                  </span>
+              <div className="space-y-2">
+                {groupMealsByCategory(mealsBySlot[s.meal_slot_id]).map((g) => (
+                  <div key={g.key}>
+                    <div className="mb-1 text-xs font-bold text-brand-burgundy/50">{g.name}</div>
+                    <div className="flex flex-wrap gap-2">
+                      {g.meals.map((m) => (
+                        <span key={m.id} className="badge bg-brand-cream text-brand-burgundy">
+                          {m.meal_name_snapshot}
+                          {m.portions != null && <span className="font-bold"> × {Number(m.portions)}</span>}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 ))}
                 {!(mealsBySlot[s.meal_slot_id] || []).length && <span className="text-sm text-brand-burgundy/40">לא נבחרו מאכלים</span>}
               </div>

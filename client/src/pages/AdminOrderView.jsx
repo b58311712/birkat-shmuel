@@ -7,6 +7,7 @@ import {
   Badge, ORDER_STATUS, PAYMENT_STATUS, REFUND_STATUS, DELIVERY_METHOD, PAYMENT_METHOD,
   occasionLabel,
 } from '../lib/status.jsx';
+import { groupMealsByCategory } from '../lib/orderMeals.js';
 
 // פירוט הזמנה מלא לניהול - כל השדות כפי שהתקבלו מהטופס + פעולות (סעיף 9.3, 11)
 export default function AdminOrderView({ onAuthError, currentAdmin }) {
@@ -159,13 +160,20 @@ export default function AdminOrderView({ onAuthError, currentAdmin }) {
                 <span>{s.meal_slots?.name}</span>
                 <span>{s.portions} מנות</span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {(mealsBySlot[s.meal_slot_id] || []).map((m) => (
-                  <span key={m.id} className="badge bg-brand-cream text-brand-burgundy">
-                    {m.meal_name_snapshot}
-                    {m.portions != null && <span className="font-bold"> × {Number(m.portions)}</span>}
-                    {Number(m.extra_charge_amount) > 0 && ` (+${Number(m.extra_charge_amount).toFixed(0)}₪ למנה)`}
-                  </span>
+              <div className="space-y-2">
+                {groupMealsByCategory(mealsBySlot[s.meal_slot_id]).map((g) => (
+                  <div key={g.key}>
+                    <div className="mb-1 text-xs font-bold text-brand-burgundy/50">{g.name}</div>
+                    <div className="flex flex-wrap gap-2">
+                      {g.meals.map((m) => (
+                        <span key={m.id} className="badge bg-brand-cream text-brand-burgundy">
+                          {m.meal_name_snapshot}
+                          {m.portions != null && <span className="font-bold"> × {Number(m.portions)}</span>}
+                          {Number(m.extra_charge_amount) > 0 && ` (+${Number(m.extra_charge_amount).toFixed(0)}₪ למנה)`}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 ))}
                 {!(mealsBySlot[s.meal_slot_id] || []).length && <span className="text-sm text-brand-burgundy/40">לא נבחרו מאכלים</span>}
               </div>

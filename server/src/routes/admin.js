@@ -515,7 +515,11 @@ router.get('/orders/:id', asyncHandler(async (req, res) => {
 
   const [slots, meals, extras, discounts, manualCharges, history, feedback] = await Promise.all([
     supabase.from('order_meal_slots').select('*, meal_slots(name)').eq('order_id', order.id),
-    supabase.from('order_meals').select('*').eq('order_id', order.id),
+    // הקטגוריה של כל מאכל נשלפת דרך meals, כדי שפירוט ההזמנה יוצג מקובץ
+    // לפי קטגוריות (כותרת לכל קטגוריה) ולא כרשימה שטוחה של כל המאכלים.
+    supabase.from('order_meals')
+      .select('*, meals(display_order, categories(id, name, display_order))')
+      .eq('order_id', order.id),
     supabase.from('order_extras').select('*').eq('order_id', order.id),
     supabase.from('order_discounts').select('*').eq('order_id', order.id).order('created_at', { ascending: true }),
     supabase.from('order_manual_charges').select('*').eq('order_id', order.id).order('created_at', { ascending: true }),

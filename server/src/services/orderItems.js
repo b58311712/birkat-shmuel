@@ -294,7 +294,11 @@ export async function buildOrderItems(input) {
 export async function loadOrderItems(orderId) {
   const [slots, meals, extras, inventoryLines] = await Promise.all([
     supabase.from('order_meal_slots').select('*, meal_slots(name)').eq('order_id', orderId),
-    supabase.from('order_meals').select('*').eq('order_id', orderId),
+    // הקטגוריה של כל מאכל נשלפת דרך meals, כדי שפירוט ההזמנה (במסך
+    // הלקוח ובמייל) יוצג מקובץ לפי קטגוריות ולא כרשימה שטוחה.
+    supabase.from('order_meals')
+      .select('*, meals(display_order, categories(id, name, display_order))')
+      .eq('order_id', orderId),
     supabase.from('order_extras').select('*').eq('order_id', orderId),
     supabase.from('order_inventory_lines').select('*, units(name)').eq('order_id', orderId).order('created_at'),
   ]);
