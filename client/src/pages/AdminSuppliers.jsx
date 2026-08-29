@@ -4,7 +4,7 @@ import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { DataTable } from '../components/DataTable.jsx';
 import { Drawer, useRecordNav } from '../components/Drawer.jsx';
-import { ACTIVE_STATUS, Badge, SUPPLIER_CHANNEL, PO_STATUS } from '../lib/status.jsx';
+import { ACTIVE_STATUS, Badge, SUPPLIER_CHANNEL, SUPPLIER_DELIVERY_DESTINATION, PO_STATUS } from '../lib/status.jsx';
 import PriceInput from '../components/PriceInput.jsx';
 import { formatWithVat } from '../lib/vat.js';
 
@@ -93,6 +93,14 @@ export default function AdminSuppliers({ onAuthError, currentAdmin }) {
       render: (s) => SUPPLIER_CHANNEL[s.preferred_channel] || '-',
     },
     {
+      key: 'delivery_destination',
+      label: 'יעד אספקה',
+      type: 'enum',
+      value: (s) => s.delivery_destination || 'kitchen',
+      options: Object.entries(SUPPLIER_DELIVERY_DESTINATION).map(([value, label]) => ({ value, label })),
+      render: (s) => SUPPLIER_DELIVERY_DESTINATION[s.delivery_destination] || SUPPLIER_DELIVERY_DESTINATION.kitchen,
+    },
+    {
       key: 'is_active',
       label: 'סטטוס',
       type: 'boolean',
@@ -163,6 +171,7 @@ function SupplierForm({ initial, onSave, onCancel, embedded = false }) {
     preferred_channel: initial.preferred_channel || '',
     order_notes: initial.order_notes || '',
     default_price_includes_vat: initial.default_price_includes_vat || false,
+    delivery_destination: initial.delivery_destination || 'kitchen',
   });
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
 
@@ -192,6 +201,16 @@ function SupplierForm({ initial, onSave, onCancel, embedded = false }) {
           <select value={f.preferred_channel} onChange={(e) => set('preferred_channel', e.target.value)} className={inputCls}>
             {CHANNELS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
+        </Field>
+        <Field label="יעד אספקה">
+          <select value={f.delivery_destination} onChange={(e) => set('delivery_destination', e.target.value)} className={inputCls}>
+            {Object.entries(SUPPLIER_DELIVERY_DESTINATION).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+          <span className="text-xs text-brand-burgundy/50">
+            הכתובת שתישלח לספק במייל ההזמנה. "מקום האירוע" דורש שהזמנת הרכש תקושר להזמנת לקוח.
+          </span>
         </Field>
       </div>
       <Field label="הערות הזמנה">
@@ -265,6 +284,7 @@ function SupplierDetailBody({ data, onErr, onChanged }) {
         {supplier.phone && <div dir="ltr" className="text-right">טלפון: {supplier.phone}</div>}
         {supplier.email && <div dir="ltr" className="text-right">מייל: {supplier.email}</div>}
         {supplier.preferred_channel && <div>אמצעי הזמנה: {SUPPLIER_CHANNEL[supplier.preferred_channel]}</div>}
+        <div>יעד אספקה: {SUPPLIER_DELIVERY_DESTINATION[supplier.delivery_destination] || SUPPLIER_DELIVERY_DESTINATION.kitchen}</div>
         {supplier.order_notes && <div className="text-brand-burgundy/50">הערות: {supplier.order_notes}</div>}
       </div>
 

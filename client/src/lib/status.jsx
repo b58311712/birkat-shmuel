@@ -133,6 +133,13 @@ export const SUPPLIER_CHANNEL = {
   other: 'אחר',
 };
 
+// יעד האספקה של הספק (מיגרציה 63): המטבח, או ישירות לאולם של הזמנת הלקוח
+// המקושרת להזמנת הרכש. הכתובת עצמה יושבת ב-system_settings.kitchen_address.
+export const SUPPLIER_DELIVERY_DESTINATION = {
+  kitchen: 'מטבח החסד',
+  event_venue: 'מקום האירוע',
+};
+
 // תוצאת שליחת מייל (יומן המיילים ושליחת הזמנת רכש לספק - מיגרציה 61).
 // dry_run = אין מסלול שליחה מוגדר בסביבה, המייל נשמר ביומן ולא יצא בפועל.
 export const EMAIL_SEND_STATUS = {

@@ -4,14 +4,23 @@ import { api } from '../lib/api.js';
 import { Page } from '../components/Layout.jsx';
 import { Badge, PO_STATUS, SUPPLIER_PAYMENT_STATUS, SUPPLIER_CHANNEL, EXPENSE_PAYMENT_METHOD, EMAIL_SEND_STATUS } from '../lib/status.jsx';
 import PriceInput from '../components/PriceInput.jsx';
+import PurchaseOrderLinkFields from '../components/PurchaseOrderLinkFields.jsx';
+import PurchaseOrderLinesEditor, {
+  useSupplierCatalog,
+  purchaseOrderLinesFromServer,
+  purchaseOrderLinesTotal,
+  validPurchaseOrderLines,
+  buildPurchaseOrderLinesPayload,
+  hasDirectEventLine,
+} from '../components/PurchaseOrderLinesEditor.jsx';
 import { formatWithVat } from '../lib/vat.js';
 import {
   formatInventoryQuantity,
   splitPackageQuantity,
 } from '../lib/inventoryPackages.js';
 
-// פירוט הזמנת רכש (סעיף 27.2): שורות, שליחת ההזמנה לספק במייל (מיגרציה 61),
-// קבלת סחורה למלאי (27.3) ותשלום לספק (28.1).
+// פירוט הזמנת רכש (סעיף 27.2): שורות, עריכת טיוטה, שליחת ההזמנה לספק במייל
+// (מיגרציה 61), קבלת סחורה למלאי (27.3) ותשלום לספק (28.1).
 
 export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
   const { id } = useParams();
@@ -19,7 +28,7 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState(null); // null | 'receive' | 'payment' | 'email'
+  const [mode, setMode] = useState(null); // null | 'edit' | 'receive' | 'payment' | 'email'
   const [emailLog, setEmailLog] = useState([]);
   const canDelete = currentAdmin?.role === 'developer';
 
@@ -90,6 +99,18 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
                 label="אירוע"
                 value={po.shabbat ? `${po.shabbat.parasha} · ${po.shabbat.gregorian_date}` : null}
               />
+              <div>
+                <div className="text-xs text-brand-burgundy/50">הזמנת לקוח</div>
+                <div>
+                  {po.order ? (
+                    <Link to={`/admin/orders/${po.order.id}`} className="text-brand-burgundy hover:underline">
+                      #{po.order.order_number}
+                      {po.order.customers?.full_name ? ` · ${po.order.customers.full_name}` : ''}
+                      {po.order.venue_name ? ` · ${po.order.venue_name}` : ''}
+                    </Link>
+                  ) : <span className="text-brand-burgundy/50">{po.shabbat ? 'כל האירוע' : '-'}</span>}
+                </div>
+              </div>
               <Info label="נוצר ע״י" value={po.creator?.full_name} />
               <Info
                 label="נשלח לספק במייל"
@@ -157,6 +178,9 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
             </div>
           </div>
 
+          {mode === 'edit' && (
+            <EditPurchaseOrderPanel po={po} lines={lines} onCancel={() => setMode(null)} onDone={() => { setMode(null); load(); }} onErr={handleErr} />
+          )}
           {mode === 'receive' && (
             <ReceivePanel lines={lines} supplierIncludesVat={po.supplier?.default_price_includes_vat || false} onCancel={() => setMode(null)} onDone={() => { setMode(null); load(); }} poId={id} onErr={handleErr} />
           )}
@@ -172,6 +196,9 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
         <div className="space-y-4">
           <div className="card space-y-2">
             <h3 className="font-bold text-brand-burgundy">פעולות</h3>
+            {isDraft && (
+              <button onClick={() => setMode(mode === 'edit' ? null : 'edit')} className="btn-ghost w-full">עריכת ההזמנה</button>
+            )}
             {!isCancelled && (
               <button onClick={() => setMode(mode === 'email' ? null : 'email')} className="btn-primary w-full">
                 {po.email_sent_at ? 'שליחה חוזרת לספק במייל' : 'שליחת ההזמנה לספק במייל'}
@@ -188,6 +215,9 @@ export default function AdminPurchaseOrderView({ onAuthError, currentAdmin }) {
             )}
             {canDelete && (
               <button onClick={deletePurchaseOrder} disabled={busy} className="btn-ghost w-full text-red-700">מחיקה</button>
+            )}
+            {!isDraft && !isCancelled && (
+              <p className="text-sm text-brand-burgundy/50">עריכת פריטים אפשרית בסטטוס טיוטה בלבד.</p>
             )}
             {isReceived && <p className="text-sm text-green-700">✓ ההזמנה התקבלה במלואה; המלאי עודכן רק עבור מוצרי מלאי.</p>}
             {isCancelled && <p className="text-sm text-brand-burgundy/50">ההזמנה בוטלה.</p>}
@@ -383,6 +413,74 @@ function ReceivePanel({ lines, supplierIncludesVat, poId, onCancel, onDone, onEr
 }
 
 // ---------------------------------------------------------------------------
+// עריכת טיוטת הזמנת רכש (סעיף 27.2)
+// אותם רכיבים משותפים של טופס היצירה, כדי שבחירת המוצרים, המחירים והשיוך
+// יתנהגו בדיוק אותו דבר. הספק אינו ניתן לשינוי: החלפתו הופכת את כל השורות
+// (שנבחרו מקטלוג הספק ובמחיריו) ללא-רלוונטיות, ועדיף ליצור הזמנה חדשה.
+// ---------------------------------------------------------------------------
+function EditPurchaseOrderPanel({ po, lines: serverLines, onCancel, onDone, onErr }) {
+  const [expected, setExpected] = useState(po.expected_delivery_date || '');
+  const [notes, setNotes] = useState(po.notes || '');
+  const [link, setLink] = useState({ shabbat_id: po.shabbat_id || '', order_id: po.order_id || '' });
+  const [lines, setLines] = useState(() => purchaseOrderLinesFromServer(serverLines));
+  const [busy, setBusy] = useState(false);
+
+  const catalogErr = useCallback(() => {}, []);
+  const catalog = useSupplierCatalog(po.supplier_id, catalogErr);
+  const { allItems } = catalog;
+  const total = purchaseOrderLinesTotal(lines, allItems);
+
+  async function submit(e) {
+    e.preventDefault();
+    const clean = validPurchaseOrderLines(lines, allItems);
+    if (clean.length === 0) return alert('חובה להשאיר לפחות פריט אחד עם כמות.');
+    if (hasDirectEventLine(clean, allItems) && !link.shabbat_id)
+      return alert('מוצר ברכש ישיר מחייב בחירת אירוע.');
+    setBusy(true);
+    try {
+      await api.updatePurchaseOrder(po.id, {
+        shabbat_id: link.shabbat_id || null,
+        order_id: link.order_id || null,
+        expected_delivery_date: expected || null,
+        notes,
+        lines: buildPurchaseOrderLinesPayload(clean, allItems),
+      });
+      onDone();
+    } catch (err) { if (!onErr(err)) alert(err.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <form onSubmit={submit} className="card space-y-3 border-r-4 border-brand-gold">
+      <h3 className="font-bold text-brand-burgundy">עריכת הזמנת רכש {po.po_number}</h3>
+      <p className="text-sm text-brand-burgundy/60">
+        הספק ({po.supplier?.name}) אינו ניתן לשינוי בהזמנה קיימת. להזמנה מספק אחר יש ליצור הזמנת רכש חדשה.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Field label="תאריך אספקה צפוי">
+          <input type="date" value={expected} onChange={(e) => setExpected(e.target.value)} className={inputCls} dir="ltr" />
+        </Field>
+        <PurchaseOrderLinkFields shabbatId={link.shabbat_id} orderId={link.order_id} onChange={setLink} />
+      </div>
+
+      <PurchaseOrderLinesEditor supplierId={po.supplier_id} catalog={catalog} lines={lines} setLines={setLines} />
+
+      <Field label="הערות">
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className={inputCls} rows={2} />
+      </Field>
+
+      <div className="flex items-center justify-between border-t border-brand-cream-dark pt-3">
+        <div className="font-semibold text-brand-burgundy">מחיר משוער כולל (כולל מע"מ): ₪{total.toFixed(2)}</div>
+        <div className="flex gap-2">
+          <button type="submit" disabled={busy} className="btn-primary disabled:opacity-50">{busy ? 'שומר...' : 'שמירת שינויים'}</button>
+          <button type="button" onClick={onCancel} className="btn-ghost">ביטול</button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // שליחת ההזמנה לספק במייל (מיגרציה 61)
 // הנוסח מגיע מהשרת אחרי מילוי ה-placeholders (נוסח purchase_order_supplier
 // ב-/admin/email) וניתן לעריכה כאן - מה שנשלח הוא בדיוק מה שמוצג במסך.
@@ -451,6 +549,14 @@ function SupplierEmailPanel({ poId, onCancel, onDone, onErr }) {
       )}
       {preview.supplier?.order_notes && (
         <p className="text-sm text-brand-burgundy/60">הערות הזמנה לספק: {preview.supplier.order_notes}</p>
+      )}
+      {preview.delivery && (
+        <p className={`text-sm ${preview.delivery.fallback ? 'text-amber-700' : 'text-brand-burgundy/60'}`}>
+          כתובת האספקה שתישלח: {preview.delivery.address}
+          {preview.delivery.source === 'event_venue' && ' (מקום האירוע)'}
+          {preview.delivery.fallback
+            && ' - הספק מוגדר לאספקה למקום האירוע, אך להזמנת הרכש לא מקושרת הזמנת לקוח עם אולם, ולכן נשלחת כתובת המטבח.'}
+        </p>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

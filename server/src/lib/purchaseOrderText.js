@@ -49,8 +49,31 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString('he-IL');
 }
 
+// =============================================================================
+// יעד האספקה שנשלח לספק (מיגרציה 63)
+// =============================================================================
+// suppliers.delivery_destination קובע: 'kitchen' (ברירת מחדל) = כתובת המטבח,
+// 'event_venue' = האולם של הזמנת הלקוח המקושרת להזמנת הרכש.
+// ספק שמסומן 'event_venue' בלי הזמנת לקוח מקושרת נופל חזרה לכתובת המטבח - עדיף
+// כתובת נכונה-אך-לא-מדויקת על פני שורה ריקה במייל היוצא. הדגל fallback מוחזר
+// כדי שמסך השליחה יזהיר על כך לפני השליחה.
+//   מחזיר { address, source: 'kitchen' | 'event_venue', fallback: boolean }.
+export function resolveDeliveryDestination({ supplier, order, kitchenAddress }) {
+  const kitchen = String(kitchenAddress || '').trim();
+  if (supplier?.delivery_destination !== 'event_venue') {
+    return { address: kitchen, source: 'kitchen', fallback: false };
+  }
+  // venue_name הוא שדה חובה בהזמנה (מיגרציה 27); venue_address אופציונלי.
+  const venue = [order?.venue_name, order?.venue_address]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  if (!venue) return { address: kitchen, source: 'kitchen', fallback: true };
+  return { address: venue, source: 'event_venue', fallback: false };
+}
+
 // --- ערכי ה-placeholders של נוסח הספק ---
-export function purchaseOrderVars({ po, supplier, lines }) {
+export function purchaseOrderVars({ po, supplier, lines, delivery }) {
   return {
     supplier_name: supplier?.name || '',
     contact_name: supplier?.contact_name || '',
@@ -60,6 +83,7 @@ export function purchaseOrderVars({ po, supplier, lines }) {
     expected_delivery_date: po?.expected_delivery_date
       ? formatDate(po.expected_delivery_date)
       : 'בהקדם האפשרי',
+    delivery_address: delivery?.address || '',
     po_lines: formatPurchaseOrderLinesText(lines),
     // הקידומת נכללת בערך עצמו, כדי שנוסח בלי הערות לא ישאיר שורה מיותמת.
     po_notes: po?.notes ? `הערות: ${po.notes}` : '',

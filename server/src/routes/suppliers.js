@@ -28,6 +28,8 @@ const PO_STATUSES = ['draft', 'sent', 'partially_received', 'received', 'cancell
 const PAYMENT_STATUSES = ['unpaid', 'partially_paid', 'paid', 'awaiting_invoice', 'cancelled'];
 // אמצעי תשלום - רשימה סגורה, שדה חובה (ראו client/src/lib/status.jsx EXPENSE_PAYMENT_METHOD).
 const PAYMENT_METHODS = ['cash', 'check', 'credit', 'bank_transfer', 'other'];
+// יעד אספקה בכרטיס הספק (מיגרציה 63): למטבח, או ישירות לאולם של הזמנת הלקוח.
+const DELIVERY_DESTINATIONS = ['kitchen', 'event_venue'];
 
 async function auditDelete(req, entityType, entityId, details = null) {
   const { error } = await supabase.from('audit_log').insert({
@@ -91,6 +93,26 @@ async function normalizeOrderLines(lines, purchaseOrderId = null) {
     });
   }
   return clean;
+}
+
+// =============================================================================
+// resolveOrderLink - אימות הקישור של הזמנת רכש להזמנת לקוח (מיגרציה 63).
+// הזמנת הלקוח קובעת את המועד: shabbat_id של הזמנת הרכש מסונכרן ממנה, כך שכל
+// הלוגיקה שנשענת על המועד (רכש ישיר, דוח חוסרים, תיק שבת) ממשיכה לעבוד.
+// מחזיר { error } לשגיאת קלט, או { orderId, shabbatId } לשיוך שאושר.
+// =============================================================================
+async function resolveOrderLink(orderId, requestedShabbatId) {
+  if (!orderId) return { orderId: null, shabbatId: requestedShabbatId || null };
+
+  const { data: order, error } = await supabase
+    .from('orders').select('id, shabbat_id').eq('id', orderId).maybeSingle();
+  if (error) throw error;
+  if (!order) return { error: 'הזמנת הלקוח שנבחרה לא נמצאה.' };
+  if (!order.shabbat_id) return { error: 'לא ניתן לקשר הזמנת רכש להזמנה שאינה משויכת למועד.' };
+  if (requestedShabbatId && requestedShabbatId !== order.shabbat_id)
+    return { error: 'הזמנת הלקוח שנבחרה שייכת למועד אחר.' };
+
+  return { orderId: order.id, shabbatId: order.shabbat_id };
 }
 
 async function deletePurchaseOrder(poId) {
@@ -185,10 +207,15 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // POST /api/admin/suppliers - יצירת ספק
 router.post('/', asyncHandler(async (req, res) => {
-  const { name, contact_name, phone, email, preferred_channel, order_notes, default_price_includes_vat } = req.body || {};
+  const {
+    name, contact_name, phone, email, preferred_channel, order_notes,
+    default_price_includes_vat, delivery_destination,
+  } = req.body || {};
   if (!name?.trim()) return fail(res, 400, 'חובה להזין שם ספק.');
   if (preferred_channel && !CHANNELS.includes(preferred_channel))
     return fail(res, 400, 'אמצעי הזמנה לא תקין.');
+  if (delivery_destination && !DELIVERY_DESTINATIONS.includes(delivery_destination))
+    return fail(res, 400, 'יעד אספקה לא תקין.');
   const { data, error } = await supabase.from('suppliers').insert({
     name: name.trim(),
     contact_name: contact_name?.trim() || null,
@@ -197,6 +224,7 @@ router.post('/', asyncHandler(async (req, res) => {
     preferred_channel: preferred_channel || null,
     order_notes: order_notes?.trim() || null,
     default_price_includes_vat: !!default_price_includes_vat, // ברירת מחדל למתג "לפני/כולל" בהזנה
+    delivery_destination: delivery_destination || 'kitchen',
   }).select('*').single();
   if (error) throw error;
   res.json({ ok: true, supplier: data });
@@ -204,12 +232,14 @@ router.post('/', asyncHandler(async (req, res) => {
 
 // PATCH /api/admin/suppliers/:id - עדכון/השבתת ספק
 router.patch('/:id', asyncHandler(async (req, res) => {
-  const allowed = ['name', 'contact_name', 'phone', 'email', 'preferred_channel', 'order_notes', 'default_price_includes_vat', 'is_active'];
+  const allowed = ['name', 'contact_name', 'phone', 'email', 'preferred_channel', 'order_notes', 'default_price_includes_vat', 'delivery_destination', 'is_active'];
   const patch = {};
   for (const k of allowed) if (k in (req.body || {})) patch[k] = req.body[k];
   if ('name' in patch && !patch.name?.trim()) return fail(res, 400, 'שם ספק לא יכול להיות ריק.');
   if ('preferred_channel' in patch && patch.preferred_channel && !CHANNELS.includes(patch.preferred_channel))
     return fail(res, 400, 'אמצעי הזמנה לא תקין.');
+  if ('delivery_destination' in patch && !DELIVERY_DESTINATIONS.includes(patch.delivery_destination))
+    return fail(res, 400, 'יעד אספקה לא תקין.');
   // נרמול מחרוזות ריקות ל-null
   for (const k of ['contact_name', 'phone', 'email', 'order_notes']) {
     if (k in patch) patch[k] = patch[k]?.trim() || null;
@@ -278,7 +308,10 @@ router.put('/:id/items', asyncHandler(async (req, res) => {
 router.get('/purchase-orders/list', asyncHandler(async (req, res) => {
   let q = supabase
     .from('purchase_orders')
-    .select('*, supplier:supplier_id (id, name), shabbat:shabbat_id (id, parasha, hebrew_date, gregorian_date)')
+    .select(`*,
+      supplier:supplier_id (id, name),
+      shabbat:shabbat_id (id, parasha, hebrew_date, gregorian_date),
+      order:order_id (id, order_number, venue_name)`)
     .order('created_at', { ascending: false });
   if (req.query.supplier_id) q = q.eq('supplier_id', req.query.supplier_id);
   if (req.query.status) q = q.eq('status', req.query.status);
@@ -291,7 +324,11 @@ router.get('/purchase-orders/list', asyncHandler(async (req, res) => {
 router.get('/purchase-orders/:id', asyncHandler(async (req, res) => {
   const { data: po, error } = await supabase
     .from('purchase_orders')
-    .select('*, supplier:supplier_id (id, name, phone, email, preferred_channel, default_price_includes_vat), creator:created_by (id, full_name), shabbat:shabbat_id (id, parasha, hebrew_date, gregorian_date)')
+    .select(`*,
+      supplier:supplier_id (id, name, phone, email, preferred_channel, default_price_includes_vat, delivery_destination),
+      creator:created_by (id, full_name),
+      shabbat:shabbat_id (id, parasha, hebrew_date, gregorian_date),
+      order:order_id (id, order_number, venue_name, venue_address, customers (full_name))`)
     .eq('id', req.params.id).maybeSingle();
   if (error) throw error;
   if (!po) return fail(res, 404, 'הזמנת רכש לא נמצאה.');
@@ -314,9 +351,10 @@ router.get('/purchase-orders/:id', asyncHandler(async (req, res) => {
 }));
 
 // POST /api/admin/suppliers/purchase-orders - יצירת הזמנת רכש (טיוטה)
-// body: { supplier_id, expected_delivery_date, notes, lines: [{ inventory_item_id, quantity, estimated_price }] }
+// body: { supplier_id, shabbat_id, order_id, expected_delivery_date, notes,
+//         lines: [{ inventory_item_id, quantity, estimated_price }] }
 router.post('/purchase-orders', asyncHandler(async (req, res) => {
-  const { supplier_id, shabbat_id, expected_delivery_date, notes, lines } = req.body || {};
+  const { supplier_id, shabbat_id, order_id, expected_delivery_date, notes, lines } = req.body || {};
   if (!supplier_id) return fail(res, 400, 'חובה לבחור ספק.');
   if (!Array.isArray(lines) || lines.length === 0)
     return fail(res, 400, 'חובה להוסיף לפחות פריט אחד.');
@@ -326,13 +364,18 @@ router.post('/purchase-orders', asyncHandler(async (req, res) => {
   if (sErr) throw sErr;
   if (!supplier) return fail(res, 404, 'ספק לא נמצא.');
 
+  // הזמנת לקוח מקושרת גוררת את המועד שלה, ולכן נפתרת לפני בדיקת הרכש הישיר.
+  const link = await resolveOrderLink(order_id, shabbat_id);
+  if (link.error) return fail(res, 400, link.error);
+  const effectiveShabbatId = link.shabbatId;
+
   const clean = await normalizeOrderLines(lines);
   if (clean.length === 0) return fail(res, 400, 'אין שורות תקינות בהזמנה.');
-  if (clean.some((line) => isDirectEventProcurement(line.procurement_type_snapshot)) && !shabbat_id)
+  if (clean.some((line) => isDirectEventProcurement(line.procurement_type_snapshot)) && !effectiveShabbatId)
     return fail(res, 400, 'מוצר ברכש ישיר מחייב שיוך ההזמנה לאירוע.');
-  if (shabbat_id) {
+  if (effectiveShabbatId) {
     const { data: shabbat, error: shabbatError } = await supabase
-      .from('shabbatot').select('id').eq('id', shabbat_id).maybeSingle();
+      .from('shabbatot').select('id').eq('id', effectiveShabbatId).maybeSingle();
     if (shabbatError) throw shabbatError;
     if (!shabbat) return fail(res, 404, 'האירוע שנבחר לא נמצא.');
   }
@@ -349,7 +392,8 @@ router.post('/purchase-orders', asyncHandler(async (req, res) => {
   const { data: po, error: pErr } = await supabase.from('purchase_orders').insert({
     po_number: poNumber,
     supplier_id,
-    shabbat_id: shabbat_id || null,
+    shabbat_id: effectiveShabbatId,
+    order_id: link.orderId,
     status: 'draft',
     expected_delivery_date: expected_delivery_date || null,
     estimated_amount: estimated_amount || null,
@@ -366,20 +410,37 @@ router.post('/purchase-orders', asyncHandler(async (req, res) => {
 }));
 
 // PATCH /api/admin/suppliers/purchase-orders/:id - עדכון פרטי הזמנת רכש (רק בטיוטה)
-// body: { expected_delivery_date, notes, lines }
+// body: { shabbat_id, order_id, expected_delivery_date, notes, lines }
+// המסך משתמש בזה לעריכה מלאה של טיוטה (סעיף 27.2): מועד, הזמנת לקוח מקושרת,
+// תאריך אספקה, הערות ופריטים. הזמנה שכבר נשלחה/התקבלה אינה ניתנת לעריכה.
 router.patch('/purchase-orders/:id', asyncHandler(async (req, res) => {
   const { data: po, error } = await supabase
-    .from('purchase_orders').select('id, status, shabbat_id').eq('id', req.params.id).maybeSingle();
+    .from('purchase_orders').select('id, status, shabbat_id, order_id').eq('id', req.params.id).maybeSingle();
   if (error) throw error;
   if (!po) return fail(res, 404, 'הזמנת רכש לא נמצאה.');
   if (po.status !== 'draft')
     return fail(res, 400, 'ניתן לערוך פריטים רק בהזמנה בסטטוס טיוטה.');
 
-  const { shabbat_id, expected_delivery_date, notes, lines } = req.body || {};
+  const body = req.body || {};
+  const { shabbat_id, order_id, expected_delivery_date, notes, lines } = body;
   const patch = {};
-  if ('shabbat_id' in (req.body || {})) patch.shabbat_id = shabbat_id || null;
-  if ('expected_delivery_date' in (req.body || {})) patch.expected_delivery_date = expected_delivery_date || null;
-  if ('notes' in (req.body || {})) patch.notes = notes?.trim() || null;
+  if ('shabbat_id' in body) patch.shabbat_id = shabbat_id || null;
+  if ('expected_delivery_date' in body) patch.expected_delivery_date = expected_delivery_date || null;
+  if ('notes' in body) patch.notes = notes?.trim() || null;
+
+  // הזמנת לקוח מקושרת גוררת את המועד שלה, ודורסת shabbat_id שנשלח בנפרד
+  // (מיגרציה 63) - כך אי אפשר להגיע להזמנת רכש שמצביעה על מועד אחד ועל הזמנה
+  // ששייכת למועד אחר.
+  if ('order_id' in body) {
+    const requestedShabbatId = 'shabbat_id' in patch ? patch.shabbat_id : po.shabbat_id;
+    const link = await resolveOrderLink(order_id, order_id ? requestedShabbatId : null);
+    if (link.error) return fail(res, 400, link.error);
+    patch.order_id = link.orderId;
+    if (link.orderId) patch.shabbat_id = link.shabbatId;
+  } else if ('shabbat_id' in patch && po.order_id && patch.shabbat_id !== po.shabbat_id) {
+    return fail(res, 400, 'לא ניתן לשנות את המועד של הזמנת רכש המקושרת להזמנת לקוח. יש לנתק את הקישור תחילה.');
+  }
+
   if ('shabbat_id' in patch && !patch.shabbat_id) {
     const { data: directLines, error: directLinesError } = await supabase
       .from('purchase_order_lines')
@@ -477,6 +538,8 @@ router.get('/purchase-orders/:id/email-preview', asyncHandler(async (req, res) =
     subject: preview.subject,
     body: preview.body,
     supplier: preview.supplier,
+    order: preview.order,
+    delivery: preview.delivery,
     status: preview.purchase_order.status,
     template_active: preview.template_active,
     dry_run: isDryRun(),

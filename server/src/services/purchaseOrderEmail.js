@@ -13,9 +13,22 @@
 // =============================================================================
 import { supabase } from '../lib/supabase.js';
 import { loadTemplate, fillTemplate } from './email.js';
-import { purchaseOrderVars } from '../lib/purchaseOrderText.js';
+import { purchaseOrderVars, resolveDeliveryDestination } from '../lib/purchaseOrderText.js';
 
 export const PURCHASE_ORDER_TEMPLATE_CODE = 'purchase_order_supplier';
+
+// כתובת המטבח יושבת ב-system_settings כדי שניתן יהיה לשנותה בלי דיפלוי
+// (מיגרציה 63). הנפילה כאן היא רשת ביטחון בלבד, למקרה שההגדרה נמחקה.
+const DEFAULT_KITCHEN_ADDRESS = 'רח׳ החוזה מלובלין 1, ביתר עילית';
+
+async function kitchenAddress() {
+  const { data, error } = await supabase
+    .from('system_settings').select('value').eq('key', 'kitchen_address').maybeSingle();
+  if (error) throw error;
+  // value הוא jsonb; מחרוזת מגיעה כמחרוזת JS, וכל ערך אחר לא רלוונטי כאן.
+  const value = typeof data?.value === 'string' ? data.value.trim() : '';
+  return value || DEFAULT_KITCHEN_ADDRESS;
+}
 
 // =============================================================================
 // buildPurchaseOrderEmail - טוען הזמנה+ספק+שורות, ומחזיר את המייל המוצע.
@@ -25,7 +38,9 @@ export const PURCHASE_ORDER_TEMPLATE_CODE = 'purchase_order_supplier';
 export async function buildPurchaseOrderEmail(poId) {
   const { data: po, error } = await supabase
     .from('purchase_orders')
-    .select('*, supplier:supplier_id (id, name, contact_name, phone, email, preferred_channel, order_notes)')
+    .select(`*,
+      supplier:supplier_id (id, name, contact_name, phone, email, preferred_channel, order_notes, delivery_destination),
+      order:order_id (id, order_number, venue_name, venue_address, contact_name, contact_phone)`)
     .eq('id', poId)
     .maybeSingle();
   if (error) throw error;
@@ -43,12 +58,19 @@ export async function buildPurchaseOrderEmail(poId) {
   if (lErr) throw lErr;
 
   const tpl = await loadTemplate(PURCHASE_ORDER_TEMPLATE_CODE);
-  const vars = purchaseOrderVars({ po, supplier: po.supplier, lines: lines || [] });
+  const delivery = resolveDeliveryDestination({
+    supplier: po.supplier,
+    order: po.order,
+    kitchenAddress: await kitchenAddress(),
+  });
+  const vars = purchaseOrderVars({ po, supplier: po.supplier, lines: lines || [], delivery });
 
   return {
     purchase_order: po,
     supplier: po.supplier || null,
+    order: po.order || null,
     lines: lines || [],
+    delivery,
     to: po.supplier?.email || '',
     subject: tpl ? fillTemplate(tpl.subject, vars) : '',
     body: tpl ? fillTemplate(tpl.body, vars) : '',

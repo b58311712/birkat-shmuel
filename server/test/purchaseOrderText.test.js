@@ -4,6 +4,7 @@ import {
   formatLineQuantity,
   formatPurchaseOrderLinesText,
   purchaseOrderVars,
+  resolveDeliveryDestination,
 } from '../src/lib/purchaseOrderText.js';
 
 const PO = {
@@ -78,4 +79,62 @@ test('the po number reaches the template as a filled value', () => {
   assert.equal(vars.po_number, '20260012');
   assert.equal(vars.supplier_name, 'ירקות השדה בע״מ');
   assert.equal(vars.contact_name, 'משה');
+});
+
+// ---------------------------------------------------------------------------
+// יעד האספקה שנשלח לספק (מיגרציה 63)
+// ---------------------------------------------------------------------------
+const KITCHEN = 'רח׳ החוזה מלובלין 1, ביתר עילית';
+const ORDER = { venue_name: 'אולמי הדר', venue_address: 'הרב קוק 12, ירושלים' };
+
+// ברירת המחדל: הספק מספק למטבח, גם כשיש הזמנת לקוח מקושרת.
+test('a kitchen supplier is always sent the kitchen address', () => {
+  const d = resolveDeliveryDestination({
+    supplier: { delivery_destination: 'kitchen' }, order: ORDER, kitchenAddress: KITCHEN,
+  });
+  assert.deepEqual(d, { address: KITCHEN, source: 'kitchen', fallback: false });
+});
+
+// ספק ללא הגדרה (רשומה ישנה מלפני המיגרציה) מתנהג כמו ברירת המחדל.
+test('a supplier with no destination set falls back to the kitchen', () => {
+  const d = resolveDeliveryDestination({ supplier: {}, order: ORDER, kitchenAddress: KITCHEN });
+  assert.equal(d.address, KITCHEN);
+  assert.equal(d.fallback, false);
+});
+
+// ספק שמספק לאולם מקבל את שם האולם והכתובת מהזמנת הלקוח המקושרת.
+test('an event-venue supplier is sent the linked order venue', () => {
+  const d = resolveDeliveryDestination({
+    supplier: { delivery_destination: 'event_venue' }, order: ORDER, kitchenAddress: KITCHEN,
+  });
+  assert.deepEqual(d, { address: 'אולמי הדר, הרב קוק 12, ירושלים', source: 'event_venue', fallback: false });
+});
+
+// אולם בלי כתובת רשומה עדיין מזוהה בשמו, ואינו נופל לכתובת המטבח.
+test('a venue without an address still uses its name', () => {
+  const d = resolveDeliveryDestination({
+    supplier: { delivery_destination: 'event_venue' },
+    order: { venue_name: 'אולמי הדר', venue_address: null },
+    kitchenAddress: KITCHEN,
+  });
+  assert.equal(d.address, 'אולמי הדר');
+  assert.equal(d.source, 'event_venue');
+});
+
+// בלי הזמנת לקוח מקושרת אי אפשר לדעת לאיזה אולם - נופלים לכתובת המטבח
+// ומסמנים fallback, כדי שמסך השליחה יזהיר לפני שהמייל יוצא.
+test('an event-venue supplier with no linked order falls back and is flagged', () => {
+  const d = resolveDeliveryDestination({
+    supplier: { delivery_destination: 'event_venue' }, order: null, kitchenAddress: KITCHEN,
+  });
+  assert.deepEqual(d, { address: KITCHEN, source: 'kitchen', fallback: true });
+});
+
+// הכתובת נכנסת לנוסח כ-placeholder {delivery_address}.
+test('the resolved address reaches the template variables', () => {
+  const vars = purchaseOrderVars({
+    po: PO, supplier: SUPPLIER, lines: [],
+    delivery: { address: KITCHEN, source: 'kitchen', fallback: false },
+  });
+  assert.equal(vars.delivery_address, KITCHEN);
 });
